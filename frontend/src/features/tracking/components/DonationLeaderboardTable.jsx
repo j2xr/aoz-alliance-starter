@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatHonor, formatUpdatedAt } from '../utils/donationFormat';
 
 const PAGE_SIZE = 50;
@@ -11,10 +11,40 @@ function positionDecoration(position) {
   return { medal: null, color: '#4a5568' };
 }
 
+const COLS = [
+  { key: 'position', label: '#', align: 'right', numeric: true },
+  { key: 'player_name', label: 'Player', align: 'left', numeric: false },
+  { key: 'player_rank', label: 'Rank', align: 'left', numeric: false },
+  { key: 'alliance_honor', label: 'Alliance Honor', align: 'right', numeric: true },
+];
+
 export function DonationLeaderboardTable({ rows }) {
   const navigate = useNavigate();
   const { allianceId } = useParams();
   const [showAll, setShowAll] = useState(false);
+  const [sortKey, setSortKey] = useState('position');
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const numericSort = COLS.find(c => c.key === sortKey)?.numeric ?? false;
+  const sorted = useMemo(() => {
+    if (!rows) return [];
+    return [...rows].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (numericSort) return sortAsc ? av - bv : bv - av;
+      return sortAsc
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+  }, [rows, sortKey, sortAsc, numericSort]);
+
+  const handleSort = key => {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(key === 'player_name' || key === 'player_rank'); }
+  };
 
   if (!rows || rows.length === 0) {
     return (
@@ -26,17 +56,27 @@ export function DonationLeaderboardTable({ rows }) {
     );
   }
 
-  const visible = showAll ? rows : rows.slice(0, PAGE_SIZE);
+  const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
 
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid #1e2132' }}>
-            <th style={thStyle('right')}>#</th>
-            <th style={thStyle('left')}>Player</th>
-            <th style={thStyle('left')}>Rank</th>
-            <th style={thStyle('right')}>Alliance Honor</th>
+            {COLS.map(col => (
+              <th
+                key={col.key}
+                onClick={() => handleSort(col.key)}
+                style={{
+                  ...thStyle(col.align),
+                  color: sortKey === col.key ? '#38bdf8' : thStyle().color,
+                  cursor: 'pointer',
+                }}
+              >
+                {col.label}
+                {sortKey === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>

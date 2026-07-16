@@ -1,10 +1,19 @@
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useParticipationRates } from '../hooks/useParticipationRates';
 import { ParticipationRateTable } from '../components/ParticipationRateTable';
+import { PlayerSearchInput } from '../components/PlayerSearchInput';
+import { isAccessDenied } from '../queries/atQueries';
 
 export function PlayersPage() {
   const { allianceId } = useParams();
   const { data: rows = [], isLoading, error } = useParticipationRates(allianceId);
+  const [search, setSearch] = useState('');
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(r => (r.player_name ?? '').toLowerCase().includes(q));
+  }, [rows, search]);
 
   if (!allianceId) {
     return (
@@ -29,7 +38,7 @@ export function PlayersPage() {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
         borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
-        {error.message.includes('0 rows')
+        {isAccessDenied(error)
           ? 'Access denied — you are not a member of this alliance.'
           : `Error: ${error.message}`}
       </div>
@@ -53,9 +62,11 @@ export function PlayersPage() {
         </div>
       </div>
 
+      <PlayerSearchInput value={search} onChange={setSearch} />
+
       <div style={{ background: '#0f111a', border: '1px solid #1e2132',
         borderRadius: '12px', overflow: 'hidden' }}>
-        <ParticipationRateTable rows={rows} />
+        <ParticipationRateTable rows={filteredRows} />
       </div>
     </div>
   );

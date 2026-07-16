@@ -201,4 +201,67 @@ describe('handleMessageCreate', () => {
       expect.objectContaining({ embeds: [fakeEmbed] }),
     );
   });
+
+  it('reports progress between multiple images and lands on the final summary', async () => {
+    const SHOT2: FakeAttachment = {
+      id: 'att-2',
+      name: 'shot2.png',
+      url: 'https://cdn.discordapp.com/attachments/shot2.png',
+      contentType: 'image/png',
+    };
+
+    vi.mocked(resolveAlliance).mockResolvedValue(ALLIANCE);
+    vi.mocked(recordUploadError).mockResolvedValue(undefined);
+    vi.mocked(processImageAttachment).mockImplementation(async (_messageId, url) => {
+      if (url.includes('shot2')) {
+        return {
+          ok: true,
+          filename: 'shot2.png',
+          fileHash: 'def456',
+          filePath: '/data/inbox/msg-123/shot2.png',
+          ocr: {
+            kind: 'event' as const,
+            event_type: 'polar_invasion',
+            event_datetime: '2026-05-21T10:00:00Z',
+            alliance_rank: 5,
+            total_battlers: 30,
+            total_points: 150_000,
+            members: [
+              { name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.95 },
+            ],
+          },
+        };
+      }
+      return {
+        ok: true,
+        filename: 'shot.png',
+        fileHash: 'abc123',
+        filePath: '/data/inbox/msg-123/shot.png',
+        ocr: { error: 'unknown_event' as const },
+      };
+    });
+    vi.mocked(upsertEventResult).mockResolvedValue({
+      status: 'processed',
+      eventId: 'event-1',
+      eventTypeDisplayName: 'Polar Invasion',
+      memberCount: 1,
+      newMemberCount: 0,
+    });
+    const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
+    vi.mocked(buildEventEmbed).mockReturnValue(fakeEmbed);
+
+    const { msg, ackMsg } = buildMessage({ attachments: [IMAGE_ATT, SHOT2] });
+
+    await handleMessageCreate(msg as unknown as Message<boolean>);
+
+    // One intermediate progress edit (after image 1/2), then the final summary.
+    expect(ackMsg.edit).toHaveBeenCalledTimes(2);
+
+    const progressArg = ackMsg.edit.mock.calls[0]?.[0] as string;
+    expect(progressArg).toContain('🔄 Image 1/2');
+    expect(progressArg).toContain('1 ⚠️');
+
+    const finalArg = ackMsg.edit.mock.calls[1]?.[0];
+    expect(finalArg).toEqual(expect.objectContaining({ embeds: [fakeEmbed] }));
+  });
 });

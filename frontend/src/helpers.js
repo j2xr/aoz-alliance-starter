@@ -1,3 +1,5 @@
+import { showToast } from "./components/Toast.jsx";
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 export const MONTHS = ["January","February","March","April","May","June",
                 "July","August","September","October","November","December"];
@@ -199,7 +201,7 @@ export function downloadICS(event, occurrenceDate) {
 
 /** Download a single .ics file containing all events for a given month */
 export function downloadMonthICS(monthEvents, year, month) {
-  if (!monthEvents.length) { alert("No events this month."); return; }
+  if (!monthEvents.length) { showToast("No events this month.", "info"); return; }
   const dtstamp = icsDtstamp();
   const vevents = monthEvents.map(event => buildVEvent(event, event._occurrenceDate, dtstamp));
   downloadICSFile(
@@ -210,7 +212,7 @@ export function downloadMonthICS(monthEvents, year, month) {
 
 /** Download a single .ics file containing all events for a given week */
 export function downloadWeekICS(weekEvents, weekLabel) {
-  if (!weekEvents.length) { alert("No events this week."); return; }
+  if (!weekEvents.length) { showToast("No events this week.", "info"); return; }
   const dtstamp = icsDtstamp();
   const vevents = weekEvents.map(event => buildVEvent(event, event._occurrenceDate, dtstamp));
   downloadICSFile(

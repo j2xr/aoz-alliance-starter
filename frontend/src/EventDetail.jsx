@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { getTypeColor, EVENT_TYPES, RECURRENCE_OPTIONS, localTime, toGoogleCalLink, downloadICS, input } from "./helpers";
+import { useToast } from "./components/Toast.jsx";
 
 function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdit }) {
+  const toast = useToast();
   const [deleteNick, setDeleteNick] = useState(null); // null = hidden, string = asking
   const color = getTypeColor(event.type);
   const typeLabel = EVENT_TYPES.find(t => t.id === event.type)?.label || "Other";
@@ -13,7 +15,7 @@ function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdi
 
   const handleDeleteConfirm = () => {
     if (deleteNick.trim().toLowerCase() !== event.author.trim().toLowerCase()) {
-      alert("Nickname doesn't match. Only the event creator can delete it.");
+      toast.error("Nickname doesn't match. Only the event creator can delete it.");
       return;
     }
     onDelete(event.id);

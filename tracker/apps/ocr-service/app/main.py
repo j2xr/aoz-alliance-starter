@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from app.dispatcher import UnknownEventError, refresh_title_patterns_from_supabase
 from app.extract import extract
 from app.preprocess import preprocess_image
-from app.tess_engine import current_backend, shutdown_pool
+from app.tess_engine import current_backend, health_check, shutdown_pool
 
 # Honour LOG_LEVEL from .env so app loggers (extract, parsers, llm_fallback)
 # actually emit their INFO/DEBUG output. Without this, Python defaults to
@@ -136,8 +136,26 @@ app = FastAPI(title="OCR Service", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> JSONResponse:
+    tesseract_ok = await asyncio.to_thread(health_check)
+
+    db_ok = False
+    if _db is not None:
+        try:
+            await _db.execute("SELECT 1")
+            db_ok = True
+        except Exception:
+            logger.exception("Job store health check failed")
+
+    healthy = tesseract_ok and db_ok
+    return JSONResponse(
+        content={
+            "status": "ok" if healthy else "degraded",
+            "tesseract": tesseract_ok,
+            "db": db_ok,
+        },
+        status_code=200 if healthy else 503,
+    )
 
 
 def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: bool) -> None:

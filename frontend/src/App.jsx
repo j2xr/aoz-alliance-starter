@@ -6,6 +6,7 @@ import Modal from "./Modal";
 import AddEventForm from "./AddEventForm";
 import EventDetail from "./EventDetail";
 import WidgetView from "./WidgetView";
+import { useToast } from "./components/Toast.jsx";
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
     return <WidgetView />;
   }
   const navigate = useNavigate();
+  const toast = useToast();
   const today = new Date();
   const todayISO = `${today.getUTCFullYear()}-${String(today.getUTCMonth()+1).padStart(2,"0")}-${String(today.getUTCDate()).padStart(2,"0")}`;
   const [year, setYear]   = useState(today.getUTCFullYear());
@@ -57,20 +59,20 @@ export default function App() {
       recurrence_end: form.recurrence_end || null,
     }]);
     setSaving(false);
-    if (error) { alert("Error saving event: " + error.message); return; }
+    if (error) { toast.error("Error saving event: " + error.message); return; }
     await fetchEvents();
     setShowAdd(false); setSelectedDate(null);
-  }, [fetchEvents]);
+  }, [fetchEvents, toast]);
 
   // ── Delete event ──────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id) => {
     setDeleting(true);
     const { error } = await supabase.from("events").delete().eq("id", id);
     setDeleting(false);
-    if (error) { alert("Error deleting event: " + error.message); return; }
+    if (error) { toast.error("Error deleting event: " + error.message); return; }
     await fetchEvents();
     setSelectedEvent(null);
-  }, [fetchEvents]);
+  }, [fetchEvents, toast]);
 
   // ── Edit event ──────────────────────────────────────────────────────────
   const handleEditEvent = useCallback(async (form) => {
@@ -83,10 +85,10 @@ export default function App() {
       recurrence_end: form.recurrence_end || null,
     }).eq("id", editingEvent.id);
     setSaving(false);
-    if (error) { alert("Error updating event: " + error.message); return; }
+    if (error) { toast.error("Error updating event: " + error.message); return; }
     await fetchEvents();
     setEditingEvent(null);
-  }, [editingEvent, fetchEvents]);
+  }, [editingEvent, fetchEvents, toast]);
 
   // ── Calendar grid ─────────────────────────────────────────────────────────
   const monthStart = useMemo(() => new Date(Date.UTC(year, month, 1)), [year, month]);

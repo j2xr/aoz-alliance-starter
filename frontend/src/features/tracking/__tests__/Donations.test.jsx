@@ -19,6 +19,7 @@ vi.mock('../queries/atQueries', () => ({
   fetchParticipationRates: vi.fn(),
   fetchPlayerStats: vi.fn(),
   fetchAlliancePlayer: vi.fn(),
+  isAccessDenied: (error) => error?.code === 'PGRST116',
 }));
 
 import { DonationsPage } from '../pages/Donations';
@@ -90,6 +91,25 @@ describe('DonationsPage', () => {
     expect(screen.getByText(/1[,\s]*234[,\s]*567/)).toBeInTheDocument();
     // Medal for #1
     expect(screen.getByText('🥇')).toBeInTheDocument();
+    // Timezone badge, since donation weeks run Europe/Paris unlike the UTC calendar
+    expect(screen.getByText(/Europe\/Paris/)).toBeInTheDocument();
+  });
+
+  it('filters the leaderboard by player name search', async () => {
+    fetchDonationPeriods.mockResolvedValue(PERIODS);
+    fetchDonationLeaderboard.mockImplementation(periodId =>
+      Promise.resolve(periodId === 'p-newer' ? LEADERBOARD_NEWER : LEADERBOARD_OLDER)
+    );
+
+    renderWithRouter();
+    expect(await screen.findByText('Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Bravo')).toBeInTheDocument();
+
+    const search = screen.getByLabelText(/Search by player name/i);
+    fireEvent.change(search, { target: { value: 'alph' } });
+
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Bravo')).not.toBeInTheDocument();
   });
 
   it('switches the leaderboard when another period is selected', async () => {
@@ -116,5 +136,18 @@ describe('DonationsPage', () => {
     renderWithRouter();
     expect(await screen.findByText(/No weeks recorded/i)).toBeInTheDocument();
     expect(fetchDonationLeaderboard).not.toHaveBeenCalled();
+  });
+
+  it('renders an access-denied message for a PGRST116 error, not the raw message', async () => {
+    fetchDonationPeriods.mockRejectedValue({ code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' });
+    renderWithRouter();
+    expect(await screen.findByText(/Access denied/i)).toBeInTheDocument();
+    expect(screen.queryByText(/JSON object requested/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the raw error message for a non-RLS error', async () => {
+    fetchDonationPeriods.mockRejectedValue({ code: '500', message: 'connection refused' });
+    renderWithRouter();
+    expect(await screen.findByText(/connection refused/i)).toBeInTheDocument();
   });
 });
