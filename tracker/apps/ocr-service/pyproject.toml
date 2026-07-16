@@ -23,14 +23,20 @@ dependencies = [
 ]
 
 [dependency-groups]
+build = [
+    # Build tools for compiling tesserocr from source without build isolation
+    # (see [tool.uv] no-build-isolation-package below). Kept out of `dev` so the
+    # production Docker image can install them via `--group build` without
+    # pulling in pytest/ruff/mypy.
+    "cython>=3.0",
+    "setuptools>=68",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
-    # Build tools for compiling tesserocr from source (see [tool.uv] below).
-    "cython>=3.0",
-    "setuptools>=68",
+    {include-group = "build"},
 ]
 
 [tool.ruff]
