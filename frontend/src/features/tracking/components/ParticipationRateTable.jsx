@@ -31,14 +31,22 @@ export function ParticipationRateTable({ rows }) {
   const [sortAsc, setSortAsc] = useState(false);
 
   // Mémoïsé : chaque re-render (hover compris) re-triait toute l'alliance.
+  // Numeric vs. string comparison is driven by COLS.numeric, not value-sniffing
+  // (a numeric column with two null rows previously fell through to `Infinity -
+  // Infinity` = NaN, which Array.sort does not handle predictably). Nulls
+  // always sort last, independent of sort direction.
+  const numericSort = COLS.find(c => c.key === sortKey)?.numeric ?? false;
   const sorted = useMemo(() => [...rows].sort((a, b) => {
-    const av = a[sortKey] ?? (sortAsc ? Infinity : -Infinity);
-    const bv = b[sortKey] ?? (sortAsc ? Infinity : -Infinity);
-    if (typeof av === 'number' || !isNaN(Number(av))) return sortAsc ? av - bv : bv - av;
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (numericSort) return sortAsc ? av - bv : bv - av;
     return sortAsc
       ? String(av).localeCompare(String(bv))
       : String(bv).localeCompare(String(av));
-  }), [rows, sortKey, sortAsc]);
+  }), [rows, sortKey, sortAsc, numericSort]);
 
   const handleSort = key => {
     if (sortKey === key) setSortAsc(a => !a);

@@ -142,7 +142,14 @@ def _strip_alliance_tag(raw: str) -> tuple[str | None, str]:
     m = _ALLIANCE_TAG_RE.match(raw)
     if not m:
         return None, raw.strip()
-    return m.group(1), raw[m.end() :].strip()
+    remainder = raw[m.end() :].strip()
+    if not remainder:
+        # The tag pattern consumed the whole string (e.g. raw == "(SOD)" with
+        # no name left, or an over-eager [^(]{0,6} prefix ate it) — there's no
+        # name to attach the tag to. Treat as untagged rather than dropping
+        # the row's name entirely.
+        return None, raw.strip()
+    return m.group(1), remainder
 
 
 class ContributionRankingV1Parser(BaseParser):

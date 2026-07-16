@@ -5,6 +5,7 @@ rows are sent to the LLM, how corrections are merged back, and the consecutive-
 failure circuit breaker that stops calling a wedged Ollama mid-image.
 """
 
+import unicodedata
 from typing import Any
 from unittest.mock import patch
 
@@ -175,6 +176,27 @@ def test_player_stats_llm_failure_preserves_ocr() -> None:
 
     assert out.members[0].attack_pct == 400
     assert out.members[0].confidence == 0.33
+
+
+def test_player_stats_merges_when_llm_name_is_different_unicode_form() -> None:
+    """The OCR name is normalize_name'd (NFC) by the parser; the LLM may return
+    the same name in a different Unicode form (e.g. NFD). The merge key must
+    normalize both sides, or a real match is missed."""
+    nfc_name = "Mjölnir"
+    nfd_name = unicodedata.normalize("NFD", nfc_name)
+    assert nfd_name != nfc_name  # sanity: genuinely different code points
+
+    result = PlayerStatsParseResult(
+        members=[_pmember(nfc_name, 0.33, attack_pct=400, hp_pct=None, defense_pct=None)]
+    )
+    llm = [{"name": nfd_name, "attack_pct": 412, "hp_pct": 1183, "defense_pct": 900}]
+    with patch("app.llm_fallback.llm_fallback_player_stats", return_value=llm):
+        out = _apply_llm_fallback_player_stats(_IMG, result)
+
+    m = out.members[0]
+    assert m.attack_pct == 412
+    assert m.hp_pct == 1183
+    assert m.defense_pct == 900
 
 
 def test_player_stats_unmatched_name_kept_as_is() -> None:

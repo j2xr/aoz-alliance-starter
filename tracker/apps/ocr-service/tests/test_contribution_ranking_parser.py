@@ -73,6 +73,9 @@ def _ocr_data(text: str = "", conf: int = 90) -> dict[str, list[Any]]:
         # But a genuinely tag-less name (no paren) is untouched, even with a
         # short leading token.
         ("xX noTag", None, "xX noTag"),
+        # The tag pattern consumes the entire string, leaving no name: reject
+        # the split and fall back to the raw text untouched.
+        ("(SOD)", None, "(SOD)"),
     ],
 )
 def test_strip_alliance_tag(raw: str, expected_tag: str | None, expected_name: str) -> None:

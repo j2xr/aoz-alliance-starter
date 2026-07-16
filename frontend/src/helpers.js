@@ -83,25 +83,47 @@ export function expandRecurrences(event, rangeStart, rangeEnd) {
   return occurrences;
 }
 
+const RECURRENCE_FREQ = { daily: "DAILY", weekly: "WEEKLY", "4weekly": "WEEKLY", monthly: "MONTHLY" };
+
+/** Start/end instants of an event as real Date objects (end = start + 1h),
+ * so a 23:30 event correctly rolls over into the next UTC day instead of
+ * producing an invalid "24:30" hour. Shared by the Google Calendar link and
+ * the .ics export. */
+function eventUtcRange(dateStr, timeStr) {
+  const [y, m, day] = dateStr.split("-").map(Number);
+  const [hh, mm] = timeStr.split(":").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, day, hh, mm));
+  const end = new Date(start.getTime() + 3600e3);
+  return { start, end };
+}
+
+/** Format a Date as a compact UTC iCal/Google timestamp: YYYYMMDDTHHMMSSZ */
+function toCompactUTC(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+/** Build an RFC 5545 RRULE value (e.g. "RRULE:FREQ=WEEKLY;UNTIL=20260630T235959Z"),
+ * or "" if the event doesn't recur. Shared by the Google Calendar link and .ics export. */
+function buildRRule(event) {
+  if (!event.recurrence || event.recurrence === "none") return "";
+  let rrule = `RRULE:FREQ=${RECURRENCE_FREQ[event.recurrence]}`;
+  if (event.recurrence === "4weekly") rrule += ";INTERVAL=4";
+  if (event.recurrence_end) rrule += `;UNTIL=${event.recurrence_end.replace(/-/g, "")}T235959Z`;
+  return rrule;
+}
+
 /** Build Google Calendar URL (UTC times, with optional RRULE) */
 export function toGoogleCalLink(event, occurrenceDate) {
   const d = occurrenceDate || event.date;
-  const [hh, mm] = event.time.split(":");
-  const startUTC = d.replace(/-/g, "") + "T" + hh + mm + "00Z";
-  const endH = String(parseInt(hh) + 1).padStart(2, "0");
-  const endUTC = d.replace(/-/g, "") + "T" + endH + mm + "00Z";
+  const { start, end } = eventUtcRange(d, event.time);
 
   let url = `https://calendar.google.com/calendar/render?action=TEMPLATE`
     + `&text=${encodeURIComponent(event.title)}`
-    + `&dates=${startUTC}/${endUTC}`
+    + `&dates=${toCompactUTC(start)}/${toCompactUTC(end)}`
     + `&details=${encodeURIComponent(event.description || "")}`;
 
-  if (event.recurrence && event.recurrence !== "none") {
-    const rruleMap = { daily: "DAILY", weekly: "WEEKLY", "4weekly": "WEEKLY", monthly: "MONTHLY" };
-    let rrule = `RRULE:FREQ=${rruleMap[event.recurrence]}${event.recurrence === "4weekly" ? ";INTERVAL=4" : ""}`;
-    if (event.recurrence_end) rrule += `;UNTIL=${event.recurrence_end.replace(/-/g, "")}T235959Z`;
-    url += `&recur=${encodeURIComponent(rrule)}`;
-  }
+  const rrule = buildRRule(event);
+  if (rrule) url += `&recur=${encodeURIComponent(rrule)}`;
   return url;
 }
 
@@ -114,32 +136,35 @@ function icsDtstamp() {
   return new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
 }
 
+/** Escape a TEXT-valued iCal field per RFC 5545 §3.3.11: backslash first (so
+ * it doesn't re-escape the comma/semicolon escapes introduced after it), then
+ * semicolon, comma, and newline. */
+export function icsEscape(text) {
+  return String(text)
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
 /** Build one VEVENT block (lines array). `includeRrule` is only used by the
  * single-event download; month/week exports expand occurrences instead. */
 export function buildVEvent(event, occurrenceDate, dtstamp, { includeRrule = false } = {}) {
   const d = occurrenceDate || event.date;
-  const [hh, mm] = event.time.split(":");
-  const dtStart = d.replace(/-/g, "") + "T" + hh + mm + "00Z";
-  const endH = String(parseInt(hh) + 1).padStart(2, "0");
-  const dtEnd = d.replace(/-/g, "") + "T" + endH + mm + "00Z";
+  const { start, end } = eventUtcRange(d, event.time);
   const uid = `${event.id}-${d}@aoz-alliance`;
 
-  let rruleLine = "";
-  if (includeRrule && event.recurrence && event.recurrence !== "none") {
-    const freqMap = { daily: "DAILY", weekly: "WEEKLY", "4weekly": "WEEKLY", monthly: "MONTHLY" };
-    rruleLine = `RRULE:FREQ=${freqMap[event.recurrence]}${event.recurrence === "4weekly" ? ";INTERVAL=4" : ""}` +
-      (event.recurrence_end ? `;UNTIL=${event.recurrence_end.replace(/-/g, "")}T235959Z` : "");
-  }
+  const rruleLine = includeRrule ? buildRRule(event) : "";
 
   return [
     "BEGIN:VEVENT",
     `UID:${uid}`,
     `DTSTAMP:${dtstamp}`,
-    `DTSTART:${dtStart}`,
-    `DTEND:${dtEnd}`,
-    `SUMMARY:${event.title}`,
-    event.description ? `DESCRIPTION:${event.description.replace(/\n/g, "\\n")}` : "",
-    `ORGANIZER:CN=${event.author}`,
+    `DTSTART:${toCompactUTC(start)}`,
+    `DTEND:${toCompactUTC(end)}`,
+    `SUMMARY:${icsEscape(event.title)}`,
+    event.description ? `DESCRIPTION:${icsEscape(event.description)}` : "",
+    `ORGANIZER:CN=${icsEscape(event.author)}`,
     rruleLine,
     "END:VEVENT",
   ].filter(Boolean).join("\r\n");

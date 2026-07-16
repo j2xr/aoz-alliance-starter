@@ -594,7 +594,15 @@ class PolarInvasionV1Parser(BaseParser):
 
         # Use name field only: numeric fields (pts) have high Tesseract confidence
         # and would dilute a low-confidence short name above the fallback threshold.
-        confs = [int(c) for c in name_data["conf"] if str(c).lstrip("-").isdigit() and int(c) >= 0]
+        # Filter must match what actually built `name` (_words_from_data above):
+        # same min_conf=10, and only words with non-empty text -- a >=0 filter
+        # with no text check let empty-text boxes with a "confident" score dilute
+        # the average even though they contributed nothing to `name`.
+        confs = [
+            int(c)
+            for t, c in zip(name_data["text"], name_data["conf"], strict=False)
+            if t.strip() and str(c).lstrip("-").isdigit() and int(c) >= 10
+        ]
         confidence = sum(confs) / (len(confs) * 100) if confs else 0.0
 
         trace: RowTrace | None = None
