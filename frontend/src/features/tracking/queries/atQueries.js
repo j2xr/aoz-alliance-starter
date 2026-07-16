@@ -1,5 +1,15 @@
 import { supabase } from '@/lib/supabase';
 
+// PostgREST returns PGRST116 ("JSON object requested, multiple (or no) rows
+// returned") when a RLS policy silently filters out every row instead of a
+// clean 403 -- the same shape a genuine "no rows" case would produce, but
+// here it means the caller isn't a member of the alliance they queried.
+// Matching on error.code (not the message string) survives PostgREST/locale
+// wording changes.
+export function isAccessDenied(error) {
+  return error?.code === 'PGRST116';
+}
+
 export async function fetchUserAlliances() {
   const { data, error } = await supabase
     .from('at_alliance_members')

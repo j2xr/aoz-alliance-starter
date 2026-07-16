@@ -101,3 +101,12 @@ def test_swap_skips_none_points() -> None:
     member, swapped = maybe_swap_power_points(_member(power=500, points=None))
     assert swapped is False
     assert member.points is None
+
+
+def test_swap_skips_zero_power() -> None:
+    # power=0 means OCR failed to read power at all; it must not adopt a
+    # legitimate points value instead of being rejected by validate_member.
+    member, swapped = maybe_swap_power_points(_member(power=0, points=1_500_000))
+    assert swapped is False
+    assert member.power == 0
+    assert validate_member(member) is False

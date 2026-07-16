@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDonationLeaderboard, useDonationPeriods } from '../hooks/useDonations';
 import { DonationLeaderboardTable } from '../components/DonationLeaderboardTable';
+import { PlayerSearchInput } from '../components/PlayerSearchInput';
 import { formatWeekLabel, getCurrentParisIsoWeekMondayString } from '../utils/donationFormat';
+import { isAccessDenied } from '../queries/atQueries';
 
 export function DonationsPage() {
   const { allianceId } = useParams();
@@ -33,6 +35,13 @@ export function DonationsPage() {
     error: leaderboardError,
   } = useDonationLeaderboard(selectedPeriodId);
 
+  const [search, setSearch] = useState('');
+  const filteredLeaderboard = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return leaderboard;
+    return leaderboard.filter(r => (r.player_name ?? '').toLowerCase().includes(q));
+  }, [leaderboard, search]);
+
   if (!allianceId) {
     return (
       <div style={{ color: '#4a5568', textAlign: 'center', padding: '3rem',
@@ -56,7 +65,7 @@ export function DonationsPage() {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
         borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
-        {periodsError.message.includes('0 rows')
+        {isAccessDenied(periodsError)
           ? 'Access denied — you are not a member of this alliance.'
           : `Error: ${periodsError.message}`}
       </div>
@@ -79,6 +88,21 @@ export function DonationsPage() {
         <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>
           Alliance Honor ranking per week · <em>latest-wins</em> values (latest capture).
         </div>
+        <span
+          title="Weeks run Monday to Sunday, Europe/Paris time — unlike the calendar, which is UTC."
+          style={{
+            display: 'inline-block',
+            marginTop: '0.5rem',
+            fontSize: '0.68rem',
+            color: '#94a3b8',
+            background: '#38bdf80f',
+            border: '1px solid #38bdf833',
+            borderRadius: '999px',
+            padding: '0.2rem 0.7rem',
+          }}
+        >
+          🕒 Week Mon→Sun, Europe/Paris time
+        </span>
       </div>
 
       {/* Period selector */}
@@ -125,18 +149,21 @@ export function DonationsPage() {
           Error: {leaderboardError.message}
         </div>
       ) : (
-        <div style={{ background: '#0f111a', border: '1px solid #1e2132',
-          borderRadius: '12px', overflow: 'hidden' }}>
-          {leaderboardLoading ? (
-            <div style={{ textAlign: 'center', padding: '3rem',
-              fontFamily: "'Orbitron',sans-serif", fontSize: '0.78rem',
-              color: '#4a5568', letterSpacing: '0.1em' }}>
-              LOADING…
-            </div>
-          ) : (
-            <DonationLeaderboardTable rows={leaderboard} />
-          )}
-        </div>
+        <>
+          <PlayerSearchInput value={search} onChange={setSearch} />
+          <div style={{ background: '#0f111a', border: '1px solid #1e2132',
+            borderRadius: '12px', overflow: 'hidden' }}>
+            {leaderboardLoading ? (
+              <div style={{ textAlign: 'center', padding: '3rem',
+                fontFamily: "'Orbitron',sans-serif", fontSize: '0.78rem',
+                color: '#4a5568', letterSpacing: '0.1em' }}>
+                LOADING…
+              </div>
+            ) : (
+              <DonationLeaderboardTable rows={filteredLeaderboard} />
+            )}
+          </div>
+        </>
       )}
     </div>
   );

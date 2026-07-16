@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from app.dispatcher import UnknownEventError, refresh_title_patterns_from_supabase
 from app.extract import extract
 from app.preprocess import preprocess_image
-from app.tess_engine import current_backend, shutdown_pool
+from app.tess_engine import current_backend, health_check, shutdown_pool
 
 # Honour LOG_LEVEL from .env so app loggers (extract, parsers, llm_fallback)
 # actually emit their INFO/DEBUG output. Without this, Python defaults to
@@ -102,10 +102,19 @@ async def _set_job(job_id: str, status: str, payload: dict[str, Any] | None = No
             time.time(),
         ),
     )
+    if status in ("done", "error"):
+        # Opportunistic TTL sweep, piggybacked on terminal writes: bounds the
+        # table without deleting a row the instant it's first read, which lost
+        # results to a dropped bot connection or a poll retry (see _get_job).
+        cutoff = time.time() - _ONE_HOUR
+        await _db.execute(
+            "DELETE FROM jobs WHERE status IN ('done', 'error') AND created_at < ?",
+            (cutoff,),
+        )
     await _db.commit()
 
 
-async def _get_and_pop_job(job_id: str) -> dict[str, Any] | None:
+async def _get_job(job_id: str) -> dict[str, Any] | None:
     assert _db is not None
     async with _db.execute("SELECT status, payload FROM jobs WHERE id = ?", (job_id,)) as cursor:
         row = await cursor.fetchone()
@@ -114,9 +123,6 @@ async def _get_and_pop_job(job_id: str) -> dict[str, Any] | None:
     status: str = row[0]
     payload_json: str | None = row[1]
     payload: dict[str, Any] = json.loads(payload_json) if payload_json is not None else {}
-    if status in ("done", "error"):
-        await _db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-        await _db.commit()
     return {"status": status, **payload}
 
 
@@ -130,8 +136,26 @@ app = FastAPI(title="OCR Service", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> JSONResponse:
+    tesseract_ok = await asyncio.to_thread(health_check)
+
+    db_ok = False
+    if _db is not None:
+        try:
+            await _db.execute("SELECT 1")
+            db_ok = True
+        except Exception:
+            logger.exception("Job store health check failed")
+
+    healthy = tesseract_ok and db_ok
+    return JSONResponse(
+        content={
+            "status": "ok" if healthy else "degraded",
+            "tesseract": tesseract_ok,
+            "db": db_ok,
+        },
+        status_code=200 if healthy else 503,
+    )
 
 
 def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: bool) -> None:
@@ -191,7 +215,7 @@ async def extract_screenshot(
 
 @app.get("/jobs/{job_id}")
 async def get_job(job_id: str) -> JSONResponse:
-    job = await _get_and_pop_job(job_id)
+    job = await _get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     if job["status"] == "done":

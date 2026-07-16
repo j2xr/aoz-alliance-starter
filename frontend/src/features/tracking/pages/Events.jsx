@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAllianceEvents } from '../hooks/useAllianceEvents';
 import { EventCard } from '../components/EventCard';
+import { isAccessDenied } from '../queries/atQueries';
 
 const PAGE_SIZES = [20, 50, 100];
 
@@ -33,7 +34,7 @@ export function EventsPage() {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
         borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
-        {error.message.includes('0 rows')
+        {isAccessDenied(error)
           ? 'Access denied — you are not a member of this alliance.'
           : `Error: ${error.message}`}
       </div>
