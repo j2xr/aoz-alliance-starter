@@ -37,9 +37,11 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install runtime deps before copying source for better layer caching
+# Install runtime deps before copying source for better layer caching.
+# --group build supplies setuptools/cython, required in-environment because
+# tesserocr is compiled from source without build isolation (see pyproject.toml).
 COPY pyproject.toml ./
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --no-dev --group build --no-install-project
 
 COPY app/ app/
 
@@ -48,8 +50,13 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app"
 
 RUN useradd -r -u 1001 -s /sbin/nologin ocr && chown -R ocr /app
-USER ocr
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8000
 
+# Stays root so the entrypoint can fix /data ownership on bind-mounted
+# volumes, then setpriv drops to `ocr` to actually run uvicorn.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
