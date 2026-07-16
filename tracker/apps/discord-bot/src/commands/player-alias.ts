@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
+  PermissionFlagsBits,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { supabase } from '../lib/supabase.js';
@@ -10,6 +11,7 @@ import logger from '../logger.js';
 export const data = new SlashCommandBuilder()
   .setName('player-alias')
   .setDescription("Gestion des corrections de noms OCR → joueur canonique")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName('add')

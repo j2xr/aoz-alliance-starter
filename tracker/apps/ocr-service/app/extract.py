@@ -219,8 +219,12 @@ def _apply_llm_fallback_player_stats(
         logger.warning("LLM player_stats fallback returned no members")
         return result
 
-    # Index LLM results by name for O(1) lookup
-    llm_by_name: dict[str, Any] = {m["name"]: m for m in llm_members if m.get("name")}
+    # Index LLM results by name for O(1) lookup. Keyed by normalize_name so it
+    # matches member.name (normalized by the OCR parser) even when the LLM
+    # returns the same name in a different Unicode form (NFD, fullwidth, ...).
+    llm_by_name: dict[str, Any] = {
+        normalize_name(m["name"]): m for m in llm_members if m.get("name")
+    }
 
     updated: list[PlayerStatsMember] = []
     for member in result.members:

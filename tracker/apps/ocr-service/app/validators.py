@@ -18,12 +18,18 @@ def maybe_swap_power_points(member: MemberResult) -> tuple[MemberResult, bool]:
 
     Version ingestion de l'heuristique historique de la migration 0009 (qui ne
     réparait qu'après coup, à chaque déploiement) : le swap n'est appliqué que
-    si la ligne corrigée est plausible — power < 10 000 ET points ≥ MIN_POWER
+    si la ligne corrigée est plausible — 0 < power < 10 000 ET points ≥ MIN_POWER
     (plus strict que le seuil 100k de 0009 : après swap, power doit de toute
-    façon satisfaire validate_member). Sans ce swap, validate_member rejetait
-    silencieusement la ligne et le membre était perdu.
+    façon satisfaire validate_member). Le power=0 exclu volontairement : un OCR
+    qui n'a pas lu de power du tout ne doit pas hériter d'un points légitime.
+    Sans ce swap, validate_member rejetait silencieusement la ligne et le
+    membre était perdu.
     """
-    if member.power < SWAP_MAX_POWER and member.points is not None and member.points >= MIN_POWER:
+    if (
+        0 < member.power < SWAP_MAX_POWER
+        and member.points is not None
+        and member.points >= MIN_POWER
+    ):
         logger.warning(
             "Swapping inverted power/points for %r (power=%d, points=%d)",
             member.name,

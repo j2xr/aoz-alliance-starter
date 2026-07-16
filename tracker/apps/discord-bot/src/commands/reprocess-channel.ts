@@ -1,40 +1,17 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
-import type { SendableChannels } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import { config } from '../config.js';
 import { requireAlliance } from '../lib/alliance.js';
 import { mapWithConcurrency } from '../lib/concurrency.js';
+import { safeProgressReply } from '../lib/progress-reply.js';
 import {
   fetchChannelImageMessages,
   reprocessMessageScreenshots,
 } from '../lib/reprocess.js';
 import logger from '../logger.js';
-
-// Le retraitement d'un canal complet peut durer bien plus que les ~15 minutes
-// de validité du token d'interaction. Passé ce délai, editReply échoue
-// (Unknown Webhook) : on bascule alors sur un message ordinaire dans le canal
-// plutôt que de laisser l'exception avorter le retraitement en cours.
-async function safeProgressReply(
-  interaction: ChatInputCommandInteraction,
-  channel: SendableChannels,
-  content: string,
-): Promise<void> {
-  try {
-    await interaction.editReply({ content });
-  } catch (err) {
-    logger.warn(
-      { channelId: interaction.channelId, err: String(err) },
-      'editReply failed (interaction token expired?), falling back to channel.send',
-    );
-    try {
-      await channel.send(content);
-    } catch (sendErr) {
-      logger.error(
-        { channelId: interaction.channelId, err: String(sendErr) },
-        'channel.send fallback failed',
-      );
-    }
-  }
-}
 
 function summarizeLines(lines: string[], maxLines = 20): string[] {
   if (lines.length <= maxLines) {
@@ -50,6 +27,7 @@ function summarizeLines(lines: string[], maxLines = 20): string[] {
 export const data = new SlashCommandBuilder()
   .setName('reprocess-channel')
   .setDescription('Retraiter toutes les captures du canal courant')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')

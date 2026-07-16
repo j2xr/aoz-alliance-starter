@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { normaliseTime, EVENT_TYPES, RECURRENCE_OPTIONS, parseCountdown, input, label } from "./helpers";
+import { useToast } from "./components/Toast.jsx";
 
 function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
+  const toast = useToast();
   const [form, setForm] = useState(editingEvent ? {
     title: editingEvent.title, date: editingEvent.date,
     time: normaliseTime(editingEvent.time), type: editingEvent.type || "event",
@@ -26,7 +28,7 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
 
   const handleSubmit = () => {
     if (!form.title || !form.date || !form.time || !form.author) {
-      alert("Please fill in all required fields."); return;
+      toast.error("Please fill in all required fields."); return;
     }
     onSave({ ...form, recurrence_end: form.recurrence_end || null });
   };

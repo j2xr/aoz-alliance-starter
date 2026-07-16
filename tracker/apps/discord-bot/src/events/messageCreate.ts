@@ -1,9 +1,10 @@
-import type { Message, EmbedBuilder, TextChannel } from 'discord.js';
+import type { Attachment, Message, EmbedBuilder, TextChannel } from 'discord.js';
 import { isOcrError, isPlayerStatsResult } from '@alliance-tracker/shared-types';
 import { config } from '../config.js';
 import logger from '../logger.js';
 import { ensureKind, processImageAttachment } from '../lib/ingestion.js';
 import { resolveAlliance } from '../lib/alliance.js';
+import type { AllianceRow } from '../lib/alliance.js';
 import {
   recordUploadError,
   upsertDonationResult,
@@ -12,6 +13,7 @@ import {
 } from '../lib/upsert.js';
 import { buildDonationEmbed, buildEventEmbed, buildPlayerStatsEmbed } from '../lib/embed.js';
 import { isImageAttachment } from '../lib/attachment.js';
+import { safeProgressEdit } from '../lib/progress-reply.js';
 
 export async function handleMessageCreate(message: Message): Promise<void> {
   if (message.author.bot) return;
@@ -30,7 +32,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     `⏳ Processing ${images.size} screenshot${plural}. This can take several minutes — **please do not upload again**.`,
   );
 
-  let alliance;
+  let alliance: AllianceRow | null;
   try {
     alliance = await resolveAlliance(message.channelId);
   } catch (err) {
@@ -44,12 +46,18 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     await ackReply.edit('⚠️ Ce channel n\'est pas associé à une alliance. Configurez `discord_channel_id` dans `at_alliances`.');
     return;
   }
+  // Rebind as a const: `alliance` is narrowed to non-null here, but a `let`
+  // doesn't keep that narrowing when captured by the nested function below.
+  const resolvedAlliance = alliance;
 
   const lines: string[] = [];
   const embeds: EmbedBuilder[] = [];
   const allRejectedRawTexts: string[] = [];
 
-  for (const [, att] of images) {
+  // Extracted so progress can be reported after every attachment regardless
+  // of which branch below returns early (a `continue` in a for..of loop
+  // would otherwise skip that reporting call for every non-final branch).
+  async function processOneAttachment(att: Attachment): Promise<void> {
     let result;
     try {
       result = await processImageAttachment(message.id, att.url, att.name);
@@ -59,12 +67,12 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         'Attachment processing failed',
       );
       lines.push(`❌ **${att.name}** — erreur inattendue : ${String(err)}`);
-      continue;
+      return;
     }
 
     if (!result.ok) {
       lines.push(`❌ **${result.filename}** — ${result.error}`);
-      continue;
+      return;
     }
 
     const { filename, fileHash, filePath, ocr } = result;
@@ -76,7 +84,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         await recordUploadError({
           messageId: message.id,
           userId: message.author.id,
-          allianceId: alliance.id,
+          allianceId: resolvedAlliance.id,
           fileHash,
           filePath,
           status: uploadStatus,
@@ -92,7 +100,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
       } else {
         lines.push(`⚠️ **${filename}** — OCR : ${ocr.error}${ocr.detail ? ` (${ocr.detail})` : ''}`);
       }
-      continue;
+      return;
     }
 
     const typedOcr = ensureKind(ocr);
@@ -103,7 +111,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         statsResult = await upsertPlayerStatsResult({
           messageId: message.id,
           userId: message.author.id,
-          allianceId: alliance.id,
+          allianceId: resolvedAlliance.id,
           fileHash,
           filePath,
           messageCreatedAt: message.createdAt,
@@ -115,17 +123,17 @@ export async function handleMessageCreate(message: Message): Promise<void> {
           'Player stats upsert failed',
         );
         lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-        continue;
+        return;
       }
 
       if (statsResult.status === 'duplicate') {
         lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-        continue;
+        return;
       }
 
       if (statsResult.status === 'no_members') {
         lines.push(`⚠️ **${filename}** — aucun joueur extrait de la capture stats.`);
-        continue;
+        return;
       }
 
       logger.info(
@@ -136,7 +144,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
       if (statsResult.rejectedRawTexts.length > 0) {
         allRejectedRawTexts.push(...statsResult.rejectedRawTexts);
       }
-      continue;
+      return;
     }
 
     if (typedOcr.kind === 'donation') {
@@ -145,7 +153,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         donationResult = await upsertDonationResult({
           messageId: message.id,
           userId: message.author.id,
-          allianceId: alliance.id,
+          allianceId: resolvedAlliance.id,
           fileHash,
           filePath,
           messageCreatedAt: message.createdAt,
@@ -157,19 +165,19 @@ export async function handleMessageCreate(message: Message): Promise<void> {
           'Donation upsert failed',
         );
         lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-        continue;
+        return;
       }
 
       if (donationResult.status === 'duplicate') {
         lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-        continue;
+        return;
       }
 
       if (donationResult.status === 'unsupported_period_type') {
         lines.push(
           `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
         );
-        continue;
+        return;
       }
 
       logger.info(
@@ -177,7 +185,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         'Donation upsert successful',
       );
       embeds.push(buildDonationEmbed(filename, typedOcr, donationResult));
-      continue;
+      return;
     }
 
     // kind === 'event'
@@ -186,7 +194,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
       upsertResult = await upsertEventResult({
         messageId: message.id,
         userId: message.author.id,
-        allianceId: alliance.id,
+        allianceId: resolvedAlliance.id,
         fileHash,
         filePath,
         ocr: typedOcr,
@@ -197,26 +205,26 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         'Upsert failed',
       );
       lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-      continue;
+      return;
     }
 
     if (upsertResult.status === 'duplicate') {
       lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-      continue;
+      return;
     }
 
     if (upsertResult.status === 'unknown_event') {
       lines.push(
         `⚠️ **${filename}** — type d'événement inconnu : \`${upsertResult.eventType}\`. Utilisez \`/upload event:<type>\`.`,
       );
-      continue;
+      return;
     }
 
     if (upsertResult.status === 'missing_datetime') {
       lines.push(
         `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
       );
-      continue;
+      return;
     }
 
     logger.info(
@@ -224,6 +232,26 @@ export async function handleMessageCreate(message: Message): Promise<void> {
       'Upsert successful',
     );
     embeds.push(buildEventEmbed(filename, typedOcr, upsertResult));
+  }
+
+  const channel = message.channel as TextChannel;
+  const total = images.size;
+  let processed = 0;
+  for (const [, att] of images) {
+    await processOneAttachment(att);
+    processed += 1;
+    // Skip the report after the last image: the summary edit right below
+    // immediately supersedes it, so it'd only add a redundant edit call.
+    if (processed < total) {
+      const successCount = embeds.length;
+      const warnCount = lines.filter((l) => l.startsWith('⚠️') || l.startsWith('🔁')).length;
+      const errCount = lines.filter((l) => l.startsWith('❌')).length;
+      await safeProgressEdit(
+        ackReply,
+        channel,
+        `🔄 Image ${processed}/${total}... (${successCount} ✅, ${warnCount} ⚠️, ${errCount} ❌)`,
+      );
+    }
   }
 
   if (lines.length === 0 && embeds.length === 0) {
@@ -242,7 +270,6 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   if (allRejectedRawTexts.length > 0) {
     const header = `📋 **Raw texts rejetés (${allRejectedRawTexts.length} joueur(s) inconnu(s)) :**`;
     const chunks = _buildRejectedRawChunks(header, allRejectedRawTexts);
-    const channel = message.channel as TextChannel;
     for (const chunk of chunks) {
       await channel.send(chunk);
     }
