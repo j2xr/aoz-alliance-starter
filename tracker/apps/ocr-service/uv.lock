@@ -438,6 +438,10 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+build = [
+    { name = "cython" },
+    { name = "setuptools" },
+]
 dev = [
     { name = "cython" },
     { name = "mypy" },
@@ -463,6 +467,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+build = [
+    { name = "cython", specifier = ">=3.0" },
+    { name = "setuptools", specifier = ">=68" },
+]
 dev = [
     { name = "cython", specifier = ">=3.0" },
     { name = "mypy", specifier = ">=1.13.0" },
