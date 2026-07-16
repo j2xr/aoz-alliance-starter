@@ -1,0 +1,21 @@
+{
+  "event_type": "elite_wars",
+  "event_datetime": "2026-05-17T13:00:00+02:00",
+  "alliance_rank": 125,
+  "total_battlers": 13,
+  "total_points": 16865,
+  "source_file": "acd35b52-3329.jpg",
+  "members": [
+    {"name": "Copenhagen",      "rank": "R1", "power": 12773557, "points": 635691},
+    {"name": "Andy_G29",        "rank": "R4", "power": 13799620, "points": 564361},
+    {"name": "Mjölnir",         "rank": "R4", "power": 29059068, "points": 0},
+    {"name": "Momoa",           "rank": "R4", "power": 29073224, "points": 0},
+    {"name": "rinshan5551",     "rank": "R3", "power": 15034725, "points": 0},
+    {"name": "TeslaRules",      "rank": "R3", "power": 17190436, "points": 0},
+    {"name": "Libelula.001",    "rank": "R2", "power": 11031623, "points": 0},
+    {"name": "MHGYM7000",       "rank": "R2", "power": 15070070, "points": 0},
+    {"name": "Pluto",           "rank": "R1", "power": 11277168, "points": 0},
+    {"name": "Veck",            "rank": "R1", "power": 24419231, "points": 0},
+    {"name": "Lucid_Air_Rules", "rank": "R5", "power": 12021242, "points": null}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "event_type": "battle_frenzy",
+  "event_datetime": "2026-05-03T02:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 88,
+  "total_points": 33040670,
+  "source_file": "1eb7c818-3333.jpg",
+  "members": [
+    {"name": "CarlosEstrella", "rank": "R3", "power": 18203275, "points": 17389413},
+    {"name": "Homelander",     "rank": "R4", "power": 28700283, "points": 3701404},
+    {"name": "BenOVerbich",    "rank": "R1", "power": 22478456, "points": 3507981},
+    {"name": "2jr",            "rank": "R1", "power": 12125745, "points": 2325377},
+    {"name": "3jr",            "rank": "R3", "power": 13325802, "points": 2117175},
+    {"name": "MHGYM7000",      "rank": "R2", "power": 13766371, "points": 2075757},
+    {"name": "ZRotz",          "rank": "R2", "power": 17367242, "points": 1595280},
+    {"name": "Billlintonmao",  "rank": "R1", "power": 18165459, "points": 284221},
+    {"name": "Libelula.001",   "rank": "R2", "power": 10353259, "points": 18240},
+    {"name": "Veck",           "rank": "R1", "power": 23691257, "points": 15820}
+  ]
+}

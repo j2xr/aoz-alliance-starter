@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-07T15:00:00+02:00",
+  "alliance_rank": 1,
+  "total_battlers": 43,
+  "total_points": 21955,
+  "source_file": "1000006341.jpg",
+  "members": [
+    {
+      "name": "Akrid",
+      "rank": "R2",
+      "power": 18112489,
+      "points": 30496
+    },
+    {
+      "name": "BenOVerbich",
+      "rank": "R3",
+      "power": 21136644,
+      "points": 29135
+    },
+    {
+      "name": "JayJayOv",
+      "rank": "R1",
+      "power": 18265686,
+      "points": 28770
+    },
+    {
+      "name": "Maks",
+      "rank": "R1",
+      "power": 22046077,
+      "points": 28086
+    },
+    {
+      "name": "nuna",
+      "rank": "R1",
+      "power": 14232338,
+      "points": 27933
+    },
+    {
+      "name": "pennywise",
+      "rank": "R1",
+      "power": 15874678,
+      "points": 27760
+    },
+    {
+      "name": "CHIANTI",
+      "rank": "R3",
+      "power": 25379942,
+      "points": 27289
+    },
+    {
+      "name": "Метью",
+      "rank": "R1",
+      "power": 13664290,
+      "points": 25628
+    },
+    {
+      "name": "jc0n",
+      "rank": "R1",
+      "power": 27291151,
+      "points": 25586
+    },
+    {
+      "name": "VTN",
+      "rank": "R1",
+      "power": 20132176,
+      "points": 25087
+    },
+    {
+      "name": "Герман",
+      "rank": "R1",
+      "power": 13667193,
+      "points": 24303
+    }
+  ]
+}

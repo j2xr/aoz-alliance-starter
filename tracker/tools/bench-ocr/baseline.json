@@ -1,0 +1,152 @@
+{
+  "battle_frenzy": {
+    "name": {
+      "correct": 20,
+      "total": 20
+    },
+    "name_exact": {
+      "correct": 18,
+      "total": 20
+    },
+    "points": {
+      "correct": 20,
+      "total": 20
+    },
+    "power": {
+      "correct": 20,
+      "total": 20
+    },
+    "rank": {
+      "correct": 20,
+      "total": 20
+    }
+  },
+  "contribution_ranking": {
+    "alliance_honor": {
+      "correct": 104,
+      "total": 108
+    },
+    "name": {
+      "correct": 103,
+      "total": 108
+    },
+    "name_exact": {
+      "correct": 90,
+      "total": 108
+    },
+    "rank": {
+      "correct": 107,
+      "total": 108
+    }
+  },
+  "elite_wars": {
+    "name": {
+      "correct": 21,
+      "total": 21
+    },
+    "name_exact": {
+      "correct": 17,
+      "total": 21
+    },
+    "points": {
+      "correct": 21,
+      "total": 21
+    },
+    "power": {
+      "correct": 21,
+      "total": 21
+    },
+    "rank": {
+      "correct": 21,
+      "total": 21
+    }
+  },
+  "ironblood_battlefield": {
+    "name": {
+      "correct": 22,
+      "total": 22
+    },
+    "name_exact": {
+      "correct": 20,
+      "total": 22
+    },
+    "points": {
+      "correct": 22,
+      "total": 22
+    },
+    "power": {
+      "correct": 22,
+      "total": 22
+    },
+    "rank": {
+      "correct": 22,
+      "total": 22
+    }
+  },
+  "polar_invasion": {
+    "name": {
+      "correct": 87,
+      "total": 88
+    },
+    "name_exact": {
+      "correct": 82,
+      "total": 88
+    },
+    "points": {
+      "correct": 88,
+      "total": 88
+    },
+    "power": {
+      "correct": 88,
+      "total": 88
+    },
+    "rank": {
+      "correct": 88,
+      "total": 88
+    }
+  },
+  "void_war": {
+    "name": {
+      "correct": 20,
+      "total": 20
+    },
+    "name_exact": {
+      "correct": 16,
+      "total": 20
+    },
+    "points": {
+      "correct": 20,
+      "total": 20
+    },
+    "power": {
+      "correct": 20,
+      "total": 20
+    },
+    "rank": {
+      "correct": 20,
+      "total": 20
+    }
+  },
+  "wasteland_showdown": {
+    "name": {
+      "correct": 10,
+      "total": 10
+    },
+    "name_exact": {
+      "correct": 8,
+      "total": 10
+    },
+    "points": {
+      "correct": 10,
+      "total": 10
+    },
+    "power": {
+      "correct": 10,
+      "total": 10
+    },
+    "rank": {
+      "correct": 10,
+      "total": 10
+    }
+  }
+}

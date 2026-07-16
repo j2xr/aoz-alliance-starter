@@ -1,0 +1,14 @@
+{
+  "_comment": "Vecteurs partagés : lundi de la semaine ISO en Europe/Paris (YYYY-MM-DD) pour un instant donné. Les DEUX implémentations doivent rester d'accord — le bot écrit period_start (tracker/apps/discord-bot/src/lib/period.ts::isoWeekStartParis) et le frontend dérive la clé de la période courante (frontend/src/features/tracking/utils/donationFormat.js::getCurrentParisIsoWeekMondayString). Consommés par period.test.ts et donationFormat.test.js.",
+  "vectors": [
+    { "label": "jeudi après-midi CEST", "input": "2026-04-30T16:00:00+02:00", "expected": "2026-04-27" },
+    { "label": "le lundi lui-même", "input": "2026-04-27T08:30:00+02:00", "expected": "2026-04-27" },
+    { "label": "dimanche soir", "input": "2026-05-03T22:30:00+02:00", "expected": "2026-04-27" },
+    { "label": "UTC la veille, Paris déjà lundi", "input": "2026-04-26T23:30:00Z", "expected": "2026-04-27" },
+    { "label": "passage de minuit Paris un lundi", "input": "2026-04-26T22:30:00Z", "expected": "2026-04-27" },
+    { "label": "transition DST de printemps", "input": "2026-03-29T03:30:00+02:00", "expected": "2026-03-23" },
+    { "label": "hiver CET", "input": "2026-01-15T12:00:00+01:00", "expected": "2026-01-12" },
+    { "label": "frontière d'année", "input": "2026-01-02T12:00:00+01:00", "expected": "2025-12-29" },
+    { "label": "transition DST d'automne", "input": "2026-10-25T03:30:00+01:00", "expected": "2026-10-19" }
+  ]
+}

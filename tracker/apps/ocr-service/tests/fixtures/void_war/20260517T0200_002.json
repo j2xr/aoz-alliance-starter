@@ -1,0 +1,20 @@
+{
+  "event_type": "void_war",
+  "event_datetime": "2026-05-17T02:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 78,
+  "total_points": 42156563,
+  "source_file": "fc679394-3339.jpg",
+  "members": [
+    {"name": "Аня",             "rank": "R1", "power": 9259799,  "points": 236230},
+    {"name": "Mjölnir",         "rank": "R4", "power": 28927070, "points": 17557},
+    {"name": "jeinsolaya",      "rank": "R1", "power": 9192129,  "points": 9480},
+    {"name": "Andy_G29",        "rank": "R4", "power": 13715949, "points": 8625},
+    {"name": "BabaYaga",        "rank": "R4", "power": 24920623, "points": 781},
+    {"name": "Lucid_Air_Rules", "rank": "R5", "power": 12047565, "points": 528},
+    {"name": "nothing",         "rank": "R1", "power": 14882627, "points": 54},
+    {"name": "rinshan5551",     "rank": "R3", "power": 15053034, "points": 41},
+    {"name": "tofibetto",       "rank": "R1", "power": 15079259, "points": 14},
+    {"name": "BigSteelCurtain", "rank": "R4", "power": 19044856, "points": null}
+  ]
+}

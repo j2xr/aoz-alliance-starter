@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-14T23:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 26,
+  "total_points": 11630,
+  "source_file": "1000006343.jpg",
+  "members": [
+    {
+      "name": "Bumbelbee",
+      "rank": "R1",
+      "power": 17254144,
+      "points": 10868
+    },
+    {
+      "name": "Stoka",
+      "rank": "R1",
+      "power": 16427949,
+      "points": 10816
+    },
+    {
+      "name": "SNIPER",
+      "rank": "R1",
+      "power": 19975359,
+      "points": 10674
+    },
+    {
+      "name": "KANHA_",
+      "rank": "R2",
+      "power": 13563455,
+      "points": 9263
+    },
+    {
+      "name": "Толик",
+      "rank": "R1",
+      "power": 11215167,
+      "points": 8214
+    },
+    {
+      "name": "BakersBakedd27",
+      "rank": "R1",
+      "power": 14090873,
+      "points": 7319
+    },
+    {
+      "name": "Bigdog",
+      "rank": "R1",
+      "power": 13155440,
+      "points": 3157
+    },
+    {
+      "name": "kor,spark",
+      "rank": "R1",
+      "power": 23856864,
+      "points": 2953
+    },
+    {
+      "name": "BORZ",
+      "rank": "R3",
+      "power": 22664568,
+      "points": 2319
+    },
+    {
+      "name": "Ichigo_19",
+      "rank": "R1",
+      "power": 22747830,
+      "points": 1274
+    },
+    {
+      "name": "TomeyNYC",
+      "rank": "R1",
+      "power": 12362806,
+      "points": 0
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+-- 0008_at_seed_alliances.sql
+-- Seed your alliances here. One Discord channel = one alliance: the bot maps an
+-- incoming screenshot to an alliance via at_alliances.discord_channel_id
+-- (see tracker/apps/discord-bot/src/lib/alliance.ts).
+--
+-- This migration ships with NO real data so the template stays generic. Edit the
+-- example below with your own alliance name(s) and Discord channel ID(s), then
+-- re-run `supabase db push`. You can also insert rows later straight from the
+-- Supabase SQL editor — this is plain data, not schema.
+--
+-- The channel ID is the numeric snowflake from Discord with Developer Mode
+-- enabled (right-click the channel → "Copy Channel ID"). The same ID must be
+-- listed in the bot's DISCORD_ALLOWED_CHANNEL_IDS env var.
+--
+-- Example (uncomment and edit):
+--
+-- insert into at_alliances (name, discord_channel_id) values
+--   ('My Alliance', '000000000000000000')
+-- on conflict (name) do update
+--   set discord_channel_id = excluded.discord_channel_id;

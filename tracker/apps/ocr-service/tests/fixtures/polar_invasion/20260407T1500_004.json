@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-07T15:00:00+02:00",
+  "alliance_rank": 1,
+  "total_battlers": 43,
+  "total_points": 21955,
+  "source_file": "1000006339.jpg",
+  "members": [
+    {
+      "name": "Gattopardo",
+      "rank": "R1",
+      "power": 27657753,
+      "points": 9357
+    },
+    {
+      "name": "Yuyuyu325",
+      "rank": "R2",
+      "power": 15103026,
+      "points": 9065
+    },
+    {
+      "name": "おーしあ",
+      "rank": "R2",
+      "power": 25942393,
+      "points": 8801
+    },
+    {
+      "name": "Duvan395",
+      "rank": "R4",
+      "power": 25064275,
+      "points": 7677
+    },
+    {
+      "name": "BakersBakedd27",
+      "rank": "R1",
+      "power": 13888203,
+      "points": 7627
+    },
+    {
+      "name": "KlausRider",
+      "rank": "R1",
+      "power": 19432561,
+      "points": 7546
+    },
+    {
+      "name": "Garbageman",
+      "rank": "R2",
+      "power": 10644329,
+      "points": 7304
+    },
+    {
+      "name": "KOR.Park",
+      "rank": "R1",
+      "power": 19695471,
+      "points": 5571
+    },
+    {
+      "name": "Медвежонок",
+      "rank": "R3",
+      "power": 27848366,
+      "points": 4125
+    },
+    {
+      "name": "DarKKnight",
+      "rank": "R4",
+      "power": 25880671,
+      "points": 1514
+    },
+    {
+      "name": "SNIPER",
+      "rank": "R1",
+      "power": 19550372,
+      "points": 0
+    }
+  ]
+}

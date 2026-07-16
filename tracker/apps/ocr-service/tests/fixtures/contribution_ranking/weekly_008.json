@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "KOR.morningstar",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 979
+    },
+    {
+      "name": "ÐÃŘĶ§ĮĐĒ•築",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 930
+    },
+    {
+      "name": "FEARLESS",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 930
+    },
+    {
+      "name": "Vince",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 840
+    },
+    {
+      "name": "kotarou",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 720
+    },
+    {
+      "name": "Łolå",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 715
+    },
+    {
+      "name": "ahmed",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 685
+    },
+    {
+      "name": "Blake",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 685
+    },
+    {
+      "name": "jeinsolaya",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 630
+    },
+    {
+      "name": "jasmin",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 570
+    },
+    {
+      "name": "LATAM.ELIMEN",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 533
+    },
+    {
+      "name": "ANSG",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 510
+    }
+  ]
+}

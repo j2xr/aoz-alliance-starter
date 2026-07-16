@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Аня",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 8291
+    },
+    {
+      "name": "焼鳥_Yakitori",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 7430
+    },
+    {
+      "name": "MHGYM7000",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 7260
+    },
+    {
+      "name": "rinshan5551",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 5900
+    },
+    {
+      "name": "ZRotz",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 5550
+    },
+    {
+      "name": "k.ch",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 5285
+    },
+    {
+      "name": "Momoa",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 5178
+    },
+    {
+      "name": "KOR.Chawoo",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 5160
+    },
+    {
+      "name": "Mjölnir",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 4743
+    },
+    {
+      "name": "2jr",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 4735
+    },
+    {
+      "name": "nothing",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 4590
+    },
+    {
+      "name": "CumStang",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 4545
+    }
+  ]
+}

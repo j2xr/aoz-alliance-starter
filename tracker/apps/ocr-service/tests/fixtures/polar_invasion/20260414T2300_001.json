@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-14T23:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 26,
+  "total_points": 11630,
+  "source_file": "1000006345.jpg",
+  "members": [
+    {
+      "name": "Bulleit",
+      "rank": "R2",
+      "power": 21671521,
+      "points": 65920
+    },
+    {
+      "name": "Edu",
+      "rank": "R4",
+      "power": 41191106,
+      "points": 48917
+    },
+    {
+      "name": "scepter",
+      "rank": "R3",
+      "power": 26771549,
+      "points": 29168
+    },
+    {
+      "name": "KlausRider",
+      "rank": "R1",
+      "power": 19515555,
+      "points": 28436
+    },
+    {
+      "name": "Yojimbo",
+      "rank": "R5",
+      "power": 23324091,
+      "points": 27935
+    },
+    {
+      "name": "Maks",
+      "rank": "R1",
+      "power": 22261270,
+      "points": 21443
+    },
+    {
+      "name": "FATCAT29",
+      "rank": "R1",
+      "power": 23197016,
+      "points": 17682
+    },
+    {
+      "name": "beandip",
+      "rank": "R3",
+      "power": 29269133,
+      "points": 16739
+    },
+    {
+      "name": "ZEROHERO",
+      "rank": "R3",
+      "power": 26909654,
+      "points": 16284
+    },
+    {
+      "name": "JMAC",
+      "rank": "R1",
+      "power": 18144616,
+      "points": 16001
+    },
+    {
+      "name": "LATAM.REYCOLIMAN",
+      "rank": "R1",
+      "power": 15935383,
+      "points": 15855
+    }
+  ]
+}

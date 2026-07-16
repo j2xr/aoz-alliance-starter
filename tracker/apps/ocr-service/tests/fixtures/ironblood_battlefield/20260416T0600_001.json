@@ -1,0 +1,21 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-16T06:00:00+02:00",
+  "alliance_rank": 12,
+  "total_battlers": null,
+  "total_points": null,
+  "source_file": "1000007235.jpg",
+  "members": [
+    {"name": "Bulleit",      "rank": "R2", "power": 21824159, "points": 125153747},
+    {"name": "Akrid",        "rank": "R2", "power": 18546422, "points": 119129372},
+    {"name": "CHIANTI",      "rank": "R3", "power": 25868204, "points": 84240872},
+    {"name": "DarKKnight",   "rank": "R4", "power": 26083895, "points": 74110946},
+    {"name": "Сказка",       "rank": "R3", "power": 18895912, "points": 67117872},
+    {"name": "CATFIGHT",     "rank": "R2", "power": 19597200, "points": 42734950},
+    {"name": "Benz",         "rank": "R1", "power": 21770340, "points": 37068772},
+    {"name": "Метью",        "rank": "R1", "power": 13928427, "points": 13663347},
+    {"name": "Hardcore101",  "rank": "R2", "power": 12570464, "points": 7139502},
+    {"name": "Герман",       "rank": "R1", "power": 13993551, "points": 5385926},
+    {"name": "Blitzdog",     "rank": "R1", "power": 17886129, "points": 4908151}
+  ]
+}

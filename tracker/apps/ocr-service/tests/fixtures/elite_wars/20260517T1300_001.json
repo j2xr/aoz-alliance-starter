@@ -1,0 +1,20 @@
+{
+  "event_type": "elite_wars",
+  "event_datetime": "2026-05-17T13:00:00+02:00",
+  "alliance_rank": 125,
+  "total_battlers": 13,
+  "total_points": 16865,
+  "source_file": "c3c5276a-3327.jpg",
+  "members": [
+    {"name": "← .AL3X. →",  "rank": "R4", "power": 30609187, "points": 1310342},
+    {"name": "Sa†ana",       "rank": "R3", "power": 17648230, "points": 975622},
+    {"name": "StoKaizer",    "rank": "R1", "power": 13202646, "points": 886540},
+    {"name": "Copenhagen",   "rank": "R1", "power": 12773557, "points": 635691},
+    {"name": "Andy_G29",     "rank": "R4", "power": 13799620, "points": 564361},
+    {"name": "Mjölnir",      "rank": "R4", "power": 29059068, "points": 0},
+    {"name": "Momoa",        "rank": "R4", "power": 29073224, "points": 0},
+    {"name": "rinshan5551",  "rank": "R3", "power": 15034725, "points": 0},
+    {"name": "TeslaRules",   "rank": "R3", "power": 17190436, "points": 0},
+    {"name": "Libelula.001", "rank": "R2", "power": 11031623, "points": 0}
+  ]
+}

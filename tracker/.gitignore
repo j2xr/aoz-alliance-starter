@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.local.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+*.egg-info/
+.uv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Docker
+.dockerignore
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
+# Test / coverage
+coverage/
+*.lcov
+
+# Data (captures réelles)
+/data/
+apps/ocr-service/tests/fixtures/*.png
+apps/ocr-service/tests/fixtures/*.jpg
+apps/ocr-service/tests/fixtures/*.webp
+!apps/ocr-service/tests/fixtures/.gitkeep

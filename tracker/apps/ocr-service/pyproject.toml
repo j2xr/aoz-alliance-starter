@@ -1,0 +1,74 @@
+[project]
+name = "ocr-service"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.20",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "opencv-python-headless>=4.10.0",
+    # tesserocr is the default OCR backend (in-process C API, ~5ms per call
+    # vs ~100ms for pytesseract subprocess spawn). pytesseract is kept as a
+    # one-flag rollback target via OCR_BACKEND=pytesseract.
+    "tesserocr>=2.7.0",
+    "pytesseract>=0.3.13",
+    "pillow>=10.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "python-multipart>=0.0.12",
+    # Mojibake detection/repair for OCR'd names (see app/parsers/name_ocr.py
+    # normalize_name). A hand-rolled latin-1 round-trip would false-positive
+    # on legitimate multi-byte text; ftfy already arbitrates that.
+    "ftfy>=6.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+    # Build tools for compiling tesserocr from source (see [tool.uv] below).
+    "cython>=3.0",
+    "setuptools>=68",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+module = "pytesseract"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tesserocr"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.uv]
+# Force tesserocr to build from source so it links against the SYSTEM
+# libtesseract (the same engine pytesseract subprocess uses). Without this,
+# uv installs a manylinux wheel that bundles its own libtesseract — typically
+# a newer minor version than the apt-provided one — and OCR results diverge
+# between the two backends on edge cases, violating the migration's
+# "strictement identique" accuracy contract.
+#
+# Requires libtesseract-dev + libleptonica-dev + a C++ toolchain at install
+# time (already provided by the Dockerfile and the CI workflow).
+no-binary-package = ["tesserocr"]
+# tesserocr ships a pre-generated .cpp that #includes headers removed in
+# Tesseract 5.x (e.g. tesseract/genericvector.h). Building without isolation
+# lets it re-cythonise against the system headers using the cython/setuptools
+# build tools installed in the dev dependency-group above.
+no-build-isolation-package = ["tesserocr"]

@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-14T23:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 26,
+  "total_points": 11630,
+  "source_file": "1000006344.jpg",
+  "members": [
+    {
+      "name": "LATAM.REYCOLIMAN",
+      "rank": "R1",
+      "power": 15935383,
+      "points": 15855
+    },
+    {
+      "name": "1jr",
+      "rank": "R3",
+      "power": 17889854,
+      "points": 15233
+    },
+    {
+      "name": "Hardcore101",
+      "rank": "R2",
+      "power": 12507630,
+      "points": 12524
+    },
+    {
+      "name": "Blitzdog",
+      "rank": "R1",
+      "power": 17835678,
+      "points": 12003
+    },
+    {
+      "name": "THOR,01",
+      "rank": "R1",
+      "power": 17892348,
+      "points": 11588
+    },
+    {
+      "name": "Bumbelbee",
+      "rank": "R1",
+      "power": 17254144,
+      "points": 10868
+    },
+    {
+      "name": "Stoka",
+      "rank": "R1",
+      "power": 16427949,
+      "points": 10816
+    },
+    {
+      "name": "SNIPER",
+      "rank": "R1",
+      "power": 19975359,
+      "points": 10674
+    },
+    {
+      "name": "KANHA_",
+      "rank": "R2",
+      "power": 13563455,
+      "points": 9263
+    },
+    {
+      "name": "Толик",
+      "rank": "R1",
+      "power": 11215167,
+      "points": 8214
+    },
+    {
+      "name": "BakersBakedd27",
+      "rank": "R1",
+      "power": 14090873,
+      "points": 7319
+    }
+  ]
+}

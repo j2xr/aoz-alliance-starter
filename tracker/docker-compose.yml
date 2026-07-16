@@ -1,0 +1,61 @@
+# Minimal, self-contained Compose stack for the alliance tracker.
+#
+#   docker compose up --build -d        # build images and start both services
+#   docker compose logs -f discord-bot  # follow bot logs
+#   docker compose down                 # stop everything
+#
+# Both services read their secrets from local .env files — copy the provided
+# .env.example files first. Images are built from the Dockerfiles in this repo;
+# nothing is pulled from a registry.
+services:
+  ocr-service:
+    build:
+      context: ./apps/ocr-service
+      dockerfile: Dockerfile
+    container_name: alliance-ocr-service
+    restart: unless-stopped
+    env_file: ./apps/ocr-service/.env
+    expose:
+      - "8000"
+    volumes:
+      # SQLite OCR job store (matches JOBS_DB_PATH=/data/jobs.db in .env.example).
+      - ./data/ocr:/data
+    networks:
+      - internal
+    healthcheck:
+      # python:…-slim n'embarque pas curl : la sonde utilise l'interpréteur
+      # déjà présent dans l'image (un healthcheck curl échouait toujours et
+      # marquait le conteneur unhealthy en permanence).
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  discord-bot:
+    build:
+      context: .
+      dockerfile: apps/discord-bot/Dockerfile
+    container_name: alliance-discord-bot
+    restart: unless-stopped
+    env_file: ./apps/discord-bot/.env
+    # The bot reaches the OCR service over the internal network by container name.
+    environment:
+      OCR_SERVICE_URL: http://ocr-service:8000
+    depends_on:
+      - ocr-service
+    networks:
+      - internal
+    volumes:
+      # Screenshot inbox (sha256 dedup). Persisted so restarts keep dedup state.
+      - ./data/inbox:/data/inbox
+
+networks:
+  internal:
+    driver: bridge

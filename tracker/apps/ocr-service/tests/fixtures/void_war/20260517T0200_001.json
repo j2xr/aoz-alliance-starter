@@ -1,0 +1,20 @@
+{
+  "event_type": "void_war",
+  "event_datetime": "2026-05-17T02:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 78,
+  "total_points": 42156563,
+  "source_file": "ba604cac-3337.jpg",
+  "members": [
+    {"name": "← .AL3X. →", "rank": "R4", "power": 30799657, "points": 18023762},
+    {"name": "MHGYM7000",   "rank": "R2", "power": 13678972, "points": 10335119},
+    {"name": "ZRotz",        "rank": "R1", "power": 14728872, "points": 8009853},
+    {"name": "2jr",          "rank": "R1", "power": 12901877, "points": 2840567},
+    {"name": "3jr",          "rank": "R3", "power": 14012134, "points": 898866},
+    {"name": "Veck",         "rank": "R1", "power": 24453341, "points": 874310},
+    {"name": "TeslaRules",   "rank": "R3", "power": 15342467, "points": 498548},
+    {"name": "Libelula.001", "rank": "R2", "power": 9624904,  "points": 402228},
+    {"name": "Аня",          "rank": "R1", "power": 9259799,  "points": 236230},
+    {"name": "Mjölnir",      "rank": "R4", "power": 28927070, "points": 17557}
+  ]
+}

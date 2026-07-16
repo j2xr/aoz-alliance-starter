@@ -1,0 +1,20 @@
+{
+  "event_type": "wasteland_showdown",
+  "event_datetime": "2026-05-08T15:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 10,
+  "total_points": 1805,
+  "source_file": "948ae605-3331.jpg",
+  "members": [
+    {"name": "BenOVerbich",    "rank": "R1", "power": 22721701, "points": 20150},
+    {"name": "rinshan5551",    "rank": "R3", "power": 15029505, "points": 7834},
+    {"name": "moco",           "rank": "R1", "power": 16595972, "points": 4811},
+    {"name": "← .AL3X. →",    "rank": "R4", "power": 31485319, "points": 4357},
+    {"name": "焼鳥_Yakitori",  "rank": "R3", "power": 23692268, "points": 2307},
+    {"name": "Hambones",       "rank": "R1", "power": 9627746,  "points": 1988},
+    {"name": "MHGYM7000",      "rank": "R2", "power": 14641721, "points": 1552},
+    {"name": "Libelula.001",   "rank": "R2", "power": 10899610, "points": 1081},
+    {"name": "Mjölnir",        "rank": "R4", "power": 28717388, "points": 0},
+    {"name": "Momoa",          "rank": "R3", "power": 28955306, "points": 0}
+  ]
+}

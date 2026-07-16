@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "WarDragonFly",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1945
+    },
+    {
+      "name": "ばななヨーグルト",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1916
+    },
+    {
+      "name": "Hambones",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1876
+    },
+    {
+      "name": "StrongExceeder",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1848
+    },
+    {
+      "name": "Natasha",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 1825
+    },
+    {
+      "name": "Monsters",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 1812
+    },
+    {
+      "name": "StoKaizer",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1745
+    },
+    {
+      "name": "ran",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1743
+    },
+    {
+      "name": "moco",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1707
+    },
+    {
+      "name": "LATAM.REYCOLIMAN",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1705
+    },
+    {
+      "name": "Dr.Strange",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 1624
+    },
+    {
+      "name": "Maria*",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 1445
+    }
+  ]
+}

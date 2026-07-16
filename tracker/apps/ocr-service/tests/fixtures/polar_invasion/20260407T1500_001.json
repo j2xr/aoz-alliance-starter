@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-07T15:00:00+02:00",
+  "alliance_rank": 1,
+  "total_battlers": 43,
+  "total_points": 21955,
+  "source_file": "1000006342.jpg",
+  "members": [
+    {
+      "name": "Bulleit",
+      "rank": "R1",
+      "power": 21067465,
+      "points": 61091
+    },
+    {
+      "name": "Yojimbo",
+      "rank": "R4",
+      "power": 22911768,
+      "points": 48950
+    },
+    {
+      "name": "doradora12",
+      "rank": "R2",
+      "power": 19093174,
+      "points": 39879
+    },
+    {
+      "name": "LEÓN",
+      "rank": "R4",
+      "power": 27132739,
+      "points": 38932
+    },
+    {
+      "name": "CATFIGHT",
+      "rank": "R2",
+      "power": 19571726,
+      "points": 37119
+    },
+    {
+      "name": "RageX_",
+      "rank": "R4",
+      "power": 26866503,
+      "points": 37099
+    },
+    {
+      "name": "scepter",
+      "rank": "R3",
+      "power": 26517561,
+      "points": 37070
+    },
+    {
+      "name": "Goldeneye21",
+      "rank": "R3",
+      "power": 20635851,
+      "points": 35492
+    },
+    {
+      "name": "Ichigo_19",
+      "rank": "R1",
+      "power": 22370871,
+      "points": 34089
+    },
+    {
+      "name": "FATCAT29",
+      "rank": "R1",
+      "power": 23211659,
+      "points": 33242
+    },
+    {
+      "name": "Akrid",
+      "rank": "R2",
+      "power": 18112489,
+      "points": 30496
+    }
+  ]
+}

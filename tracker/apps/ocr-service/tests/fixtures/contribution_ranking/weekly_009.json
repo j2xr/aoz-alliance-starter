@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "jeinsolaya",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 630
+    },
+    {
+      "name": "jasmin",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 570
+    },
+    {
+      "name": "LATAM.ELIMEN",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 533
+    },
+    {
+      "name": "ANSG",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 510
+    },
+    {
+      "name": "The_Hatter",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 315
+    },
+    {
+      "name": "CaRnAgE",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 300
+    },
+    {
+      "name": "Meow_War",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 225
+    },
+    {
+      "name": "netfobia",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 220
+    },
+    {
+      "name": "1163Sully",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "lussy",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "Moud",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "Zero",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    }
+  ]
+}

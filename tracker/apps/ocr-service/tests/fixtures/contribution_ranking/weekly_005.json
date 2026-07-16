@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "LUCKY",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2365
+    },
+    {
+      "name": "TeslaRules",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 2350
+    },
+    {
+      "name": "Tic_Tac",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2234
+    },
+    {
+      "name": "Lucid_Air_Rules",
+      "alliance_tag": "SOD",
+      "rank": "R5",
+      "alliance_honor": 2210
+    },
+    {
+      "name": "Adaline",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 2210
+    },
+    {
+      "name": "TarecK",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2203
+    },
+    {
+      "name": "nc30vfr400",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2176
+    },
+    {
+      "name": "Noside",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2096
+    },
+    {
+      "name": "Blake",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2055
+    },
+    {
+      "name": "DOSKYNG",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2015
+    },
+    {
+      "name": "Dark3pm",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1945
+    },
+    {
+      "name": "WarDragonFly",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1945
+    }
+  ]
+}

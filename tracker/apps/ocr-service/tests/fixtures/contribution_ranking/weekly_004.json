@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Devastador",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3135
+    },
+    {
+      "name": "tofibetto",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3028
+    },
+    {
+      "name": "Veck",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2944
+    },
+    {
+      "name": "†Dawn†",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2665
+    },
+    {
+      "name": "Libelula.001",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2643
+    },
+    {
+      "name": "Doug",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2620
+    },
+    {
+      "name": "Darkseid",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2555
+    },
+    {
+      "name": "BabaYaga",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 2550
+    },
+    {
+      "name": "CarlosEstrella",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 2505
+    },
+    {
+      "name": "kok",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2505
+    },
+    {
+      "name": "Samwell_Tarly",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2495
+    },
+    {
+      "name": "LUCKY",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2365
+    }
+  ]
+}

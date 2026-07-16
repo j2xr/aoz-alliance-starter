@@ -1,0 +1,20 @@
+{
+  "event_type": "battle_frenzy",
+  "event_datetime": "2026-05-03T02:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 88,
+  "total_points": 33040670,
+  "source_file": "e9ca7532-3335.jpg",
+  "members": [
+    {"name": "lussy",           "rank": "R1", "power": 7702802,  "points": 8111},
+    {"name": "Tic_Tac",         "rank": "R1", "power": 9286334,  "points": 1115},
+    {"name": "KOR.Chawoo",      "rank": "R1", "power": 15445733, "points": 476},
+    {"name": "BabaYaga",        "rank": "R4", "power": 24495135, "points": 286},
+    {"name": "Lucid_Air_Rules", "rank": "R5", "power": 11415884, "points": 7},
+    {"name": "tofibetto",       "rank": "R1", "power": 14261100, "points": 6},
+    {"name": "rinshan5551",     "rank": "R3", "power": 14977423, "points": 1},
+    {"name": "BigSteelCurtain", "rank": "R4", "power": 18418378, "points": null},
+    {"name": "w|jasmin|w",      "rank": "R4", "power": 7036978,  "points": null},
+    {"name": "Andy_G29",        "rank": "R4", "power": 13221078, "points": null}
+  ]
+}

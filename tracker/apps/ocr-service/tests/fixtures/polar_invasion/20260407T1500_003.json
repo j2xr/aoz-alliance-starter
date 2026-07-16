@@ -1,0 +1,76 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-04-07T15:00:00+02:00",
+  "alliance_rank": 1,
+  "total_battlers": 43,
+  "total_points": 21955,
+  "source_file": "1000006340.jpg",
+  "members": [
+    {
+      "name": "Genesis",
+      "rank": "R1",
+      "power": 13845497,
+      "points": 22294
+    },
+    {
+      "name": "ZEROHERO",
+      "rank": "R3",
+      "power": 26756958,
+      "points": 22062
+    },
+    {
+      "name": "Stoka",
+      "rank": "R1",
+      "power": 16022860,
+      "points": 21517
+    },
+    {
+      "name": "GOLF",
+      "rank": "R4",
+      "power": 30264445,
+      "points": 21374
+    },
+    {
+      "name": "JMAC",
+      "rank": "R1",
+      "power": 17966478,
+      "points": 19476
+    },
+    {
+      "name": "Xrage",
+      "rank": "R3",
+      "power": 17480229,
+      "points": 18606
+    },
+    {
+      "name": "JANI",
+      "rank": "R1",
+      "power": 14686753,
+      "points": 17213
+    },
+    {
+      "name": "Dyaaan",
+      "rank": "R1",
+      "power": 18416759,
+      "points": 17115
+    },
+    {
+      "name": "HEAVYMETAL",
+      "rank": "R2",
+      "power": 22008089,
+      "points": 15590
+    },
+    {
+      "name": "Insidious",
+      "rank": "R1",
+      "power": 15920491,
+      "points": 11189
+    },
+    {
+      "name": "Gattopardo",
+      "rank": "R1",
+      "power": 27657753,
+      "points": 9357
+    }
+  ]
+}

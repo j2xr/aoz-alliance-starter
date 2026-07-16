@@ -1,0 +1,119 @@
+name: tracker
+
+on:
+  pull_request:
+    paths:
+      - 'tracker/**'
+      - '.github/workflows/tracker.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tracker/**'
+      - '.github/workflows/tracker.yml'
+
+jobs:
+  discord-bot:
+    name: discord-bot (tsc + eslint + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tracker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tracker/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check (tsc --noEmit)
+        run: pnpm --filter @alliance-tracker/discord-bot build
+
+      - name: Lint (ESLint)
+        run: pnpm --filter @alliance-tracker/discord-bot lint:eslint
+
+      - name: Test (vitest)
+        run: pnpm --filter @alliance-tracker/discord-bot test
+
+  ocr-service:
+    name: ocr-service (ruff + mypy + pytest + bench)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tracker/apps/ocr-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tesseract + language packs + tesserocr build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            tesseract-ocr-rus \
+            tesseract-ocr-jpn \
+            tesseract-ocr-chi-sim \
+            tesseract-ocr-vie \
+            tesseract-ocr-kor \
+            libtesseract-dev \
+            libleptonica-dev \
+            pkg-config \
+            gcc \
+            g++
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy app
+
+      - name: Test (pytest)
+        run: uv run pytest --tb=short -q
+
+      - name: Run OCR benchmark
+        # Latency budgets come from the script defaults (avg ≤ 3.5s, max ≤ 5.0s).
+        # Full suite (26 fixtures incl. the heavier contribution_ranking scene)
+        # measures ~1.2s avg / ~2.0s max per fixture with Tesseract + 6 language
+        # packs, so the defaults keep ~2.5x headroom while still catching a real
+        # regression. The old 10s/15s overrides were ~8-14x above the observed
+        # cost and let anything through. If a GitHub runner proves slower than
+        # local and trips these, bump to 5/7 rather than restoring 10/15.
+        # tee (with pipefail) mirrors the report to a file for upload without
+        # masking the bench's exit code; --dump-crops writes PNGs only for
+        # anomaly rows (FAIL/MISMATCH/WARN), so the crop volume stays small.
+        run: |
+          set -o pipefail
+          uv run python ../../tools/bench-ocr/bench.py \
+            --verbose \
+            --dump-crops bench-crops \
+            | tee bench-report.txt
+
+      - name: Upload OCR benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-bench-report
+          path: |
+            tracker/apps/ocr-service/bench-report.txt
+            tracker/apps/ocr-service/bench-crops/
+          if-no-files-found: warn

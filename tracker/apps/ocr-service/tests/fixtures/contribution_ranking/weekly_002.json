@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "CumStang",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 4545
+    },
+    {
+      "name": "AL3X2414",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 4505
+    },
+    {
+      "name": "Andy_G29",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 4412
+    },
+    {
+      "name": "Thommy",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 4310
+    },
+    {
+      "name": "Sa†ana",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 3870
+    },
+    {
+      "name": "BigSteelCurtain",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 3725
+    },
+    {
+      "name": "3jr",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 3630
+    },
+    {
+      "name": "CEKATOP_1000",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3492
+    },
+    {
+      "name": "ghaith89",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3389
+    },
+    {
+      "name": "幸恵丸ポーター",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 3305
+    },
+    {
+      "name": "Billlintonmao",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3147
+    },
+    {
+      "name": "Devastador",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3135
+    }
+  ]
+}

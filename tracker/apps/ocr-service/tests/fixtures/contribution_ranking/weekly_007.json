@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Maria*",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 1445
+    },
+    {
+      "name": "Lucky.lucciano",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1430
+    },
+    {
+      "name": "中本",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1407
+    },
+    {
+      "name": "TôiyêuViệtNam",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1350
+    },
+    {
+      "name": "Indira.IsaLATAM",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 1330
+    },
+    {
+      "name": "EVA",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1280
+    },
+    {
+      "name": "ShadowBlade",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1245
+    },
+    {
+      "name": "Hochi",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 1176
+    },
+    {
+      "name": "w|jasmin|w",
+      "alliance_tag": "SOD",
+      "rank": "R4",
+      "alliance_honor": 1020
+    },
+    {
+      "name": "XxDESTRUCTORxX",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 981
+    },
+    {
+      "name": "Pluto",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 980
+    },
+    {
+      "name": "KOR.morningstar",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 979
+    }
+  ]
+}
