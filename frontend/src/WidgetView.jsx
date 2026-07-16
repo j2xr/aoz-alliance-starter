@@ -34,7 +34,7 @@ export default function WidgetView() {
 
   // Compute displayed events: today's first, then next upcoming if today is empty
   const displayedEvents = (() => {
-    if (!events.length) return [];
+    if (!events.length) return { kind: "upcoming", items: [] };
     const now = new Date();
     const iso = todayISO();
 

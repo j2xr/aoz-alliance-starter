@@ -118,8 +118,9 @@ def test_extract_internal_error_surfaces_via_job() -> None:
     assert "boom" in body["detail"]
 
 
-def test_get_job_pops_terminal_state() -> None:
-    """Second GET on a terminal job returns 404 — bound the DB store."""
+def test_get_job_terminal_state_survives_repeat_reads() -> None:
+    """A second GET on a terminal job still returns the result, not 404 — a
+    dropped bot connection or poll retry must be able to re-read it."""
     mock_result = ParseResult(event_type="polar_invasion")
     with (
         patch("app.main.preprocess_image") as mock_pre,
@@ -137,4 +138,6 @@ def test_get_job_pops_terminal_state() -> None:
 
     assert first.status_code == 200
     assert first.json()["status"] == "done"
-    assert second.status_code == 404
+    assert second.status_code == 200
+    assert second.json()["status"] == "done"
+    assert second.json()["result"] == first.json()["result"]

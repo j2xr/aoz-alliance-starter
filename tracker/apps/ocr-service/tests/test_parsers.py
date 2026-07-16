@@ -136,6 +136,54 @@ def test_parser_marks_non_participant_row_with_null_points() -> None:
     assert all(m.power == 15_000_000 for m in result.members)
 
 
+def test_parser_confidence_only_reflects_words_in_name() -> None:
+    """Row confidence must be computed only from the name_data entries that
+    actually survived into `name` (min_conf=10, non-empty text) -- not from
+    every conf value the OCR pass returned. An empty-text box with an
+    unrelated high confidence, or a low-confidence word that min_conf already
+    excluded from `name`, must not skew the reported confidence.
+    """
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+
+    # "Name" (conf=15) is the only word that ends up in `name` under min_conf=10.
+    # The empty-text entry (conf=95) contributed no text at all, and "Extra"
+    # (conf=5) falls below min_conf -- neither should count toward confidence.
+    mixed_name_data = {
+        "text": ["Name", "", "Extra"],
+        "conf": ["15", "95", "5"],
+        "level": [0, 0, 0],
+        "page_num": [0, 0, 0],
+        "block_num": [0, 0, 0],
+        "par_num": [0, 0, 0],
+        "line_num": [0, 0, 0],
+        "word_num": [0, 0, 0],
+        "left": [0, 10, 20],
+        "top": [0, 0, 0],
+        "width": [10, 10, 10],
+        "height": [10, 10, 10],
+    }
+
+    def data_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+        if "jpn" in config:
+            return mixed_name_data
+        if "eng+rus" in config:
+            return _ocr_data("", conf=-1)  # ASCII fast-path miss, fall through
+        if "tessedit_char_whitelist=0123456789,-" in config:
+            return _ocr_data("-", conf=60)
+        if "tessedit_char_whitelist=0123456789," in config:
+            return _ocr_data("15,000,000", conf=85)
+        return _ocr_data("", conf=-1)
+
+    with patch(_OCR_STRING, return_value="R1"), patch(_OCR_DATA, side_effect=data_side_effect):
+        result = parser.parse(image)
+
+    assert result.members
+    m = result.members[0]
+    assert m.name == "Name"
+    assert m.confidence == pytest.approx(0.15)
+
+
 def test_parser_member_with_low_power_skipped() -> None:
     """A member row where power < 1M should be filtered out by validate_member."""
     image = np.zeros((1920, 1080), dtype=np.uint8)

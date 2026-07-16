@@ -65,8 +65,9 @@ export default function App() {
   // ── Delete event ──────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id) => {
     setDeleting(true);
-    await supabase.from("events").delete().eq("id", id);
+    const { error } = await supabase.from("events").delete().eq("id", id);
     setDeleting(false);
+    if (error) { alert("Error deleting event: " + error.message); return; }
     await fetchEvents();
     setSelectedEvent(null);
   }, [fetchEvents]);
