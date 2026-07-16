@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { upsertEventResult, upsertDonationResult, recordUploadError } from './upsert.js';
 import { supabase } from './supabase.js';
+import logger from '../logger.js';
 
 vi.mock('./supabase.js', () => ({ supabase: { from: vi.fn() } }));
 vi.mock('../logger.js', () => ({
@@ -238,6 +239,93 @@ describe('upsertDonationResult', () => {
       memberCount: 1,
       newMemberCount: 1,
     });
+  });
+
+  it('passes leaderboard_position through to the at_donations upsert payload', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
+    queueFrom([]);  // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    // at_donations : chaîne capturée pour inspecter le payload de l'upsert
+    const donationsChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      donationsChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const params = {
+      ...BASE_DONATION_PARAMS,
+      ocr: {
+        ...BASE_DONATION_PARAMS.ocr,
+        members: [{ ...BASE_DONATION_PARAMS.ocr.members[0]!, leaderboard_position: 41 }],
+      },
+    };
+
+    const result = await upsertDonationResult(params);
+    expect(result.status).toBe('processed');
+
+    const upsertMock = donationsChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = upsertMock.mock.calls[0]?.[0] as { leaderboard_position: number | null }[];
+    expect(payload[0]?.leaderboard_position).toBe(41);
+  });
+
+  it('defaults leaderboard_position to null when the OCR result omits it', async () => {
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'period-1' });
+    queueFrom([]);
+    queueFrom([{ id: 'p1', name: 'Alpha' }]);
+    queueFrom([]);
+    queueFrom(null);
+    const donationsChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      donationsChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null);
+
+    // BASE_DONATION_PARAMS' lone member has no leaderboard_position field.
+    const result = await upsertDonationResult(BASE_DONATION_PARAMS);
+
+    expect(result.status).toBe('processed');
+    const upsertMock = donationsChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = upsertMock.mock.calls[0]?.[0] as { leaderboard_position: number | null }[];
+    expect(payload[0]?.leaderboard_position).toBeNull();
+  });
+
+  it('logs a warning when leaderboard_position is not strictly increasing within a capture', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([
+      { id: 'p1', name: 'Alpha' },
+      { id: 'p2', name: 'Beta' },
+    ]); // at_players upsert
+    queueFrom([]);   // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom(null); // at_donations upsert
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const params = {
+      ...BASE_DONATION_PARAMS,
+      ocr: {
+        ...BASE_DONATION_PARAMS.ocr,
+        members: [
+          { name: 'Alpha', alliance_tag: 'SOD', rank: 'R5', alliance_honor: 5_000, confidence: 0.95, leaderboard_position: 5 },
+          { name: 'Beta', alliance_tag: 'SOD', rank: 'R4', alliance_honor: 4_000, confidence: 0.9, leaderboard_position: 3 },
+        ],
+      },
+    };
+
+    await upsertDonationResult(params);
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ positions: [5, 3] }),
+      expect.stringContaining('not strictly increasing'),
+    );
   });
 });
 

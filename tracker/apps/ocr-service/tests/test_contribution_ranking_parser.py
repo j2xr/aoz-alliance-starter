@@ -1,6 +1,7 @@
 """Unit tests for the contribution_ranking_v1 (donation) parser and dispatcher."""
 
 import json
+from math import ceil
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -11,9 +12,12 @@ import pytest
 from app.dispatcher import DONATION_CODE, UnknownEventError, detect_screen_kind
 from app.parsers.base import DonationMember, DonationParseResult
 from app.parsers.contribution_ranking_v1 import (
+    _POSITION_PSMS,
+    _POSITION_THRESHOLDS,
     _TAB_X,
     _TABS_Y,
     ContributionRankingV1Parser,
+    _ocr_position_from_crop,
     _strip_alliance_tag,
 )
 from app.preprocess import preprocess_image
@@ -70,6 +74,12 @@ def _ocr_data(text: str = "", conf: int = 90) -> dict[str, list[Any]]:
         ("Sai (SOD) CumStang", "SOD", "CumStang"),
         ("D| (SOD) Noside", "SOD", "Noside"),
         ("y) (SOD) Andy_G29", "SOD", "Andy_G29"),
+        # Avatar bleed forming a bogus *leading paren* of its own (a stray '('
+        # glyph followed by a non-alphanumeric character before the real
+        # tag) — the old anchored [^(]{0,6} prefix could never skip past that
+        # first '(' and left the whole string un-stripped in production.
+        ("(а (SOD) KOR.Chawoo", "SOD", "KOR.Chawoo"),
+        ("(해 (SOD) moco", "SOD", "moco"),
         # But a genuinely tag-less name (no paren) is untouched, even with a
         # short leading token.
         ("xX noTag", None, "xX noTag"),
@@ -82,6 +92,130 @@ def test_strip_alliance_tag(raw: str, expected_tag: str | None, expected_name: s
     tag, name = _strip_alliance_tag(raw)
     assert tag == expected_tag
     assert name == expected_name
+
+
+# ── Leaderboard position (best-effort, informational) ───────────────────────────
+
+_POSITION_CALLS_PER_CROP = len(_POSITION_THRESHOLDS) * len(_POSITION_PSMS)
+
+
+def test_ocr_position_from_crop_strong_majority() -> None:
+    """Unanimous vote across every threshold/psm combo: return the value."""
+    crop = np.zeros((10, 10), dtype=np.uint8)
+    with patch(_OCR_STRING, return_value="42"):
+        assert _ocr_position_from_crop(crop) == 42
+
+
+def test_ocr_position_from_crop_no_majority_returns_none() -> None:
+    """An even split (no reading reaches the 70% bar): don't guess."""
+    crop = np.zeros((10, 10), dtype=np.uint8)
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        calls["n"] += 1
+        return "5" if calls["n"] % 2 == 0 else "8"
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        assert _ocr_position_from_crop(crop) is None
+
+
+def test_ocr_position_from_crop_no_digits_returns_none() -> None:
+    """The top-3 medal rows have no plain digit to whitelist-OCR: no votes at all."""
+    crop = np.zeros((10, 10), dtype=np.uint8)
+    with patch(_OCR_STRING, return_value=""):
+        assert _ocr_position_from_crop(crop) is None
+
+
+def test_ocr_position_from_crop_ignores_out_of_range_values() -> None:
+    """A value outside 1-999 (whitelist noise) never wins the vote."""
+    crop = np.zeros((10, 10), dtype=np.uint8)
+    with patch(_OCR_STRING, return_value="10000"):
+        assert _ocr_position_from_crop(crop) is None
+
+
+def test_ocr_position_from_crop_majority_survives_a_few_dissenting_votes() -> None:
+    """A strong-but-not-unanimous majority (>=70%) still wins.
+
+    Dissent count is derived from the actual combo count so the test doesn't
+    silently stop exercising the "not quite unanimous" path if
+    _POSITION_THRESHOLDS/_POSITION_PSMS ever change size.
+    """
+    crop = np.zeros((10, 10), dtype=np.uint8)
+    total = _POSITION_CALLS_PER_CROP
+    dissent_count = max(1, total - ceil(total * 0.75))  # majority stays >= 75% > 70% bar
+    assert 0 < dissent_count < total * 0.3, "fixture assumption: dissent must stay a minority"
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        i = calls["n"]
+        calls["n"] += 1
+        return "3" if i < dissent_count else "9"
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        assert _ocr_position_from_crop(crop) == 9
+
+
+def test_parser_populates_leaderboard_position_best_effort() -> None:
+    """The parser wires the position vote into DonationMember, end to end."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+
+    def data_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+        if "jpn" in config:
+            return _ocr_data("(SOD) Ghost", conf=85)
+        return _ocr_data("", conf=-1)
+
+    def string_side_effect(*args: Any, **kwargs: Any) -> str:
+        config = (
+            kwargs.get("config", "") if "config" in kwargs else (args[1] if len(args) > 1 else "")
+        )
+        if "tessedit_char_whitelist=0123456789," in config:  # honor (comma in whitelist)
+            return "630"
+        if "tessedit_char_whitelist=0123456789" in config:  # position (no comma)
+            return "7"
+        return ""
+
+    with (
+        patch(_OCR_DATA, side_effect=data_side_effect),
+        patch(_OCR_STRING, side_effect=string_side_effect),
+    ):
+        result = parser.parse(image)
+
+    assert result.members
+    assert result.members[0].leaderboard_position == 7
+
+
+def test_parser_skips_position_ocr_when_disabled() -> None:
+    """OCR_LEADERBOARD_POSITION_ENABLED=false is a hard escape hatch: no OCR calls at all."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+
+    def data_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+        if "jpn" in config:
+            return _ocr_data("(SOD) Ghost", conf=85)
+        return _ocr_data("", conf=-1)
+
+    def string_side_effect(*args: Any, **kwargs: Any) -> str:
+        config = (
+            kwargs.get("config", "") if "config" in kwargs else (args[1] if len(args) > 1 else "")
+        )
+        if "tessedit_char_whitelist=0123456789," in config:
+            return "630"
+        # If position OCR ran despite the flag, it would hit this branch and
+        # "succeed" — asserting None below would then catch the regression.
+        if "tessedit_char_whitelist=0123456789" in config:
+            return "7"
+        return ""
+
+    with (
+        patch("app.parsers.contribution_ranking_v1._POSITION_OCR_ENABLED", False),
+        patch(_OCR_DATA, side_effect=data_side_effect),
+        patch(_OCR_STRING, side_effect=string_side_effect),
+    ):
+        result = parser.parse(image)
+
+    assert result.members
+    assert result.members[0].leaderboard_position is None
 
 
 # ── Validator ───────────────────────────────────────────────────────────────────
@@ -334,6 +468,160 @@ def test_parser_drops_row_when_honor_unreadable() -> None:
         result = parser.parse(image)
 
     assert result.members == []
+
+
+# ── Alliance Honor OCR (tall-crop fallback) ─────────────────────────────────────
+#
+# A real capture (rank 40-51 of the actual batch) showed the primary (40, 130)
+# and contrast-normalized bands can starve Tesseract of quiet-zone margin even
+# though the digits are fully visible in the crop — "2458" came back empty,
+# not just misread. Widening the module-level Y-offset constants outright
+# regressed a shipped fixture (weekly_009): _detect_list_top centres row_top
+# on the offset's midpoint, so widening it shifts every row's crop for every
+# image, including ones where the tight band already works. The fallback-only
+# taller retry below is strictly additive instead — it can only rescue a row
+# that already failed, never disturb one that already succeeds.
+
+
+def test_ocr_honor_tall_fallback_recovers_value_when_primary_attempts_fail() -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        calls["n"] += 1
+        # 1st call: primary band. 2nd: contrast-normalized primary band.
+        # 3rd: the taller fallback band — the only one that "succeeds" here.
+        return "2458" if calls["n"] == 3 else ""
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        assert parser._ocr_honor(image, y=0, scale=1.0) == 2458
+    assert calls["n"] == 3
+
+
+def test_ocr_honor_returns_none_when_even_the_tall_fallback_fails() -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    with patch(_OCR_STRING, return_value=""):
+        assert parser._ocr_honor(image, y=0, scale=1.0) is None
+
+
+def test_ocr_honor_skips_fallback_when_primary_already_succeeds() -> None:
+    """The taller crop must never be attempted when the primary band already
+    works — the fallback is a rescue path, not run unconditionally."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    with patch(_OCR_STRING, return_value="1234") as mock_string:
+        assert parser._ocr_honor(image, y=0, scale=1.0) == 1234
+    assert mock_string.call_count == 1
+
+
+# ── Honor monotonicity guard ─────────────────────────────────────────────────────
+
+
+def test_enforce_honor_monotonicity_noop_when_already_descending() -> None:
+    """Nominal case (including a legitimate tie): nothing re-OCR'd, nothing changed."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0),
+        _donor(alliance_honor=2925, row_y=175),
+        _donor(alliance_honor=1785, row_y=350),
+        _donor(alliance_honor=1785, row_y=525),  # tie: not a violation
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    mock_candidates.assert_not_called()
+    assert [m.alliance_honor for m in members] == [3173, 2925, 1785, 1785]
+
+
+def test_enforce_honor_monotonicity_corrects_when_candidate_fits() -> None:
+    """A misread that breaks order is replaced by the re-OCR candidate that fits.
+
+    Fitting the window is a plausibility check, not proof of correctness (a
+    real fixture showed a fitting-but-still-wrong candidate winning — see the
+    method's docstring), so confidence is capped even on a successful fix.
+    """
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0),
+        _donor(alliance_honor=9044, row_y=175, confidence=0.9),  # bad; truth is 2925
+        _donor(alliance_honor=2878, row_y=350),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[9044, 2925]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 2925
+    assert members[1].confidence == ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE
+
+
+def test_enforce_honor_monotonicity_fix_never_raises_an_already_lower_confidence() -> None:
+    """The cap is a ceiling (min), never a floor: an already-lower confidence stays put."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0),
+        _donor(alliance_honor=9044, row_y=175, confidence=0.2),
+        _donor(alliance_honor=2878, row_y=350),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[2925]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].confidence == 0.2
+
+
+def test_enforce_honor_monotonicity_keeps_original_when_no_candidate_fits() -> None:
+    """No re-OCR candidate fits the window: keep the raw value, don't fabricate,
+    but flag it by zeroing confidence for downstream visibility."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=2458, row_y=0),
+        _donor(alliance_honor=92256, row_y=175, confidence=0.9),  # ground truth is 2385
+        _donor(alliance_honor=2051, row_y=350),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[92256]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 92256  # unchanged: never fabricate a number
+    assert members[1].confidence == 0.0  # flagged low-confidence instead
+
+
+def test_enforce_honor_monotonicity_last_row_uses_zero_as_lower_bound() -> None:
+    """The last row has no successor: the fitting window is [0, previous]."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=350, row_y=0),
+        _donor(alliance_honor=999999, row_y=175),  # ground truth is 0
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[999999, 0]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 0
+
+
+def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
+    """Defensive: a member missing row_y (shouldn't happen in practice) is left as-is."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0),
+        _donor(alliance_honor=9044, row_y=None),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    mock_candidates.assert_not_called()
+    assert members[1].alliance_honor == 9044
 
 
 # ── Dispatcher ──────────────────────────────────────────────────────────────────
