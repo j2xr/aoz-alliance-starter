@@ -125,6 +125,18 @@ def current_backend() -> str:
     return _BACKEND
 
 
+def health_check() -> bool:
+    """Run a trivial OCR call through the active backend to confirm Tesseract
+    actually works (missing tessdata, a broken tesserocr build, etc. surface
+    here), not just that the process imported without raising at startup."""
+    try:
+        image_to_string(np.zeros((10, 10), dtype=np.uint8), lang="eng", config="--psm 7")
+        return True
+    except Exception:
+        logger.exception("Tesseract health check failed")
+        return False
+
+
 # ── Config string parser ────────────────────────────────────────────────────
 
 _PSM_RE = re.compile(r"--psm\s+(\d+)")

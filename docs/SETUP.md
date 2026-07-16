@@ -177,8 +177,8 @@ SUPABASE_SERVICE_ROLE_KEY=...         # service_role key from step 2 (server-sid
 Fill in `apps/ocr-service/.env` — for a basic deterministic setup you only need:
 
 ```
-SUPABASE_URL=...                      # same Project URL
-SUPABASE_ANON_KEY=...                 # anon key (OCR only reads at_event_types)
+SUPABASE_URL=...                      # same Project URL (optional -- see table below)
+SUPABASE_SERVICE_ROLE_KEY=...         # service_role key (optional; not the anon key -- see table below)
 LLM_FALLBACK_ENABLED=false            # set true + configure OLLAMA_* to enable the LLM fallback
 ```
 
@@ -199,6 +199,61 @@ bot deduplicates, runs OCR, and UPSERTs rows into the `at_*` tables.
 > env vars as above through the platform's secrets UI, and let the bot reach the
 > OCR service over the internal network (`OCR_SERVICE_URL`). No public ingress
 > is required — the bot talks to Discord outbound and to Supabase over HTTPS.
+
+### Environment variables reference
+
+Full list of variables read by each service. "Default" is what the code falls
+back to when the variable is unset — not always the same as the value shipped
+in `.env.example`, which sometimes ships a tuned recommendation instead (noted
+below).
+
+**`apps/discord-bot`**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DISCORD_BOT_TOKEN` | *(required)* | Bot token from step 4. |
+| `DISCORD_ALLOWED_CHANNEL_IDS` | *(required)* | Comma-separated channel IDs the bot ingests from. |
+| `SUPABASE_URL` | *(required)* | Same Supabase project as the frontend. |
+| `SUPABASE_SERVICE_ROLE_KEY` | *(required)* | Bypasses RLS to write `at_*` tables. Never expose client-side. |
+| `OCR_SERVICE_URL` | `http://ocr-service:8000` | Where the bot reaches the OCR service. |
+| `OCR_TIMEOUT_MS` | `1800000` (30 min) | Total polling budget for one OCR job. |
+| `OCR_POLL_INTERVAL_MS` | `5000` | Delay between two `GET /jobs/<id>` polls. |
+| `DATA_INBOX_DIR` | `/data/inbox` | Where incoming screenshots are staged (sha256 dedup). |
+| `REPROCESS_CONCURRENCY` | `3` | Screenshots processed in parallel by `/reprocess-channel` and `/reprocess`. |
+| `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
+
+**`apps/ocr-service`**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | *(optional)* | Set with `SUPABASE_SERVICE_ROLE_KEY` to load title aliases from the DB; leave both empty to silently use the embedded static alias list. There is no `SUPABASE_ANON_KEY` here — the anon key is never read by this service. |
+| `SUPABASE_SERVICE_ROLE_KEY` | *(optional)* | See above. RLS on `at_event_types` only allows the `authenticated` role, so the anon key would not work anyway. |
+| `JOBS_DB_PATH` | `/data/jobs.db` | SQLite path for the job store. |
+| `LOG_LEVEL` | `INFO` | Python `logging` level name. |
+| `LLM_FALLBACK_ENABLED` | `false` | Set `true` (+ configure `OLLAMA_*`) to re-OCR low-confidence names via a vision LLM. |
+| `LLM_MAX_CONSECUTIVE_FAILURES` | `2` | Stop calling the LLM after this many *consecutive* failures within one image. |
+| `OCR_BACKEND` | `tesserocr` | `tesserocr` (in-process) or `pytesseract` (subprocess rollback). |
+| `OCR_TESS_POOL_SIZE` | `16` | Size of the `tesserocr` `PyTessBaseAPI` instance pool. |
+| `OCR_CONFIDENCE_THRESHOLD` | `0.75` | Global fallback threshold used when a field-specific one below is unset. |
+| `OCR_CONFIDENCE_THRESHOLD_NAME` | `0.75` | Recommended: `0.35` — names score structurally lower than other fields on some game fonts. |
+| `OCR_CONFIDENCE_THRESHOLD_RANK` | `0.75` | Recommended: `0.85` — near-certain with a whitelisted charset. |
+| `OCR_CONFIDENCE_THRESHOLD_POWER` | `0.75` | Recommended: `0.85`. |
+| `OCR_CONFIDENCE_THRESHOLD_POINTS` | `0.75` | Recommended: `0.85`. |
+| `OCR_NAME_ASCII_FAST_PATH_ENABLED` | `true` | Try a fast ASCII-only OCR pass before the full multilingual one. |
+| `OCR_NAME_ASCII_FAST_PATH_MIN_CONF` | `0.60` | Confidence floor to accept the fast-path result. |
+| `OCR_FUZZY_TITLE_THRESHOLD` | `0.82` | Similarity floor for matching a screenshot's title to a known event type. |
+| `OCR_TAB_DETECT_MIN_DELTA` | `4.0` | Contribution-ranking parser: minimum pixel delta to detect a tab boundary. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Only used when `LLM_FALLBACK_ENABLED=true`. |
+| `OLLAMA_API_KEY` | *(empty)* | Leave empty for a loopback Ollama with no auth. |
+| `OLLAMA_MODEL` | `moondream` | Vision model name. |
+| `OLLAMA_NUM_CTX` | `2048` | Context window size. |
+| `OLLAMA_NUM_PREDICT` | `256` | Max generated tokens per request. |
+| `OLLAMA_THINK` | `false` | Only affects "thinking" models; ignored by e.g. moondream. |
+| `OLLAMA_KEEP_ALIVE` | `30m` | How long Ollama keeps the model loaded after a request. |
+| `OLLAMA_TIMEOUT_SECONDS` | `300` | HTTP timeout per `/api/generate` call. |
+| `OLLAMA_PLAYER_STATS_TIMEOUT_SECONDS` | `90` | Separate timeout for the one-shot full-image player-stats path. |
+| `OLLAMA_PLAYER_STATS_MAX_WIDTH` | `720` | Max width (px) of the image sent to the LLM for player stats. |
+| `OLLAMA_PLAYER_STATS_MAX_HEIGHT` | `960` | Max height (px), same reasoning. |
 
 ---
 

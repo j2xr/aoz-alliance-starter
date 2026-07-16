@@ -1,4 +1,8 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { Message, EmbedBuilder } from 'discord.js';
 import { isOcrError } from '@alliance-tracker/shared-types';
 import { requireAlliance } from '../lib/alliance.js';
@@ -25,6 +29,7 @@ export const data = new SlashCommandBuilder()
   .setDescription(
     "Forcer le retraitement OCR d'une capture (événement ou don)",
   )
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('message_url')

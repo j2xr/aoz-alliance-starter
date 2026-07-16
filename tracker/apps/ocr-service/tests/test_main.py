@@ -19,7 +19,28 @@ def test_health() -> None:
     with TestClient(app) as client:
         resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    assert resp.json() == {"status": "ok", "tesseract": True, "db": True}
+
+
+def test_health_degraded_when_tesseract_fails() -> None:
+    with patch("app.main.health_check", return_value=False), TestClient(app) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["tesseract"] is False
+    assert body["db"] is True
+
+
+def test_health_degraded_when_db_fails() -> None:
+    with TestClient(app) as client, patch("app.main._db") as mock_db:
+        mock_db.execute.side_effect = RuntimeError("db closed")
+        resp = client.get("/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["status"] == "degraded"
+    assert body["tesseract"] is True
+    assert body["db"] is False
 
 
 def test_extract_rejects_non_image() -> None:

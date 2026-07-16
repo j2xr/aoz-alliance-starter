@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 function fmtPct(v) {
@@ -21,9 +22,38 @@ const TH_STYLE = (align = 'left') => ({
   whiteSpace: 'nowrap',
 });
 
+const COLS = [
+  { key: 'player_name', label: 'PLAYER', align: 'left', numeric: false },
+  { key: 'last_rank', label: 'RANK', align: 'center', numeric: false },
+  { key: 'attack_pct', label: 'ATK %', align: 'right', numeric: true },
+  { key: 'hp_pct', label: 'HP %', align: 'right', numeric: true },
+  { key: 'defense_pct', label: 'DEF %', align: 'right', numeric: true },
+  { key: 'recorded_date', label: 'DATE', align: 'right', numeric: false },
+];
+
 export function PlayerStatsTable({ rows }) {
   const navigate = useNavigate();
   const { allianceId } = useParams();
+  const [sortKey, setSortKey] = useState('attack_pct');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const numericSort = COLS.find(c => c.key === sortKey)?.numeric ?? false;
+  const sorted = useMemo(() => [...rows].sort((a, b) => {
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (numericSort) return sortAsc ? av - bv : bv - av;
+    return sortAsc
+      ? String(av).localeCompare(String(bv))
+      : String(bv).localeCompare(String(av));
+  }), [rows, sortKey, sortAsc, numericSort]);
+
+  const handleSort = key => {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(key === 'player_name'); }
+  };
 
   if (!rows.length) {
     return (
@@ -39,16 +69,25 @@ export function PlayerStatsTable({ rows }) {
       <thead>
         <tr>
           <th style={TH_STYLE('center')}>#</th>
-          <th style={TH_STYLE()}>PLAYER</th>
-          <th style={TH_STYLE('center')}>RANK</th>
-          <th style={TH_STYLE('right')}>ATK %</th>
-          <th style={TH_STYLE('right')}>HP %</th>
-          <th style={TH_STYLE('right')}>DEF %</th>
-          <th style={TH_STYLE('right')}>DATE</th>
+          {COLS.map(col => (
+            <th
+              key={col.key}
+              onClick={() => handleSort(col.key)}
+              style={{
+                ...TH_STYLE(col.align),
+                color: sortKey === col.key ? '#38bdf8' : TH_STYLE().color,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              {col.label}
+              {sortKey === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, i) => (
+        {sorted.map((row, i) => (
           <tr
             key={row.player_id}
             onClick={() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}

@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
+  PermissionFlagsBits,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { supabase } from '../lib/supabase.js';
@@ -11,6 +12,7 @@ import logger from '../logger.js';
 export const data = new SlashCommandBuilder()
   .setName('merge')
   .setDescription('Fusionner un doublon OCR vers un joueur canonique et enregistrer son alias')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('alias')
