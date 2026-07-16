@@ -575,6 +575,26 @@ export async function upsertDonationResult(
     messageCreatedAt.toISOString(),
   );
 
+  // Best-effort visibility only: on-screen position should be strictly
+  // increasing top-to-bottom within one capture. leaderboard_position is
+  // informational, not a dedup/identity key (a confidently-wrong OCR read is
+  // possible — see ocr-service's _ocr_position docstring), so a step
+  // backward here doesn't block anything; it's just worth surfacing.
+  const positions = ocr.members
+    .map((m) => m.leaderboard_position)
+    .filter((p): p is number => p != null);
+  let previousPosition: number | undefined;
+  for (const position of positions) {
+    if (previousPosition !== undefined && position <= previousPosition) {
+      logger.warn(
+        { positions },
+        'Donation OCR: leaderboard_position is not strictly increasing within this capture',
+      );
+      break;
+    }
+    previousPosition = position;
+  }
+
   // 7. UPSERT at_donations — latest-wins on re-upload
   const memberByName = new Map(uniqueMembers.map((m) => [m.name, m]));
 
@@ -586,6 +606,7 @@ export async function upsertDonationResult(
       alliance_honor: m.alliance_honor,
       player_rank: m.rank,
       alliance_tag: m.alliance_tag,
+      leaderboard_position: m.leaderboard_position ?? null,
       ocr_confidence: m.confidence,
       raw_ocr: m as unknown as Record<string, unknown>,
       source_message_id: messageId,
