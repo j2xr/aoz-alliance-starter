@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Any, cast
 
 import numpy as np
@@ -15,7 +16,12 @@ from app.parsers.base import (
     PlayerStatsMember,
     PlayerStatsParseResult,
 )
-from app.parsers.name_ocr import normalize_name
+from app.parsers.contribution_ranking_v1 import _strip_alliance_tag
+from app.parsers.name_ocr import fix_name_substitutions, normalize_name
+
+# Leading rank-column digits that bleed into the name — mirrors the same
+# cleanup step in ContributionRankingV1Parser._parse_row.
+_LEADING_RANK_RE = re.compile(r"^\s*\d{1,2}\s+")
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +120,7 @@ def _apply_llm_fallback(
     Works for both event (MemberResult) and donation (DonationMember) shapes —
     only the `name` field is rewritten; all other fields are preserved verbatim.
     """
-    from app.llm_fallback import llm_fallback
+    from app.llm_fallback import llm_fallback, llm_fallback_donation
 
     row_height: int = getattr(parser, "row_height", 225)
     member_list_top: int = getattr(parser, "member_list_top", 400)
@@ -147,6 +153,44 @@ def _apply_llm_fallback(
         crop_h = member.row_h if member.row_h is not None else row_height
         row_crop: np.ndarray = image[y : y + crop_h, :]
         try:
+            if isinstance(member, DonationMember):
+                # Self-consistency gate: trust the corrected name only when the
+                # model also reads a score matching the OCR'd Alliance Honor —
+                # proof it read *this* row and not a notification banner
+                # overlaid on it (observed: a "X helped you …" toast was
+                # transcribed as a confident, wrong player name). A rejected
+                # correction is no worse than no fallback: we keep the (flagged,
+                # low-confidence) OCR name rather than a confident hallucination.
+                llm_name, llm_score = llm_fallback_donation(row_crop)
+                consecutive_failures = 0
+                if not llm_name:
+                    logger.info("LLM confirmed name for %r (no correction)", member.name)
+                    updated.append(member)
+                elif llm_score != member.alliance_honor:
+                    logger.warning(
+                        "LLM correction rejected for %r → %r (row %d): read score %r "
+                        "≠ OCR honor %d — likely a misaligned/overlaid read, keeping OCR",
+                        member.name,
+                        llm_name,
+                        i,
+                        llm_score,
+                        member.alliance_honor,
+                    )
+                    updated.append(member)
+                else:
+                    new_name = str(llm_name)
+                    if new_name != member.name:
+                        logger.info(
+                            "LLM corrected name for %r → %r (score %d confirms row)",
+                            member.name,
+                            new_name,
+                            member.alliance_honor,
+                        )
+                    else:
+                        logger.info("LLM confirmed name for %r (no correction)", member.name)
+                    updated.append(_rewrite_name(member, new_name))
+                continue
+
             llm_name = llm_fallback(row_crop)
             consecutive_failures = 0
 
@@ -281,9 +325,20 @@ def _rewrite_name(
             row_y=member.row_y,
             row_h=member.row_h,
         )
+    # Run the LLM-corrected name through the SAME cleanup the parser applies to
+    # its own OCR output (ContributionRankingV1Parser._parse_row): the vision
+    # model returns the name verbatim including the "(SOD)" alliance tag, so
+    # without this the tag leaks straight into `name` (observed in production:
+    # "(SOD) BenOVerbich" stored as the player name). Strip a leading
+    # rank-column bleed, split off the tag, then apply the misread fixes.
+    tag_stripped = _LEADING_RANK_RE.sub("", new_name)
+    tag, cleaned_name = _strip_alliance_tag(tag_stripped)
+    cleaned_name = fix_name_substitutions(cleaned_name)
     return DonationMember(
-        name=new_name,
-        alliance_tag=member.alliance_tag,
+        name=cleaned_name,
+        # Prefer a tag freshly recovered from the LLM output; fall back to what
+        # the parser had (the OCR pass that failed may still have caught it).
+        alliance_tag=tag if tag is not None else member.alliance_tag,
         rank=member.rank,
         alliance_honor=member.alliance_honor,
         confidence=-1.0,

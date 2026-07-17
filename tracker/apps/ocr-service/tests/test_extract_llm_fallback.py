@@ -90,7 +90,10 @@ def test_donation_member_shape_only_name_rewritten() -> None:
         name="DarKKnight", alliance_tag="SOD", rank="R2", alliance_honor=4200, confidence=0.2
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
-    with patch("app.llm_fallback.llm_fallback", return_value="DarkKnight"):
+    # Donations go through llm_fallback_donation with a self-consistency gate:
+    # the corrected name is accepted only when the returned score matches the
+    # OCR'd honor (4200 here), proving the model read this row.
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("DarkKnight", 4200)):
         out = _apply_llm_fallback(_IMG, result, _StubParser())
 
     m = out.members[0]
@@ -100,6 +103,64 @@ def test_donation_member_shape_only_name_rewritten() -> None:
     assert m.alliance_tag == "SOD"
     assert m.rank == "R2"
     assert m.alliance_honor == 4200
+
+
+def test_donation_correction_rejected_when_score_mismatches_honor() -> None:
+    """The overlay/hallucination guard: a corrected name whose LLM-read score
+    does not match the OCR honor is rejected, keeping the OCR name."""
+    donor = DonationMember(
+        name="고", alliance_tag=None, rank="R1", alliance_honor=1946, confidence=0.2
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    # Model read a name off an overlaid toast and a score (52) that is not the
+    # row's honor (1946) — reject the correction.
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("CEKATOP_1000", 52)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert m.name == "고"  # OCR result kept, hallucinated name not applied
+    assert m.alliance_honor == 1946
+
+
+def test_donation_correction_rejected_when_score_missing() -> None:
+    """No score to cross-check against → distrust the correction (conservative)."""
+    donor = DonationMember(
+        name="garbled", alliance_tag=None, rank="R1", alliance_honor=800, confidence=0.2
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("Plausible", None)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert out.members[0].name == "garbled"
+
+
+def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:
+    """A validated correction still runs through tag-stripping (the LLM returns
+    the name verbatim, tag included)."""
+    donor = DonationMember(
+        name="rs", alliance_tag=None, rank="R1", alliance_honor=2235, confidence=0.2
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch(
+        "app.llm_fallback.llm_fallback_donation", return_value=("(SOD) BenOVerbich", 2235)
+    ):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert m.name == "BenOVerbich"
+    assert m.alliance_tag == "SOD"
+
+
+def test_donation_none_name_keeps_ocr_result() -> None:
+    """Model abstains (name=null) → keep the OCR member unchanged."""
+    donor = DonationMember(
+        name="Keeper", alliance_tag="SOD", rank="R1", alliance_honor=500, confidence=0.2
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=(None, None)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert out.members[0].name == "Keeper"
 
 
 # ── _apply_llm_fallback: circuit breaker ───────────────────────────────────────

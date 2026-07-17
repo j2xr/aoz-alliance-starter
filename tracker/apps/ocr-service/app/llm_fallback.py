@@ -56,6 +56,19 @@ _PROMPT_SIMPLE = (
     "Copy the name exactly as shown. Use null if unreadable."
 )
 
+# Donation-row prompt: asks for the name AND the Alliance Honor score in the same
+# call. The caller (extract._apply_llm_fallback) accepts the corrected name ONLY
+# when this score matches the independently-OCR'd honor — a self-consistency
+# check that the model actually read *this* row rather than a notification
+# banner overlaid on it or a neighbouring row. See llm_fallback_donation.
+_PROMPT_DONATION = (
+    "This is one row of a mobile game contribution leaderboard. Left to right it shows: "
+    "a rank number, an avatar, the player name, and the player's score (Alliance Honor) "
+    "as a number on the far right. Copy the name exactly, in any script. "
+    'Return ONLY a JSON object: {"name": "<exact player name, or null if unreadable>", '
+    '"score": <the Alliance Honor number on the far right, or null>}.'
+)
+
 # Prompt for full player stats chat screenshot extraction.
 # Asks the model to return all members' military stats as a JSON array.
 _PROMPT_PLAYER_STATS = (
@@ -364,6 +377,60 @@ def llm_fallback(row_image: np.ndarray) -> str | None:
     name: str | None = raw.get("name") if isinstance(raw, dict) else None
     logger.debug("Ollama %s parsed name: %r", model, name)
     return name
+
+
+def _coerce_int(value: Any) -> int | None:
+    """Best-effort int from an LLM-returned score (int, or string with commas)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        digits = value.replace(",", "").strip()
+        if digits.lstrip("-").isdigit():
+            return int(digits)
+    return None
+
+
+def llm_fallback_donation(row_image: np.ndarray) -> tuple[str | None, int | None]:
+    """Donation-row LLM read: returns (name, score) from a single Ollama call.
+
+    ``score`` is the Alliance Honor value the model reads on the far right of the
+    row. The caller cross-checks it against the OCR'd honor and only trusts the
+    name when they agree — so a confident-but-wrong read (e.g. a notification
+    banner overlaying the row, which the model happily transcribes as a player
+    name) is caught: a model whose attention drifted off the real row reports a
+    score that does not match. Uses the full-width crop on purpose — the model
+    must pick the honor out among the row's numbers, and a drifted read betrays
+    itself by returning the wrong one.
+    """
+    base_url, model, num_ctx, num_predict, think, timeout_seconds, keep_alive, headers = (
+        _get_ollama_params()
+    )
+    if _uses_simple_prompt(model):
+        prompt = _PROMPT_DONATION  # small models get the same schema; it is already terse
+    elif _uses_thinking_controls(model) and not think:
+        prompt = f"{_PROMPT_DONATION} /no_think"
+    else:
+        prompt = _PROMPT_DONATION
+
+    h, w = row_image.shape[:2]
+    encoded_image = _encode_image(row_image)
+
+    raw_response = _call_with_retry(
+        base_url, model, prompt, encoded_image, num_ctx, num_predict,
+        think, keep_alive, headers, timeout_seconds, (w, h),
+    )
+
+    raw: Any = json.loads(_extract_json_object(raw_response))
+    if not isinstance(raw, dict):
+        return None, None
+    name: str | None = raw.get("name")
+    score: int | None = _coerce_int(raw.get("score"))
+    logger.debug("Ollama %s parsed donation row: name=%r score=%r", model, name, score)
+    return name, score
 
 
 def llm_fallback_player_stats(image: np.ndarray) -> list[dict[str, Any]] | None:
