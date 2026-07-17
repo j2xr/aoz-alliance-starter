@@ -27,6 +27,13 @@ export type OcrDonationMember = {
   rank: string;                // R1..R5 or "" for the highlighted viewer row
   alliance_honor: number;
   confidence: number;
+  // On-screen leaderboard position (1-81), best-effort OCR. Informational
+  // only — NOT an identity/dedup key (see ocr-service's DonationMember
+  // docstring: digit misreads here can be confidently wrong). null/absent
+  // when the OCR vote didn't reach a strong majority (the wire payload
+  // always sends it, but optional here so existing object literals/fixtures
+  // don't need updating for a purely informational addition).
+  leaderboard_position?: number | null;
 };
 
 export type OcrDonationResult = {

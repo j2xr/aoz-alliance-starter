@@ -42,6 +42,12 @@ class DonationMember(BaseModel):
     rank: str  # R1..R5 ou ""
     alliance_honor: int
     confidence: float
+    # On-screen leaderboard position (1-81), best-effort OCR. Informational
+    # only — NOT an identity/dedup key (a plausibility calibration against a
+    # real fixture showed digit misreads here can be confidently wrong, e.g.
+    # rank 1 read as "2"; see contribution_ranking_v1._ocr_position). None
+    # when the multi-config vote doesn't reach a strong majority.
+    leaderboard_position: int | None = None
     trace: RowTrace | None = Field(default=None, exclude=True)
     # Voir MemberResult.row_y/row_h : bande réelle de la ligne pour le fallback LLM.
     row_y: int | None = Field(default=None, exclude=True)

@@ -287,6 +287,7 @@ def _rewrite_name(
         rank=member.rank,
         alliance_honor=member.alliance_honor,
         confidence=-1.0,
+        leaderboard_position=member.leaderboard_position,
         trace=member.trace,
         row_y=member.row_y,
         row_h=member.row_h,
