@@ -22,6 +22,12 @@ services:
       - ./data/ocr:/data
     networks:
       - internal
+      # LLM fallback (OLLAMA_BASE_URL=http://ollama:11434 in .env) reaches an
+      # Ollama container that lives outside this stack, on the host's
+      # `docker_default` network — not reachable via `internal` alone. Without
+      # this, "ollama" never resolves and every fallback call fails with a
+      # connection error (silently swallowed: OCR keeps the raw result).
+      - ollama_net
     healthcheck:
       # python:…-slim n'embarque pas curl : la sonde utilise l'interpréteur
       # déjà présent dans l'image (un healthcheck curl échouait toujours et
@@ -59,3 +65,10 @@ services:
 networks:
   internal:
     driver: bridge
+  # External: the host's pre-existing Ollama stack's default network (see
+  # /home/deploy/docker/docker-compose-vps-*.yml), not owned by this compose
+  # file. `name:` pins it to that exact network instead of Compose's usual
+  # `<project>_<key>` naming, since it must match what already exists.
+  ollama_net:
+    external: true
+    name: docker_default
