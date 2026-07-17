@@ -30,6 +30,7 @@ space (names on the donation screen keep their spaces), hence the local
 import logging
 import os
 import re
+from collections import Counter
 from typing import Any, Literal
 
 import cv2
@@ -93,6 +94,16 @@ _MAX_ROWS = 12
 _RANK_BADGE_X = (148, 200)
 _RANK_BADGE_Y = (15, 90)
 
+# Leaderboard-position crop (the plain digit(s) at x=0..170 — see module
+# docstring). Calibrated against the shipped fixtures: the digit sits in the
+# upper half of the row, left of the avatar. NOT used for ranks 1-3 in a
+# capture that starts at the top of the list — those show a numbered
+# medal/shield graphic instead of a plain digit, which this whitelist-digit
+# OCR mostly just fails to read (returns no vote) rather than misreading; see
+# _ocr_position for why that's fine (informational field, best-effort).
+_POSITION_X = (10, 155)
+_POSITION_Y_OFF = (8, 100)
+
 # Name and alliance-honor crops within each row.
 _NAME_X = (240, 760)
 _NAME_Y_OFF = (45, 130)
@@ -103,6 +114,21 @@ _NAME_Y_OFF = (45, 130)
 _NAME_WRAP_Y_OFF = (85, 160)
 _HONOR_X = (770, 1060)
 _HONOR_Y_OFF = (40, 130)
+# Fallback-only extra margin (see _ocr_honor / _ocr_name): a real-world
+# capture showed the primary (40, 130)/(45, 130) bands starve Tesseract of
+# quiet-zone margin when the text renders a few px lower than on the fixtures
+# these were tuned against — "2458" came back as "9", the name as garbage —
+# despite the full glyphs being visibly present, just tight against the crop
+# edge. A wider *tall* band recovers both, but widening the module constants
+# outright regressed a shipped fixture: _detect_list_top centres row_top on
+# _NAME_Y_OFF's midpoint, so changing it shifts every row's y for every
+# image, including ones where the tight band already works — on
+# weekly_009 that shift dropped row 0 entirely and cascaded a shift into
+# every row after it. Keeping the primary bands untouched and only reaching
+# for the extra margin when they've already failed is strictly additive: it
+# can only rescue an otherwise-dropped row, never disturb one that already
+# succeeds.
+_Y_OFF_FALLBACK_MARGIN = 40
 
 # Public aliases consumed by extract.py for LLM-fallback row slicing.
 MEMBER_LIST_TOP = _MEMBER_LIST_TOP
@@ -110,15 +136,25 @@ ROW_HEIGHT = _ROW_HEIGHT
 
 # "(SOD) jeinsolaya" → tag="SOD", name="jeinsolaya"
 # Tag is 1..5 alphanumerics inside parentheses, optionally followed by spaces.
-# [^(]{0,6} tolerates a short run of leading OCR artifacts before the opening
-# paren — not just non-letters. The avatar frequently bleeds a letter-like
-# glyph into the left of the name crop ("x (SOD) Аня", "Sai (SOD) CumStang",
-# "D| (SOD) Noside"); the previous [^A-Za-z(]* excluded letters and so left the
-# whole "(SOD) Name" un-stripped. The 6-char cap keeps a genuinely tag-less
-# name (no "(" at all → no match) untouched while covering the widest bleed
-# observed (~5 chars incl. the gap). \s* inside the parens tolerates a space
-# Tesseract occasionally inserts.
-_ALLIANCE_TAG_RE = re.compile(r"^\s*[^(]{0,6}\(\s*([A-Za-z0-9]{1,5})\s*\)\s*")
+# Unanchored search (not match) over a bounded prefix window, rather than a
+# strict "^junk-then-paren" anchor: the avatar sometimes bleeds a bogus
+# fragment that itself starts with '(' — e.g. "(а (SOD) KOR.Chawoo",
+# "(해 (SOD) moco" (a stray '(' glyph, then a non-alphanumeric character from
+# the avatar/badge, then the real tag). A leading [^(]{0,6} prefix-skip can
+# never get past that first '(' — it excludes '(' by definition — so the real
+# "(SOD)" downstream was left un-stripped, leaking straight into `name`.
+# Searching for the first *valid-looking* tag (parenthesised, 1-5
+# alphanumerics) within a bounded window sidesteps that: it simply skips over
+# any leading junk — parenthesised or not — that doesn't itself match the tag
+# shape. \s* inside the parens tolerates a space Tesseract occasionally
+# inserts; the trailing \s* eats the gap before the name.
+_ALLIANCE_TAG_RE = re.compile(r"\(\s*([A-Za-z0-9]{1,5})\s*\)\s*")
+# How far into the raw OCR string to look for the tag. Covers the widest
+# bleed observed (a bogus leading paren plus a stray glyph, ~10 chars) with
+# margin, while staying narrow enough that a genuinely tag-less long pseudo is
+# unlikely to happen to contain a coincidental "(XX)"-shaped fragment this
+# early.
+_ALLIANCE_TAG_SEARCH_WINDOW = 20
 
 # ASCII fast-path: same logic as polar_invasion_v1 — eng-only first, escalate
 # to full multilang only when result is non-ASCII or confidence is too low.
@@ -139,17 +175,64 @@ def _strip_alliance_tag(raw: str) -> tuple[str | None, str]:
     """Split "(TAG) Name" → ("TAG", "Name"). Returns (None, raw) when no tag."""
     if not raw:
         return None, raw
-    m = _ALLIANCE_TAG_RE.match(raw)
+    window = raw[:_ALLIANCE_TAG_SEARCH_WINDOW]
+    m = _ALLIANCE_TAG_RE.search(window)
     if not m:
         return None, raw.strip()
-    remainder = raw[m.end() :].strip()
+    remainder = (window[m.end() :] + raw[len(window) :]).strip()
     if not remainder:
         # The tag pattern consumed the whole string (e.g. raw == "(SOD)" with
-        # no name left, or an over-eager [^(]{0,6} prefix ate it) — there's no
-        # name to attach the tag to. Treat as untagged rather than dropping
-        # the row's name entirely.
+        # no name left) — there's no name to attach the tag to. Treat as
+        # untagged rather than dropping the row's name entirely.
         return None, raw.strip()
     return m.group(1), remainder
+
+
+# ── Leaderboard position (best-effort, informational only) ──────────────────
+#
+# Multi-threshold × multi-psm vote, same spirit as PolarInvasionV1Parser's
+# R-badge detector, but the confidence bar is set deliberately high: a
+# calibration run against a real fixture showed this cell can produce a
+# *confident-looking wrong* digit (e.g. the medal for rank 1 read as "2" with
+# 2 votes vs "1" with 0), unlike a garbled name that visibly looks wrong. So
+# unlike the R-badge detector (which must always return something, defaulting
+# to R1 to avoid dropping the row), this returns None — not a guess — whenever
+# the winning value doesn't clear a strong majority of the votes.
+#
+# Unlike the R-badge detector, this sweep has no early exit: a spot-check
+# showed trimming the combo list (or stopping as soon as 2 combos agree, the
+# R-badge detector's shortcut) shifts the ratio enough to flip some rows from
+# correctly-rejected to confidently-wrong — the full sweep is what the ratio
+# threshold above was calibrated against. That makes each row ~20 extra
+# tesseract calls (cheap on the in-process tesserocr backend used in
+# production, ~100ms/call and thus seconds of latency on the pytesseract
+# subprocess fallback). Since this field is purely informational, it can be
+# switched off with zero code change if it ever shows up in a latency budget.
+_POSITION_OCR_ENABLED: bool = (
+    os.getenv("OCR_LEADERBOARD_POSITION_ENABLED", "true").lower() == "true"
+)
+_POSITION_THRESHOLDS: tuple[int | None, ...] = (None, 80, 110, 140, 170)  # None = no binarization
+_POSITION_PSMS: tuple[int, ...] = (7, 8, 10, 13)
+_POSITION_MIN_VOTE_RATIO = 0.7
+
+
+def _ocr_position_from_crop(crop: np.ndarray) -> int | None:
+    """Vote across threshold × psm combos; return the value only on a strong majority."""
+    votes: Counter[int] = Counter()
+    for thresh in _POSITION_THRESHOLDS:
+        im = crop if thresh is None else cv2.threshold(crop, thresh, 255, cv2.THRESH_BINARY)[1]
+        for psm in _POSITION_PSMS:
+            text = pytesseract.image_to_string(
+                im, config=f"--psm {psm} -c tessedit_char_whitelist=0123456789"
+            ).strip()
+            val = parse_number(text)
+            if val is not None and 1 <= val <= 999:
+                votes[val] += 1
+
+    if not votes:
+        return None
+    value, count = votes.most_common(1)[0]
+    return value if count / sum(votes.values()) >= _POSITION_MIN_VOTE_RATIO else None
 
 
 class ContributionRankingV1Parser(BaseParser):
@@ -201,7 +284,74 @@ class ContributionRankingV1Parser(BaseParser):
             if validate_donation_member(member):
                 members.append(member)
 
+        self._enforce_honor_monotonicity(image, members, scale)
+
         return DonationParseResult(period_type=period_type, members=members)
+
+    # ── Cross-row consistency ────────────────────────────────────────────────
+    #
+    # The leaderboard is sorted by alliance_honor descending — a value that
+    # jumps *above* the row before it within the same capture cannot be
+    # correct (ties are fine; real captures show equal-honor rows back to
+    # back). Unlike a garbled name, a misread honor is just another
+    # plausible-looking number ("2385" read as "92256"), so nothing upstream
+    # flags it — this ordering check is the only signal available.
+    #
+    # When it fires: re-OCR the cell with a few extra configs and keep
+    # whichever candidate actually fits between its neighbours. Fitting the
+    # window is a plausibility check, not proof of correctness — on a real
+    # fixture, a misread "3135" produced candidates {32135, 2135} and never
+    # the true value, so the picked "2135" is still wrong, just no longer
+    # order-breaking. Every row that trips this guard is therefore left at
+    # reduced confidence, corrected or not, for downstream visibility. Note
+    # this does NOT route through the LLM fallback — extract.py only ever
+    # lets the LLM correct `name` — so an unresolved case still needs a human
+    # or a reprocess to fix.
+    _MONOTONICITY_FIX_CONFIDENCE = 0.5  # capped, not trusted outright — see above
+    _MONOTONICITY_NO_FIX_CONFIDENCE = 0.0
+
+    def _enforce_honor_monotonicity(
+        self, image: np.ndarray, members: list[DonationMember], scale: float
+    ) -> None:
+        for i, member in enumerate(members):
+            if i == 0:
+                continue  # no predecessor to compare against
+            upper = members[i - 1].alliance_honor
+            if member.alliance_honor <= upper:
+                continue  # nominal: non-increasing (or a legitimate tie)
+
+            lower = members[i + 1].alliance_honor if i + 1 < len(members) else 0
+            logger.warning(
+                "donation row %d: alliance_honor=%d breaks monotonicity (previous row=%d)",
+                i,
+                member.alliance_honor,
+                upper,
+            )
+            if member.row_y is None:
+                continue  # can't re-crop without the row's y-origin
+
+            candidates = self._ocr_honor_candidates(image, member.row_y, scale)
+            fixed = next((c for c in candidates if lower <= c <= upper), None)
+            if fixed is not None:
+                logger.info(
+                    "donation row %d: alliance_honor corrected %d → %d via monotonicity "
+                    "re-OCR (unverified — order-consistent, not confirmed correct)",
+                    i,
+                    member.alliance_honor,
+                    fixed,
+                )
+                member.alliance_honor = fixed
+                member.confidence = min(member.confidence, self._MONOTONICITY_FIX_CONFIDENCE)
+            else:
+                logger.warning(
+                    "donation row %d: no re-OCR candidate for alliance_honor fits "
+                    "[%d, %d] — keeping %d, lowering confidence for visibility",
+                    i,
+                    lower,
+                    upper,
+                    member.alliance_honor,
+                )
+                member.confidence = self._MONOTONICITY_NO_FIX_CONFIDENCE
 
     # ── Tab detection ────────────────────────────────────────────────────────
     #
@@ -358,6 +508,8 @@ class ContributionRankingV1Parser(BaseParser):
         if honor is None:
             return None
 
+        position = self._ocr_position(image, y, scale)
+
         confs = [int(c) for c in name_data["conf"] if str(c).lstrip("-").isdigit() and int(c) >= 0]
         confidence = sum(confs) / (len(confs) * 100) if confs else 0.0
 
@@ -384,6 +536,7 @@ class ContributionRankingV1Parser(BaseParser):
             rank=rank or "",
             alliance_honor=honor,
             confidence=confidence,
+            leaderboard_position=position,
             trace=trace,
             row_y=y,
             row_h=row_h,
@@ -506,6 +659,29 @@ class ContributionRankingV1Parser(BaseParser):
 
         return name, data
 
+    # ── Leaderboard position OCR (best-effort, informational) ───────────────
+
+    def _ocr_position(self, image: np.ndarray, y: int, scale: float) -> int | None:
+        """Best-effort read of the on-screen leaderboard position (1-81).
+
+        Informational only — see ``DonationMember.leaderboard_position``.
+        Returns None on the top-3 medal rows (no plain digit to whitelist-OCR)
+        and on any row where the multi-config vote doesn't reach a strong
+        majority, rather than guessing. Also None outright when
+        OCR_LEADERBOARD_POSITION_ENABLED=false (see module comment: this
+        sweep has no cheap early-exit, so this is the escape hatch if it ever
+        shows up in a latency budget).
+        """
+        if not _POSITION_OCR_ENABLED:
+            return None
+        py1 = y + int(_POSITION_Y_OFF[0] * scale)
+        py2 = y + int(_POSITION_Y_OFF[1] * scale)
+        crop = image[py1:py2, _POSITION_X[0] : _POSITION_X[1]]
+        if crop.size == 0:
+            return None
+        crop_3x = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        return _ocr_position_from_crop(crop_3x)
+
     # ── Alliance Honor OCR ───────────────────────────────────────────────────
 
     def _ocr_honor(self, image: np.ndarray, y: int, scale: float) -> int | None:
@@ -537,4 +713,53 @@ class ContributionRankingV1Parser(BaseParser):
         val = parse_number(text)
         if val is not None and val >= 0:
             return val
+
+        # Fallback: a taller crop, tried only once both fixed-height attempts
+        # above have failed. See _Y_OFF_FALLBACK_MARGIN — some captures render
+        # the digits with too little quiet-zone margin below them for the
+        # nominal band, silently starving Tesseract even though the glyphs are
+        # fully visible in the tight crop. Fallback-only so it can only
+        # rescue an already-failed row, never touch one that already works.
+        tall_hy2 = y + int((_HONOR_Y_OFF[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
+        tall_crop = image[hy1:tall_hy2, _HONOR_X[0] : _HONOR_X[1]]
+        if tall_crop.size:
+            tall_2x = cv2.resize(tall_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            text = pytesseract.image_to_string(
+                tall_2x,
+                config="--psm 7 -c tessedit_char_whitelist=0123456789,",
+            ).strip()
+            val = parse_number(text)
+            if val is not None and val >= 0:
+                return val
         return None
+
+    def _ocr_honor_candidates(self, image: np.ndarray, y: int, scale: float) -> list[int]:
+        """Re-OCR the honor cell with several extra psm/threshold configs.
+
+        Not on the hot path — ``_ocr_honor`` above already returns a value in
+        the nominal case. Used only by ``_enforce_honor_monotonicity`` to look
+        for an alternate reading when the primary one breaks the expected
+        descending order. Returns distinct valid readings in the order tried,
+        so the caller can pick whichever fits the monotone window.
+        """
+        hy1 = y + int(_HONOR_Y_OFF[0] * scale)
+        hy2 = y + int(_HONOR_Y_OFF[1] * scale)
+        crop = image[hy1:hy2, _HONOR_X[0] : _HONOR_X[1]]
+        if crop.size == 0:
+            return []
+
+        crop_2x = cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        norm = cv2.normalize(crop_2x, None, 0, 255, cv2.NORM_MINMAX)  # type: ignore[call-overload]
+
+        seen: set[int] = set()
+        candidates: list[int] = []
+        for im in (crop_2x, norm):
+            for psm in (7, 8, 13):
+                text = pytesseract.image_to_string(
+                    im, config=f"--psm {psm} -c tessedit_char_whitelist=0123456789,"
+                ).strip()
+                val = parse_number(text)
+                if val is not None and val >= 0 and val not in seen:
+                    seen.add(val)
+                    candidates.append(val)
+        return candidates
