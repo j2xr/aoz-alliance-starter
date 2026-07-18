@@ -17,6 +17,7 @@ import { buildDonationEmbed, buildEventEmbed } from '../lib/embed.js';
 import { supabase } from '../lib/supabase.js';
 import logger from '../logger.js';
 import { isImageAttachment } from '../lib/attachment.js';
+import { messages } from '../lib/messages.js';
 
 const MESSAGE_URL_RE =
   /https?:\/\/(?:ptb\.|canary\.)?discord\.com\/channels\/\d+\/(\d+)\/(\d+)/;
@@ -212,7 +213,7 @@ export async function execute(
         { messageId, filename: att.name, err: String(err) },
         'upload reprocess failed',
       );
-      lines.push(`❌ **${att.name}** — erreur inattendue : ${String(err)}`);
+      lines.push(messages.unexpectedError(att.name));
       continue;
     }
 
@@ -238,9 +239,7 @@ export async function execute(
       } catch (err) {
         logger.error({ err: String(err) }, 'Failed to record upload error');
       }
-      lines.push(
-        `⚠️ **${filename}** — OCR : ${ocr.error}${ocr.detail ? ` (${ocr.detail})` : ''}`,
-      );
+      lines.push(messages.ocrError(filename, ocr.error, ocr.detail));
       continue;
     }
 
@@ -274,18 +273,16 @@ export async function execute(
           { messageId, filename, err: String(err) },
           'Donation upsert failed',
         );
-        lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
+        lines.push(messages.databaseError(filename));
         continue;
       }
 
       if (donationResult.status === 'duplicate') {
-        lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
+        lines.push(messages.duplicate(filename));
         continue;
       }
       if (donationResult.status === 'unsupported_period_type') {
-        lines.push(
-          `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
-        );
+        lines.push(messages.unsupportedPeriodType(filename, donationResult.periodType));
         continue;
       }
 
@@ -316,28 +313,22 @@ export async function execute(
         { messageId, filename, err: String(err) },
         'Upsert failed',
       );
-      lines.push(
-        `❌ **${filename}** — erreur base de données : ${String(err)}`,
-      );
+      lines.push(messages.databaseError(filename));
       continue;
     }
 
     if (upsertResult.status === 'duplicate') {
-      lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
+      lines.push(messages.duplicate(filename));
       continue;
     }
 
     if (upsertResult.status === 'unknown_event') {
-      lines.push(
-        `⚠️ **${filename}** — type toujours non reconnu : \`${upsertResult.eventType}\`.`,
-      );
+      lines.push(messages.unknownEventType(filename, upsertResult.eventType));
       continue;
     }
 
     if (upsertResult.status === 'missing_datetime') {
-      lines.push(
-        `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
-      );
+      lines.push(messages.missingDatetime(filename));
       continue;
     }
 
