@@ -9,18 +9,17 @@ import {
   type OcrRouteOutcome,
   type OcrRoutingMessages,
 } from './ingestion.js';
+import { messages } from './messages.js';
 
-// Wording specific to the /reprocess path — see messageCreate.ts for the
-// (deliberately different) /upload-time wording. Unifying these is B4, not
-// this refactor.
+// Shared FR wording (B4) — see lib/messages.ts. `databaseError`'s second
+// param (the raw error) is deliberately ignored: the detail goes to
+// logger.error only, never back to Discord.
 const MESSAGES: OcrRoutingMessages = {
-  screenUnrecognized: (filename) => `⚠️ **${filename}** — type d'écran non reconnu. Utilisez \`/upload\`.`,
-  ocrError: (filename, error, detail) =>
-    `⚠️ **${filename}** — OCR: ${error}${detail ? ` (${detail})` : ''}`,
-  databaseError: (filename, err) => `❌ **${filename}** — database error: ${err}`,
-  unknownEventType: (filename, eventType) =>
-    `⚠️ **${filename}** — type d'événement inconnu: \`${eventType}\`. Utilisez \`/upload event_type:<type>\`.`,
-  missingDatetime: (filename) => `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture.`,
+  screenUnrecognized: messages.screenUnrecognized,
+  ocrError: messages.ocrError,
+  databaseError: (filename) => messages.databaseError(filename),
+  unknownEventType: messages.unknownEventType,
+  missingDatetime: messages.missingDatetime,
 };
 
 export type ReprocessMessageParams = {
@@ -115,7 +114,7 @@ async function processOneAttachment(
       { messageId: message.id, filename: att.name, err: String(err) },
       'reprocess attachment failed',
     );
-    return { outcome: 'failed', line: `❌ **${att.name}** — unexpected error: ${String(err)}` };
+    return { outcome: 'failed', line: messages.unexpectedError(att.name) };
   }
 
   if (!result.ok) {

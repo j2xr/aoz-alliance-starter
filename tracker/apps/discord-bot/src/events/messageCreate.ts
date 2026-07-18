@@ -6,20 +6,17 @@ import { resolveAlliance } from '../lib/alliance.js';
 import type { AllianceRow } from '../lib/alliance.js';
 import { isImageAttachment } from '../lib/attachment.js';
 import { safeProgressEdit } from '../lib/progress-reply.js';
+import { messages } from '../lib/messages.js';
 
-// Wording specific to the /upload-time path — see reprocess.ts for the
-// (deliberately different) /reprocess wording. Unifying these is B4, not
-// this refactor.
+// Shared FR wording (B4) — see lib/messages.ts. `databaseError`'s second
+// param (the raw error) is deliberately ignored: the detail goes to
+// logger.error only, never back to Discord.
 const MESSAGES: OcrRoutingMessages = {
-  screenUnrecognized: (filename, detail) =>
-    `⚠️ **${filename}** — type d'écran non reconnu : \`${detail}\`. Utilisez \`/upload event:<type>\` ou \`/upload kind:donation\`.`,
-  ocrError: (filename, error, detail) =>
-    `⚠️ **${filename}** — OCR : ${error}${detail ? ` (${detail})` : ''}`,
-  databaseError: (filename, err) => `❌ **${filename}** — erreur base de données : ${err}`,
-  unknownEventType: (filename, eventType) =>
-    `⚠️ **${filename}** — type d'événement inconnu : \`${eventType}\`. Utilisez \`/upload event:<type>\`.`,
-  missingDatetime: (filename) =>
-    `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
+  screenUnrecognized: messages.screenUnrecognized,
+  ocrError: messages.ocrError,
+  databaseError: (filename) => messages.databaseError(filename),
+  unknownEventType: messages.unknownEventType,
+  missingDatetime: messages.missingDatetime,
 };
 
 export async function handleMessageCreate(message: Message): Promise<void> {
@@ -44,7 +41,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     alliance = await resolveAlliance(message.channelId);
   } catch (err) {
     logger.error({ channelId: message.channelId, err: String(err) }, 'Failed to resolve alliance');
-    await ackReply.edit('⚠️ Erreur lors de la résolution de l\'alliance. Veuillez réessayer plus tard.');
+    await ackReply.edit(messages.allianceResolutionError());
     return;
   }
 
@@ -73,7 +70,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
         { messageId: message.id, filename: att.name, err: String(err) },
         'Attachment processing failed',
       );
-      lines.push(`❌ **${att.name}** — erreur inattendue : ${String(err)}`);
+      lines.push(messages.unexpectedError(att.name));
       return;
     }
 
