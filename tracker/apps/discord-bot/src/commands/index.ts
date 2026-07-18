@@ -1,5 +1,5 @@
 import { Collection } from 'discord.js';
-import type { ChatInputCommandInteraction, ButtonInteraction } from 'discord.js';
+import type { ChatInputCommandInteraction, ButtonInteraction, AutocompleteInteraction } from 'discord.js';
 import type {
   SlashCommandBuilder,
   SlashCommandSubcommandsOnlyBuilder,
@@ -20,6 +20,7 @@ import * as merge from './merge.js';
 export type Command = {
   data: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder | SlashCommandOptionsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 };
 
 export type ButtonHandler = {
