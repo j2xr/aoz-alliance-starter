@@ -1,17 +1,27 @@
 import type { EmbedBuilder, Message, TextBasedChannel } from 'discord.js';
-import { isOcrError, isPlayerStatsResult } from '@alliance-tracker/shared-types';
 import { config } from '../config.js';
 import logger from '../logger.js';
 import { isImageAttachment } from './attachment.js';
 import { mapWithConcurrency } from './concurrency.js';
-import { buildDonationEmbed, buildEventEmbed, buildPlayerStatsEmbed } from './embed.js';
-import { ensureKind, processImageAttachment } from './ingestion.js';
 import {
-  recordUploadError,
-  upsertDonationResult,
-  upsertEventResult,
-  upsertPlayerStatsResult,
-} from './upsert.js';
+  processImageAttachment,
+  routeOcrResult,
+  type OcrRouteOutcome,
+  type OcrRoutingMessages,
+} from './ingestion.js';
+
+// Wording specific to the /reprocess path — see messageCreate.ts for the
+// (deliberately different) /upload-time wording. Unifying these is B4, not
+// this refactor.
+const MESSAGES: OcrRoutingMessages = {
+  screenUnrecognized: (filename) => `⚠️ **${filename}** — type d'écran non reconnu. Utilisez \`/upload\`.`,
+  ocrError: (filename, error, detail) =>
+    `⚠️ **${filename}** — OCR: ${error}${detail ? ` (${detail})` : ''}`,
+  databaseError: (filename, err) => `❌ **${filename}** — database error: ${err}`,
+  unknownEventType: (filename, eventType) =>
+    `⚠️ **${filename}** — type d'événement inconnu: \`${eventType}\`. Utilisez \`/upload event_type:<type>\`.`,
+  missingDatetime: (filename) => `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture.`,
+};
 
 export type ReprocessMessageParams = {
   message: Message<boolean>;
@@ -80,13 +90,6 @@ export async function reprocessMessageScreenshots(
   };
 }
 
-type AttachmentOutcome = {
-  outcome: 'success' | 'duplicate' | 'unknown_event' | 'failed';
-  line?: string;
-  embed?: EmbedBuilder;
-  rejectedRawTexts?: string[];
-};
-
 async function processOneAttachment(
   att: { url: string; name: string },
   ctx: {
@@ -95,7 +98,7 @@ async function processOneAttachment(
     eventTypeOverride?: string | undefined;
     forceLlm: boolean;
   },
-): Promise<AttachmentOutcome> {
+): Promise<OcrRouteOutcome> {
   const { message, allianceId, eventTypeOverride, forceLlm } = ctx;
 
   let result;
@@ -121,159 +124,15 @@ async function processOneAttachment(
 
   const { filename, fileHash, filePath, ocr } = result;
 
-  if (isOcrError(ocr)) {
-    const uploadStatus =
-      ocr.error === 'unknown_event'
-        ? ('unknown_event' as const)
-        : ('failed' as const);
-
-    try {
-      await recordUploadError({
-        messageId: message.id,
-        userId: message.author.id,
-        allianceId,
-        fileHash,
-        filePath,
-        status: uploadStatus,
-        errorMessage: ocr.error + (ocr.detail ? `: ${ocr.detail}` : ''),
-      });
-    } catch (err) {
-      logger.error({ err: String(err) }, 'Failed to record upload error');
-    }
-
-    if (uploadStatus === 'unknown_event') {
-      return {
-        outcome: 'unknown_event',
-        line: `⚠️ **${filename}** — type d'écran non reconnu. Utilisez \`/upload\`.`,
-      };
-    }
-    return {
-      outcome: 'failed',
-      line: `⚠️ **${filename}** — OCR: ${ocr.error}${ocr.detail ? ` (${ocr.detail})` : ''}`,
-    };
-  }
-
-  const typedOcr = ensureKind(ocr);
-
-  if (isPlayerStatsResult(typedOcr)) {
-    let statsResult;
-    try {
-      statsResult = await upsertPlayerStatsResult({
-        messageId: message.id,
-        userId: message.author.id,
-        allianceId,
-        fileHash,
-        filePath,
-        messageCreatedAt: message.createdAt,
-        ocr: typedOcr,
-      });
-    } catch (err) {
-      logger.error(
-        { messageId: message.id, filename, err: String(err) },
-        'Player stats upsert failed during reprocess',
-      );
-      return { outcome: 'failed', line: `❌ **${filename}** — database error: ${String(err)}` };
-    }
-
-    if (statsResult.status === 'duplicate') {
-      return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
-    }
-
-    if (statsResult.status === 'no_members') {
-      return {
-        outcome: 'failed',
-        line: `⚠️ **${filename}** — aucun joueur extrait de la capture stats.`,
-      };
-    }
-
-    logger.info(
-      { messageId: message.id, filename, memberCount: statsResult.memberCount, skippedCount: statsResult.skippedCount },
-      'Player stats reprocess upsert successful',
-    );
-    return {
-      outcome: 'success',
-      embed: buildPlayerStatsEmbed(filename, typedOcr, statsResult),
-      ...(statsResult.rejectedRawTexts.length > 0 && {
-        rejectedRawTexts: statsResult.rejectedRawTexts,
-      }),
-    };
-  }
-
-  if (typedOcr.kind === 'donation') {
-    let donationResult;
-    try {
-      donationResult = await upsertDonationResult({
-        messageId: message.id,
-        userId: message.author.id,
-        allianceId,
-        fileHash,
-        filePath,
-        messageCreatedAt: message.createdAt,
-        ocr: typedOcr,
-      });
-    } catch (err) {
-      logger.error(
-        { messageId: message.id, filename, err: String(err) },
-        'Donation upsert failed',
-      );
-      return { outcome: 'failed', line: `❌ **${filename}** — database error: ${String(err)}` };
-    }
-
-    if (donationResult.status === 'duplicate') {
-      return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
-    }
-
-    if (donationResult.status === 'unsupported_period_type') {
-      return {
-        outcome: 'failed',
-        line: `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
-      };
-    }
-
-    return { outcome: 'success', embed: buildDonationEmbed(filename, typedOcr, donationResult) };
-  }
-
-  let upsertResult;
-  try {
-    upsertResult = await upsertEventResult({
-      messageId: message.id,
-      userId: message.author.id,
-      allianceId,
-      fileHash,
-      filePath,
-      ocr: typedOcr,
-    });
-  } catch (err) {
-    logger.error(
-      { messageId: message.id, filename, err: String(err) },
-      'Upsert failed',
-    );
-    return { outcome: 'failed', line: `❌ **${filename}** — database error: ${String(err)}` };
-  }
-
-  if (upsertResult.status === 'duplicate') {
-    return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
-  }
-
-  if (upsertResult.status === 'unknown_event') {
-    return {
-      outcome: 'unknown_event',
-      line: `⚠️ **${filename}** — type d'événement inconnu: \`${upsertResult.eventType}\`. Utilisez \`/upload event_type:<type>\`.`,
-    };
-  }
-
-  if (upsertResult.status === 'missing_datetime') {
-    return {
-      outcome: 'failed',
-      line: `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture.`,
-    };
-  }
-
-  logger.info(
-    { messageId: message.id, filename, eventId: upsertResult.eventId },
-    'Reprocess upsert successful',
-  );
-  return { outcome: 'success', embed: buildEventEmbed(filename, typedOcr, upsertResult) };
+  return routeOcrResult({
+    message,
+    allianceId,
+    fileHash,
+    filePath,
+    filename,
+    ocr,
+    messages: MESSAGES,
+  });
 }
 
 // Bufferise volontairement tous les messages à images du canal : le total est
