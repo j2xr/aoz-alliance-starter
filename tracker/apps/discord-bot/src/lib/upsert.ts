@@ -6,6 +6,7 @@ import type {
 } from '@alliance-tracker/shared-types';
 import { supabase } from './supabase.js';
 import { isoWeekStartParis } from './period.js';
+import { findFuzzyMatch, type RosterPlayer } from './name-resolve.js';
 import logger from '../logger.js';
 
 export type ProcessedUpsertResult = {
@@ -103,6 +104,64 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
   for (const r of typedAliasRows) {
     const rel = Array.isArray(r.at_players) ? r.at_players[0] : r.at_players;
     if (rel?.name) canonicalNameById.set(r.player_id, rel.name);
+  }
+
+  // Résolution floue : pour les membres sans alias exact, chercher dans le
+  // roster de l'alliance un joueur existant dont le nom est probablement une
+  // variante OCR (glyphe parasite, correction LLM non déterministe, etc.).
+  // Ne redirige que sur un candidat unique ; ≥2 candidats ou 0 → laissé tel
+  // quel (nouveau joueur), jamais de fusion hasardeuse.
+  const stillUnresolved = uniqueMembers.filter((m) => !aliasToCanonicalId.has(m.name));
+  if (stillUnresolved.length > 0) {
+    const { data: rosterRows, error: rosterError } = await supabase
+      .from('at_players')
+      .select('id, name')
+      .eq('alliance_id', allianceId);
+
+    if (rosterError) throw new Error(`Roster query failed: ${rosterError.message}`);
+
+    const roster = (rosterRows ?? []) as RosterPlayer[];
+    const newAliasRows: { alliance_id: string; raw_name: string; player_id: string; created_by: string }[] =
+      [];
+
+    for (const m of stillUnresolved) {
+      // Nom déjà présent tel quel dans le roster : l'upsert onConflict
+      // (alliance_id,name) le gère nativement, pas besoin d'alias.
+      if (roster.some((p) => p.name === m.name)) continue;
+
+      const match = findFuzzyMatch(m.name, roster);
+      if (match.kind === 'match') {
+        aliasToCanonicalId.set(m.name, match.player.id);
+        canonicalNameById.set(match.player.id, match.player.name);
+        newAliasRows.push({
+          alliance_id: allianceId,
+          raw_name: m.name,
+          player_id: match.player.id,
+          created_by: 'auto:name-resolve',
+        });
+        logger.info(
+          { rawName: m.name, canonicalName: match.player.name },
+          'Auto-resolved OCR name variant to an existing player',
+        );
+      } else if (match.kind === 'ambiguous') {
+        logger.warn(
+          { rawName: m.name, candidates: match.candidates.map((c) => c.name) },
+          'Ambiguous OCR name match against existing roster, creating a new player instead of guessing',
+        );
+      }
+    }
+
+    if (newAliasRows.length > 0) {
+      const { error: insertAliasError } = await supabase
+        .from('at_player_aliases')
+        .upsert(newAliasRows, { onConflict: 'alliance_id,raw_name', ignoreDuplicates: true });
+      if (insertAliasError) {
+        logger.error(
+          { err: insertAliasError.message },
+          'Failed to persist auto-resolved player aliases (redirect still applied for this run)',
+        );
+      }
+    }
   }
 
   const directMembers = uniqueMembers.filter((m) => !aliasToCanonicalId.has(m.name));
