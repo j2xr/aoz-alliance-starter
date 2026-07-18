@@ -37,12 +37,11 @@ type OcrRouteMessageContext = {
   createdAt: Date;
 };
 
-// Only the strings that genuinely differ between the /upload-time path
-// (messageCreate) and the /reprocess path are parametrized — duplicate,
-// no-members and unsupported-period lines are byte-identical between the
-// two callers today and stay as literals below. Keeping these as caller-
-// supplied wording (rather than unifying them) is deliberate: the wording
-// itself is Cleanup-2's sibling item (B4), not this one.
+// Kept injectable rather than hardcoded here so routeOcrResult stays
+// caller-agnostic; both real callers (messageCreate.ts, reprocess.ts) now
+// pass the same wording from lib/messages.ts (B4) — this indirection mainly
+// serves ingestion.test.ts, which injects distinctive wording to prove
+// routeOcrResult actually uses what's passed in.
 export type OcrRoutingMessages = {
   screenUnrecognized: (filename: string, detail: string) => string;
   ocrError: (filename: string, error: string, detail: string | undefined) => string;
