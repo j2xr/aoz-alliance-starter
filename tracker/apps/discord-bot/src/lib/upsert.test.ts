@@ -120,6 +120,7 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
     queueFrom({ id: 'event-1' }); // at_events upsert
     queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
     queueFrom([                    // at_players upsert
       { id: 'p1', name: 'Alpha' },
       { id: 'p2', name: 'Beta' },
@@ -152,6 +153,7 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'event-1' }); // at_events upsert
     // at_player_aliases : 'A1pha' → canonique p1 ('Alpha'), nom embarqué
     queueFrom([{ raw_name: 'A1pha', player_id: 'p1', at_players: { name: 'Alpha' } }]);
+    queueFrom([]); // roster fetch for fuzzy name resolution: empty ('Alpha'/'Beta' still unaliased)
     // at_players : chaîne capturée pour inspecter le payload de l'upsert unique
     const playersChain = mkChain([
       { id: 'p1', name: 'Alpha' },
@@ -182,15 +184,116 @@ describe('upsertEventResult', () => {
     const result = await upsertEventResult(params);
     expect(result.status).toBe('processed');
 
-    // Un seul appel at_players (plus d'UPDATE par alias)
+    // 2 appels à 'at_players' : la lecture roster pour la résolution floue,
+    // et un seul upsert batch (plus d'UPDATE par alias).
     const playerCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_players');
-    expect(playerCalls).toHaveLength(1);
+    expect(playerCalls).toHaveLength(2);
+    expect(playersChain['upsert']).toHaveBeenCalledTimes(1);
 
     const upsertMock = playersChain['upsert'] as ReturnType<typeof vi.fn>;
     const payload = upsertMock.mock.calls[0]?.[0] as { name: string; last_power: number }[];
     expect(payload.map((r) => r.name).sort()).toEqual(['Alpha', 'Beta']);
     // La ligne directe (confiance 0.95) gagne sur l'alias (0.5) pour 'Alpha'.
     expect(payload.find((r) => r.name === 'Alpha')?.last_power).toBe(1_000_000);
+  });
+
+  it('fuzzy-redirects an OCR name variant to an existing roster player and persists the alias', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
+    queueFrom({ id: 'event-1' }); // at_events upsert
+    queueFrom([]); // at_player_aliases: no exact alias for '6ig§teelCurtain'
+    // roster fetch: an earlier capture of the same player already exists,
+    // itself misread ('§' standing in for 'S') but consistently so.
+    queueFrom([{ id: 'p1', name: 'Big§teelCurtain' }]);
+    // at_player_aliases upsert: the auto-resolved alias gets persisted
+    const aliasInsertChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      aliasInsertChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    // at_players upsert: captured to assert it targets the canonical name
+    const playersChain = mkChain([{ id: 'p1', name: 'Big§teelCurtain' }]);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      playersChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom([]);   // at_alliance_memberships select
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom(null); // at_participations upsert
+    queueFrom(null); // at_screenshot_uploads update
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: '6ig§teelCurtain', rank: 'R3', power: 900_000, points: 20_000, confidence: 0.4 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    const aliasUpsertMock = aliasInsertChain['upsert'] as ReturnType<typeof vi.fn>;
+    expect(aliasUpsertMock).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          alliance_id: 'alliance-1',
+          raw_name: '6ig§teelCurtain',
+          player_id: 'p1',
+          created_by: 'auto:name-resolve',
+        }),
+      ],
+      { onConflict: 'alliance_id,raw_name', ignoreDuplicates: true },
+    );
+
+    const playersUpsertMock = playersChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = playersUpsertMock.mock.calls[0]?.[0] as { name: string }[];
+    expect(payload.map((r) => r.name)).toEqual(['Big§teelCurtain']);
+  });
+
+  it('leaves an ambiguous fuzzy match as a new player and logs a warning instead of guessing', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
+    queueFrom({ id: 'event-1' }); // at_events upsert
+    queueFrom([]); // at_player_aliases: no exact alias
+    // roster fetch: two existing players are both within edit distance 1
+    queueFrom([
+      { id: 'p1', name: 'Somethin_kool' },
+      { id: 'p2', name: 'Somethin_kooI' },
+    ]);
+    // No alias insert call: ambiguous match is left unresolved.
+    queueFrom([{ id: 'p3', name: 'Somethin-koo1' }]); // at_players upsert: a genuinely new player
+    queueFrom([]);   // at_alliance_memberships select
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom(null); // at_participations upsert
+    queueFrom(null); // at_screenshot_uploads update
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: 'Somethin-koo1', rank: 'R2', power: 700_000, points: 10_000, confidence: 0.6 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawName: 'Somethin-koo1',
+        candidates: expect.arrayContaining(['Somethin_kool', 'Somethin_kooI']),
+      }),
+      expect.stringContaining('Ambiguous'),
+    );
+
+    // Aucun alias inséré pour ce nom
+    const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
+    expect(aliasCalls).toHaveLength(1); // le seul appel est le lookup exact, pas un insert
   });
 });
 
@@ -225,6 +328,7 @@ describe('upsertDonationResult', () => {
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
     queueFrom({ id: 'period-1' }); // at_donation_periods upsert
     queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
     queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
@@ -246,6 +350,7 @@ describe('upsertDonationResult', () => {
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
     queueFrom({ id: 'period-1' }); // at_donation_periods upsert
     queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
     queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
@@ -277,6 +382,7 @@ describe('upsertDonationResult', () => {
     queueFrom({ id: 'upload-1' });
     queueFrom({ id: 'period-1' });
     queueFrom([]);
+    queueFrom([]); // roster fetch for fuzzy name resolution: empty
     queueFrom([{ id: 'p1', name: 'Alpha' }]);
     queueFrom([]);
     queueFrom(null);
@@ -300,6 +406,7 @@ describe('upsertDonationResult', () => {
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
     queueFrom({ id: 'period-1' }); // at_donation_periods upsert
     queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
     queueFrom([
       { id: 'p1', name: 'Alpha' },
       { id: 'p2', name: 'Beta' },
