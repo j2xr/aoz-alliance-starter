@@ -2,6 +2,7 @@ import {
   SlashCommandBuilder,
   PermissionFlagsBits,
   type ChatInputCommandInteraction,
+  type AutocompleteInteraction,
 } from 'discord.js';
 import type { Message, EmbedBuilder } from 'discord.js';
 import { isOcrError } from '@alliance-tracker/shared-types';
@@ -27,7 +28,7 @@ const DONATION_OCR_CODE = 'contribution_ranking';
 export const data = new SlashCommandBuilder()
   .setName('upload')
   .setDescription(
-    "Forcer le retraitement OCR d'une capture (événement ou don)",
+    "Retraiter une capture en forçant son type (événement/don) — /reprocess = re-run tel quel",
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
@@ -51,8 +52,44 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName('event_type')
-      .setDescription("Code du type d'événement (requis si kind=event)"),
+      .setDescription("Code du type d'événement (requis si kind=event)")
+      .setAutocomplete(true),
+  )
+  .addBooleanOption((opt) =>
+    opt
+      .setName('force_llm')
+      .setDescription('Forcer le LLM sur toutes les lignes (ignorer le seuil de confiance OCR)')
+      .setRequired(false),
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused().trim().toLowerCase();
+
+  const { data: eventTypes, error } = await supabase
+    .from('at_event_types')
+    .select('code, display_name')
+    .order('code');
+
+  if (error) {
+    logger.error({ err: String(error) }, 'event_type autocomplete query failed');
+    await interaction.respond([]);
+    return;
+  }
+
+  const matches = (eventTypes ?? []).filter(
+    (et: { code: string; display_name: string }) =>
+      focused.length === 0 ||
+      et.code.toLowerCase().includes(focused) ||
+      et.display_name.toLowerCase().includes(focused),
+  );
+
+  await interaction.respond(
+    matches.slice(0, 25).map((et: { code: string; display_name: string }) => ({
+      name: `${et.display_name} (${et.code})`,
+      value: et.code,
+    })),
+  );
+}
 
 export async function execute(
   interaction: ChatInputCommandInteraction,
@@ -65,6 +102,7 @@ export async function execute(
   const messageUrl = interaction.options.getString('message_url', true);
   const kind = (interaction.options.getString('kind') ?? 'event') as 'event' | 'donation';
   const eventTypeCode = interaction.options.getString('event_type');
+  const forceLlm = interaction.options.getBoolean('force_llm') ?? false;
   if (eventTypeCode !== null &&
       (eventTypeCode.trim().length === 0 || eventTypeCode.length > 50)) {
     await interaction.editReply('❌ event_type doit faire entre 1 et 50 caractères.');
@@ -151,8 +189,9 @@ export async function execute(
 
   const plural = images.size > 1 ? 's' : '';
   const kindLabel = kind === 'donation' ? '(donations)' : `(${eventTypeDisplayName ?? eventTypeCode ?? 'event'})`;
+  const llmNote = forceLlm ? ' (LLM forcé sur toutes les lignes)' : '';
   await interaction.editReply(
-    `⏳ Processing ${images.size} screenshot${plural} ${kindLabel}. This can take several minutes — **please do not upload again**.`,
+    `⏳ Processing ${images.size} screenshot${plural} ${kindLabel}${llmNote}. This can take several minutes — **please do not upload again**.`,
   );
 
   const lines: string[] = [];
@@ -166,6 +205,7 @@ export async function execute(
         att.url,
         att.name,
         ocrOverrideCode,
+        forceLlm,
       );
     } catch (err) {
       logger.error(
