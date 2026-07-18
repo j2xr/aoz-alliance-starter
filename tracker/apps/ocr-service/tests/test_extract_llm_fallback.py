@@ -120,6 +120,9 @@ def test_donation_correction_rejected_when_score_mismatches_honor() -> None:
     m = out.members[0]
     assert m.name == "고"  # OCR result kept, hallucinated name not applied
     assert m.alliance_honor == 1946
+    # Rejection itself is now traceable: confidence forced to 0.0 (distinct
+    # from the -1.0 "LLM-corrected" sentinel) so the bot flags needs_review.
+    assert m.confidence == 0.0
 
 
 def test_donation_correction_rejected_when_score_missing() -> None:
@@ -132,6 +135,7 @@ def test_donation_correction_rejected_when_score_missing() -> None:
         out = _apply_llm_fallback(_IMG, result, _StubParser())
 
     assert out.members[0].name == "garbled"
+    assert out.members[0].confidence == 0.0
 
 
 def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:

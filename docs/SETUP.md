@@ -236,9 +236,6 @@ below).
 | `OCR_TESS_POOL_SIZE` | `16` | Size of the `tesserocr` `PyTessBaseAPI` instance pool. |
 | `OCR_CONFIDENCE_THRESHOLD` | `0.75` | Global fallback threshold used when a field-specific one below is unset. |
 | `OCR_CONFIDENCE_THRESHOLD_NAME` | `0.75` | Recommended: `0.35` — names score structurally lower than other fields on some game fonts. |
-| `OCR_CONFIDENCE_THRESHOLD_RANK` | `0.75` | Recommended: `0.85` — near-certain with a whitelisted charset. |
-| `OCR_CONFIDENCE_THRESHOLD_POWER` | `0.75` | Recommended: `0.85`. |
-| `OCR_CONFIDENCE_THRESHOLD_POINTS` | `0.75` | Recommended: `0.85`. |
 | `OCR_NAME_ASCII_FAST_PATH_ENABLED` | `true` | Try a fast ASCII-only OCR pass before the full multilingual one. |
 | `OCR_NAME_ASCII_FAST_PATH_MIN_CONF` | `0.60` | Confidence floor to accept the fast-path result. |
 | `OCR_FUZZY_TITLE_THRESHOLD` | `0.82` | Similarity floor for matching a screenshot's title to a known event type. |
