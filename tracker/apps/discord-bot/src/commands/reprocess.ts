@@ -10,7 +10,7 @@ const MESSAGE_URL_RE =
 
 export const data = new SlashCommandBuilder()
   .setName('reprocess')
-  .setDescription("Forcer le retraitement d'une capture depuis son message Discord")
+  .setDescription("Relancer l'OCR d'une capture telle quelle — voir /upload pour forcer son type")
   .addStringOption((opt) =>
     opt
       .setName('message_url')
