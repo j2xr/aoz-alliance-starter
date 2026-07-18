@@ -29,4 +29,18 @@ export const messages = {
 
   allianceResolutionError: (): string =>
     "⚠️ Erreur lors de la résolution de l'alliance. Veuillez réessayer plus tard.",
+
+  allianceAlreadyLinked: (allianceName: string): string =>
+    `⚠️ Ce channel est déjà associé à l'alliance **${allianceName}**.`,
+
+  allianceNameTaken: (name: string): string =>
+    `⚠️ Une alliance nommée **${name}** existe déjà (liée à un autre channel). Choisissez un autre nom.`,
+
+  allianceCreated: (name: string): string =>
+    `Alliance **${name}** créée et liée à ce channel.\n\n` +
+    `⚠️ Pour que le bot traite les captures postées ici, ajoutez l'ID de ce ` +
+    `channel à la variable d'environnement \`DISCORD_ALLOWED_CHANNEL_IDS\` puis ` +
+    `redémarrez le bot.\n\n` +
+    `Pour donner accès au dashboard \`/tracking\` à un membre, suivez l'étape ` +
+    `« Lier un compte à l'alliance » de \`docs/SETUP.md\`.`,
 } as const;
