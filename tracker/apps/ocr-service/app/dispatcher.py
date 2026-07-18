@@ -180,11 +180,3 @@ def detect_screen_kind(
 
     logger.warning("Could not detect screen kind; header text: %r", text[:120])
     raise UnknownEventError("unknown_event")
-
-
-def detect_event_type(image: np.ndarray) -> str:
-    """Backwards-compatible wrapper. Returns event code or raises if not an event."""
-    kind, code = detect_screen_kind(image)
-    if kind != "event":
-        raise UnknownEventError("unknown_event")
-    return code
