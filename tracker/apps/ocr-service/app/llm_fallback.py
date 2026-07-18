@@ -420,8 +420,17 @@ def llm_fallback_donation(row_image: np.ndarray) -> tuple[str | None, int | None
     encoded_image = _encode_image(row_image)
 
     raw_response = _call_with_retry(
-        base_url, model, prompt, encoded_image, num_ctx, num_predict,
-        think, keep_alive, headers, timeout_seconds, (w, h),
+        base_url,
+        model,
+        prompt,
+        encoded_image,
+        num_ctx,
+        num_predict,
+        think,
+        keep_alive,
+        headers,
+        timeout_seconds,
+        (w, h),
     )
 
     raw: Any = json.loads(_extract_json_object(raw_response))
