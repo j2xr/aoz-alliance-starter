@@ -17,6 +17,7 @@ import * as membership from './membership.js';
 import * as donation from './donation.js';
 import * as merge from './merge.js';
 import * as setupAlliance from './setup-alliance.js';
+import * as correct from './correct.js';
 
 export type Command = {
   data: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder | SlashCommandOptionsOnlyBuilder;
@@ -41,6 +42,7 @@ export const commands = new Collection<string, Command>([
   ['donation', donation],
   ['merge', merge],
   ['setup-alliance', setupAlliance],
+  ['correct', correct],
 ]);
 
 // Button handlers keyed by customId prefix (first segment before |)
