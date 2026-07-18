@@ -16,6 +16,12 @@ import logger from '../logger.js';
 // wording is caller-supplied (see MESSAGES below) — messageCreate.ts and
 // reprocess.ts each use their own, deliberately different, wording.
 
+// ingestion.ts imports `config` at module top, and config.ts calls
+// requireEnv(...) at evaluation time — throwing if the env vars are unset (as
+// they are in CI, which has no .env). routeOcrResult never reads config, so an
+// empty stub is enough to suppress that module-load throw (same workaround as
+// messageCreate.test.ts / permissions.test.ts).
+vi.mock('../config.js', () => ({ config: {} }));
 vi.mock('../logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
