@@ -11,7 +11,7 @@ export function TrackingHome() {
     return (
       <div style={{ textAlign: 'center', padding: '4rem',
         fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem',
-        color: '#4a5568', letterSpacing: '0.1em' }}>
+        color: 'var(--text-faint)', letterSpacing: '0.1em' }}>
         LOADING…
       </div>
     );
@@ -20,7 +20,7 @@ export function TrackingHome() {
   if (error) {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
-        borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
+        borderRadius: '10px', padding: '1.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>
         Failed to load: {error.message}
       </div>
     );
@@ -31,31 +31,31 @@ export function TrackingHome() {
       <div style={{ textAlign: 'center', padding: '4rem 1rem', animation: 'fadeUp 0.25s ease' }}>
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏰</div>
         <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '0.9rem',
-          color: '#38bdf8', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
+          color: 'var(--accent)', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
           ALLIANCE TRACKER
         </div>
-        <div style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '400px', margin: '0 auto' }}>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-dim)', maxWidth: '400px', margin: '0 auto' }}>
           You are not a member of any alliance yet.
           An administrator must add you via the Supabase console.
         </div>
         {session?.user?.id && (
-          <div style={{ marginTop: '1.5rem', background: '#0f111a', border: '1px solid #1e2132',
+          <div style={{ marginTop: '1.5rem', background: 'var(--bg-panel)', border: '1px solid var(--border)',
             borderRadius: '10px', padding: '1rem', maxWidth: '440px', margin: '1.5rem auto 0',
             textAlign: 'left' }}>
             <div style={{ fontSize: '0.68rem', fontFamily: "'Orbitron',sans-serif",
-              color: '#4a5568', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
+              color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
               YOUR USER ID (share with your admin)
             </div>
-            <code style={{ fontSize: '0.72rem', color: '#38bdf8', display: 'block',
+            <code style={{ fontSize: '0.72rem', color: 'var(--accent)', display: 'block',
               fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>
               {session.user.id}
             </code>
-            <div style={{ marginTop: '1rem', borderTop: '1px solid #1e2132', paddingTop: '0.75rem',
+            <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem',
               fontSize: '0.68rem', fontFamily: "'Orbitron',sans-serif",
-              color: '#4a5568', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
+              color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
               SQL COMMAND (Supabase admin)
             </div>
-            <code style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block',
+            <code style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block',
               fontFamily: 'monospace', lineHeight: 1.6 }}>
               {`insert into at_alliance_members\n(alliance_id, user_id, role)\nvalues ('<alliance_id>', '${session.user.id}', 'viewer');`}
             </code>
@@ -68,13 +68,13 @@ export function TrackingHome() {
   return (
     <div style={{ animation: 'fadeUp 0.25s ease' }}>
       <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ fontSize: '0.65rem', letterSpacing: '0.3em', color: '#38bdf8',
+        <div style={{ fontSize: '0.65rem', letterSpacing: '0.3em', color: 'var(--accent)',
           textTransform: 'uppercase', marginBottom: '0.3rem',
           fontFamily: "'Orbitron',sans-serif" }}>
           Alliance Tracker
         </div>
         <h1 style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-          fontWeight: '900', color: '#e2e8f0' }}>
+          fontWeight: '900', color: 'var(--text)' }}>
           Your alliances
         </h1>
       </div>
@@ -86,7 +86,7 @@ export function TrackingHome() {
             key={alliance.id}
             onClick={() => navigate(`/tracking/alliances/${alliance.id}/events`)}
             style={{
-              background: '#0f111a', border: '1px solid #1e2132',
+              background: 'var(--bg-panel)', border: '1px solid var(--border)',
               borderRadius: '12px', padding: '1.25rem', cursor: 'pointer',
               textAlign: 'left', transition: 'border-color 0.15s, background 0.15s',
             }}
@@ -95,26 +95,26 @@ export function TrackingHome() {
               e.currentTarget.style.background = '#38bdf808';
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.borderColor = '#1e2132';
-              e.currentTarget.style.background = '#0f111a';
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.background = 'var(--bg-panel)';
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem',
               marginBottom: '0.5rem' }}>
               <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                fontWeight: '900', color: '#38bdf8', lineHeight: 1 }}>
+                fontWeight: '900', color: 'var(--accent)', lineHeight: 1 }}>
                 {alliance.tag ? `[${alliance.tag}]` : '🏰'}
               </div>
             </div>
-            <div style={{ fontWeight: '700', fontSize: '1rem', color: '#e2e8f0',
+            <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text)',
               marginBottom: '0.2rem' }}>
               {alliance.name}
             </div>
-            <div style={{ fontSize: '0.65rem', color: '#4a5568',
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-faint)',
               fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.04em' }}>
               {alliance.role}
             </div>
-            <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#38bdf8',
+            <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--accent)',
               display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               View events →
             </div>

@@ -7,6 +7,7 @@ import AddEventForm from "./AddEventForm";
 import EventDetail from "./EventDetail";
 import WidgetView from "./WidgetView";
 import { useToast } from "./components/Toast.jsx";
+import { onEnterOrSpace } from "./lib/a11y";
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
   const [dbStatus, setDbStatus]       = useState("loading"); // loading | ok | error
   const [showAdd, setShowAdd]         = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [dayListDay, setDayListDay] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedOccDate, setSelectedOccDate] = useState(null);
   const [view, setView]   = useState("week");
@@ -204,40 +206,40 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap');
         *{margin:0;padding:0;box-sizing:border-box;}
-        body{background:#070810;min-height:100vh;}
-        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#0f111a}::-webkit-scrollbar-thumb{background:#2a2d3e;border-radius:3px}
+        body{background:var(--bg);min-height:100vh;}
+        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg-panel)}::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
         @keyframes glow{0%,100%{text-shadow:0 0 12px #ffd70055}50%{text-shadow:0 0 24px #ffd700aa,0 0 48px #ffd70033}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-        .day-cell:hover{background:#1a1d2e!important;cursor:pointer}
+        .day-cell:hover{background:var(--bg-hover)!important;cursor:pointer}
         .pill:hover{filter:brightness(1.25);cursor:pointer}
-        .nav-btn:hover{background:#1a1d2e!important}
-        .upcoming-row:hover{background:#14172600!important;border-color:#2a2d3e!important;cursor:pointer}
+        .nav-btn:hover{background:var(--bg-hover)!important}
+        .upcoming-row:hover{background:#14172600!important;border-color:var(--border-strong)!important;cursor:pointer}
         .filter-tag:hover{filter:brightness(1.2);cursor:pointer}
-        .week-day:hover{background:#1a1d2e!important;cursor:pointer}
+        .week-day:hover{background:var(--bg-hover)!important;cursor:pointer}
       `}</style>
 
-      <div style={{ fontFamily:"'Rajdhani',sans-serif",background:"#070810",minHeight:"100vh",
-        color:"#e2e8f0",maxWidth:"920px",margin:"0 auto",padding:"1.5rem 1rem" }}>
+      <div style={{ fontFamily:"'Rajdhani',sans-serif",background:"var(--bg)",minHeight:"100vh",
+        color:"var(--text)",maxWidth:"920px",margin:"0 auto",padding:"1.5rem 1rem" }}>
 
         {/* ── Header ── */}
         <div style={{ textAlign:"center",marginBottom:"1.8rem" }}>
-          <div style={{ fontSize:"0.68rem",letterSpacing:"0.35em",color:"#ffd700",marginBottom:"0.25rem",textTransform:"uppercase" }}>
+          <div style={{ fontSize:"0.68rem",letterSpacing:"0.35em",color:"var(--gold)",marginBottom:"0.25rem",textTransform:"uppercase" }}>
             Community Calendar
           </div>
           <h1 style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"clamp(1.5rem,5vw,2.3rem)",
-            fontWeight:"900",background:"linear-gradient(135deg,#ffd700 0%,#ff9500 50%,#ffd700 100%)",
+            fontWeight:"900",background:"linear-gradient(135deg,var(--gold) 0%,var(--gold-alt) 50%,var(--gold) 100%)",
             WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
             animation:"glow 3s ease-in-out infinite",letterSpacing:"0.08em" }}>
             AOZ ORIGINS EVENTS
           </h1>
           <div style={{ display:"flex",justifyContent:"center",alignItems:"center",gap:"0.5rem",marginTop:"0.5rem" }}>
-            <div style={{ width:"40px",height:"1px",background:"linear-gradient(90deg,transparent,#ffd700)" }} />
-            <span style={{ fontSize:"0.65rem",color:"#ffd700",letterSpacing:"0.2em",opacity:0.7 }}>ALL TIMES UTC</span>
-            <div style={{ width:"40px",height:"1px",background:"linear-gradient(90deg,#ffd700,transparent)" }} />
+            <div style={{ width:"40px",height:"1px",background:"linear-gradient(90deg,transparent,var(--gold))" }} />
+            <span style={{ fontSize:"0.65rem",color:"var(--gold)",letterSpacing:"0.2em",opacity:0.7 }}>ALL TIMES UTC</span>
+            <div style={{ width:"40px",height:"1px",background:"linear-gradient(90deg,var(--gold),transparent)" }} />
           </div>
           {dbStatus==="error" && (
             <div style={{ marginTop:"0.5rem",background:"#ff4d4d18",border:"1px solid #ff4d4d44",
-              borderRadius:"8px",padding:"0.5rem 1rem",fontSize:"0.8rem",color:"#ff4d4d" }}>
+              borderRadius:"8px",padding:"0.5rem 1rem",fontSize:"0.8rem",color:"var(--danger)" }}>
               ⚠ Database connection error — check your Supabase config in .env
             </div>
           )}
@@ -249,13 +251,13 @@ export default function App() {
             padding:"0.7rem 1rem",marginBottom:"1rem",display:"flex",alignItems:"center",
             justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem" }}>
             <div style={{ display:"flex",alignItems:"center",gap:"0.5rem" }}>
-              <span style={{ background:"#ff4d4d22",color:"#ff4d4d",border:"1px solid #ff4d4d44",
+              <span style={{ background:"#ff4d4d22",color:"var(--danger)",border:"1px solid #ff4d4d44",
                 borderRadius:"999px",padding:"0.15rem 0.6rem",fontSize:"0.68rem",fontWeight:"700",
                 fontFamily:"'Orbitron',sans-serif",letterSpacing:"0.05em" }}>⚔ KE</span>
-              <span style={{ color:"#e2e8f0",fontSize:"0.88rem",fontWeight:"600" }}>{nextKE.title}</span>
+              <span style={{ color:"var(--text)",fontSize:"0.88rem",fontWeight:"600" }}>{nextKE.title}</span>
             </div>
             <div style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.82rem",fontWeight:"700",
-              color: "#ff4d4d",letterSpacing:"0.04em",
+              color: "var(--danger)",letterSpacing:"0.04em",
               textShadow:"0 0 12px #ff4d4d55" }}>
               {keCountdown === "NOW" ? "🔴 HAPPENING NOW" : keCountdown}
             </div>
@@ -263,26 +265,26 @@ export default function App() {
         )}
 
         {/* ── Tabs ── */}
-        <div style={{ display:"flex",gap:"0.4rem",marginBottom:"1rem",background:"#0f111a",
-          padding:"0.3rem",borderRadius:"10px",border:"1px solid #1a1d2e" }}>
+        <div style={{ display:"flex",gap:"0.4rem",marginBottom:"1rem",background:"var(--bg-panel)",
+          padding:"0.3rem",borderRadius:"10px",border:"1px solid var(--bg-hover)" }}>
           {[["calendar","📅 Month"],["week","📆 Week"],["list","📋 Upcoming"]].map(([v,l]) => (
             <button key={v} onClick={() => setView(v)} style={{ flex:1,padding:"0.5rem",
               borderRadius:"7px",border:"none",cursor:"pointer",
-              background: view===v?"linear-gradient(135deg,#ffd700,#ff9500)":"transparent",
-              color: view===v?"#0a0c14":"#94a3b8",fontFamily:"'Orbitron',sans-serif",
+              background: view===v?"linear-gradient(135deg,var(--gold),var(--gold-alt))":"transparent",
+              color: view===v?"var(--bg-deep)":"var(--text-muted)",fontFamily:"'Orbitron',sans-serif",
               fontSize:"0.7rem",fontWeight:"700",letterSpacing:"0.05em" }}>{l}</button>
           ))}
           <button onClick={() => navigate("/tracking")} style={{ flex:1,padding:"0.5rem",
             borderRadius:"7px",border:"none",cursor:"pointer",background:"transparent",
-            color:"#38bdf8",fontFamily:"'Orbitron',sans-serif",
+            color:"var(--accent)",fontFamily:"'Orbitron',sans-serif",
             fontSize:"0.7rem",fontWeight:"700",letterSpacing:"0.05em" }}>📊 Track</button>
         </div>
 
         {/* ── Add button ── */}
         <button onClick={() => { setSelectedDate(null); setShowAdd(true); }}
           style={{ width:"100%",padding:"0.85rem",
-            background:"linear-gradient(135deg,#ffd700 0%,#ff9500 100%)",
-            border:"none",borderRadius:"10px",color:"#0a0c14",
+            background:"linear-gradient(135deg,var(--gold) 0%,var(--gold-alt) 100%)",
+            border:"none",borderRadius:"10px",color:"var(--bg-deep)",
             fontFamily:"'Orbitron',sans-serif",fontSize:"0.78rem",fontWeight:"700",
             letterSpacing:"0.1em",cursor:"pointer",marginBottom:"0.75rem",
             boxShadow:"0 4px 24px rgba(255,215,0,0.18)" }}>
@@ -316,11 +318,11 @@ export default function App() {
             })}
             {activeFilter ? (
               <span onClick={() => setActiveFilter(null)} className="filter-tag"
-                style={{ color:"#94a3b8",fontSize:"0.68rem",cursor:"pointer" }}>
+                style={{ color:"var(--text-muted)",fontSize:"0.68rem",cursor:"pointer" }}>
                 show all
               </span>
             ) : (
-              <span style={{ color:"#4a5568",fontSize:"0.68rem" }}>
+              <span style={{ color:"var(--text-faint)",fontSize:"0.68rem" }}>
                 {events.length} event{events.length!==1?"s":""} total
               </span>
             )}
@@ -328,40 +330,40 @@ export default function App() {
         )}
 
         {dbStatus==="loading" ? (
-          <div style={{ textAlign:"center",color:"#4a5568",padding:"3rem",
+          <div style={{ textAlign:"center",color:"var(--text-faint)",padding:"3rem",
             fontFamily:"'Orbitron',sans-serif",fontSize:"0.8rem",letterSpacing:"0.1em" }}>
             LOADING…
           </div>
         ) : view==="calendar" ? (
           /* ── Calendar view ── */
-          <div style={{ background:"#0f111a",border:"1px solid #1e2132",borderRadius:"14px",overflow:"hidden",
+          <div style={{ background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:"14px",overflow:"hidden",
             animation:"fadeUp 0.25s ease" }}>
             {/* Month nav */}
             <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",
-              padding:"1rem 1.2rem",borderBottom:"1px solid #1e2132" }}>
+              padding:"1rem 1.2rem",borderBottom:"1px solid var(--border)" }}>
               <button onClick={prevMonth} className="nav-btn" style={{ background:"transparent",
-                border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                 width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>‹</button>
               <span style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.88rem",
-                color:"#e2e8f0",letterSpacing:"0.08em" }}>
+                color:"var(--text)",letterSpacing:"0.08em" }}>
                 {MONTHS[month].toUpperCase()} {year}
               </span>
               <div style={{ display:"flex",gap:"0.4rem",alignItems:"center" }}>
                 <button onClick={nextMonth} className="nav-btn" style={{ background:"transparent",
-                  border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                  border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>›</button>
                 <button onClick={() => downloadMonthICS(expandedThisMonth, year, month)}
                   title={`Download all events for ${MONTHS[month]} ${year}`}
                   className="nav-btn" style={{ background:"transparent",
-                  border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                  border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"0.85rem" }}>⬇</button>
               </div>
             </div>
             {/* Day headers */}
-            <div style={{ display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"1px solid #1e2132" }}>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"1px solid var(--border)" }}>
               {DAYS_SHORT.map(d => (
                 <div key={d} style={{ textAlign:"center",padding:"0.55rem 0.2rem",fontSize:"0.68rem",
-                  color:"#4a5568",fontFamily:"'Orbitron',sans-serif",letterSpacing:"0.04em" }}>{d}</div>
+                  color:"var(--text-faint)",fontFamily:"'Orbitron',sans-serif",letterSpacing:"0.04em" }}>{d}</div>
               ))}
             </div>
             {/* Day cells */}
@@ -369,28 +371,42 @@ export default function App() {
               {cells.map((day, i) => {
                 const isToday = day && day===todayDay && month===todayMonth && year===todayYear;
                 const dayEvs = day ? eventsOnDay(day) : [];
+                const dateStr = day ? `${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}` : null;
                 return (
-                  <div key={i} className={day?"day-cell":""} style={{
-                    minHeight:"78px",padding:"0.35rem",
-                    borderRight:(i+1)%7!==0?"1px solid #1a1d2e":"none",
-                    borderBottom:i<cells.length-7?"1px solid #1a1d2e":"none",
-                    background:isToday?"#181b2a":"transparent",transition:"background 0.15s"
-                  }} onClick={() => { if(day){ setSelectedDate(`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`); setShowAdd(true); } }}>
+                  <div key={i} className={day?"day-cell":""}
+                    role={day ? "button" : undefined}
+                    tabIndex={day ? 0 : undefined}
+                    aria-label={day ? `Add event on ${dateStr}` : undefined}
+                    style={{
+                      minHeight:"78px",padding:"0.35rem",
+                      borderRight:(i+1)%7!==0?"1px solid var(--bg-hover)":"none",
+                      borderBottom:i<cells.length-7?"1px solid var(--bg-hover)":"none",
+                      background:isToday?"#181b2a":"transparent",transition:"background 0.15s"
+                    }}
+                    onClick={() => { if(day){ setSelectedDate(dateStr); setShowAdd(true); } }}
+                    onKeyDown={day ? onEnterOrSpace(() => { setSelectedDate(dateStr); setShowAdd(true); }) : undefined}>
                     {day && <>
                       <div style={{ fontSize:"0.75rem",fontWeight:isToday?"700":"400",textAlign:"right",marginBottom:"0.2rem",
-                        color:isToday?"#ffd700":"#64748b",fontFamily:isToday?"'Orbitron',sans-serif":"inherit" }}>{day}</div>
+                        color:isToday?"var(--gold)":"var(--text-dim)",fontFamily:isToday?"'Orbitron',sans-serif":"inherit" }}>{day}</div>
                       {dayEvs.slice(0,3).map((e,idx) => (
-                        <div key={idx} className="pill"
+                        <button key={idx} type="button" className="pill"
                           onClick={ev => { ev.stopPropagation(); setSelectedEvent(e); setSelectedOccDate(e._occurrenceDate); setShowAdd(false); }}
                           style={{ background:getTypeColor(e.type)+"1e",borderLeft:`2px solid ${getTypeColor(e.type)}`,
-                            borderRadius:"3px",padding:"0.12rem 0.28rem",fontSize:"0.64rem",color:getTypeColor(e.type),
+                            border:"none",borderRadius:"3px",padding:"0.12rem 0.28rem",fontSize:"0.64rem",color:getTypeColor(e.type),
                             marginBottom:"2px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                            width:"100%",textAlign:"left",cursor:"pointer",fontFamily:"inherit",
                             display:"flex",gap:"3px",alignItems:"center" }}>
                           {e.recurrence && e.recurrence!=="none" && <span style={{ opacity:0.7,fontSize:"0.58rem" }}>🔁</span>}
                           {e.time} {e.title}
-                        </div>
+                        </button>
                       ))}
-                      {dayEvs.length>3 && <div style={{ fontSize:"0.6rem",color:"#4a5568" }}>+{dayEvs.length-3} more</div>}
+                      {dayEvs.length>3 && (
+                        <button type="button" className="more-btn" onClick={ev => { ev.stopPropagation(); setDayListDay(day); }}
+                          style={{ fontSize:"0.6rem",color:"var(--text-faint)",cursor:"pointer",
+                            background:"transparent",border:"none",padding:0,fontFamily:"inherit",display:"block" }}>
+                          +{dayEvs.length-3} more
+                        </button>
+                      )}
                     </>}
                   </div>
                 );
@@ -399,24 +415,24 @@ export default function App() {
           </div>
         ) : view==="week" ? (
           /* ── Week view ── */
-          <div style={{ background:"#0f111a",border:"1px solid #1e2132",borderRadius:"14px",overflow:"hidden",
+          <div style={{ background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:"14px",overflow:"hidden",
             animation:"fadeUp 0.25s ease" }}>
             {/* Week nav */}
             <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",
-              padding:"1rem 1.2rem",borderBottom:"1px solid #1e2132" }}>
+              padding:"1rem 1.2rem",borderBottom:"1px solid var(--border)" }}>
               <button onClick={prevWeek} className="nav-btn" style={{ background:"transparent",
-                border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                 width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>‹</button>
               <span style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.82rem",
-                color:"#e2e8f0",letterSpacing:"0.06em" }}>{weekLabel}</span>
+                color:"var(--text)",letterSpacing:"0.06em" }}>{weekLabel}</span>
               <div style={{ display:"flex",gap:"0.4rem",alignItems:"center" }}>
                 <button onClick={nextWeek} className="nav-btn" style={{ background:"transparent",
-                  border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                  border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>›</button>
                 <button onClick={() => downloadWeekICS(expandedThisWeek, weekLabel)}
                   title={`Download all events for the week of ${weekLabel}`}
                   className="nav-btn" style={{ background:"transparent",
-                  border:"1px solid #2a2d3e",borderRadius:"7px",color:"#94a3b8",
+                  border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"0.85rem" }}>⬇</button>
               </div>
             </div>
@@ -433,41 +449,44 @@ export default function App() {
                   const dayMon = parseInt(isoDate.split("-")[1]) - 1;
                   return (
                     <div key={isoDate} style={{
-                      borderRight: i < 6 ? "1px solid #1e2132" : "none",
+                      borderRight: i < 6 ? "1px solid var(--border)" : "none",
                       minHeight:"200px",
                     }}>
                       {/* Day header */}
                       <div onClick={() => { setSelectedDate(isoDate); setShowAdd(true); }}
+                        onKeyDown={onEnterOrSpace(() => { setSelectedDate(isoDate); setShowAdd(true); })}
+                        role="button" tabIndex={0} aria-label={`Add event on ${isoDate}`}
                         className="week-day"
                         style={{ padding:"0.55rem 0.3rem",textAlign:"center",
-                          borderBottom:"1px solid #1e2132",cursor:"pointer",
+                          borderBottom:"1px solid var(--border)",cursor:"pointer",
                           background: isToday ? "#181b2a" : "transparent" }}>
-                        <div style={{ fontSize:"0.6rem",color:"#4a5568",
+                        <div style={{ fontSize:"0.6rem",color:"var(--text-faint)",
                           fontFamily:"'Orbitron',sans-serif",letterSpacing:"0.04em" }}>{DAYS_SHORT[i]}</div>
                         <div style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"1.1rem",fontWeight:"700",
-                          color: isToday ? "#ffd700" : "#e2e8f0",lineHeight:1.1 }}>{dayNum}</div>
-                        <div style={{ fontSize:"0.58rem",color:"#4a5568" }}>
+                          color: isToday ? "var(--gold)" : "var(--text)",lineHeight:1.1 }}>{dayNum}</div>
+                        <div style={{ fontSize:"0.58rem",color:"var(--text-faint)" }}>
                           {MONTHS[dayMon].slice(0,3).toUpperCase()}
                         </div>
                       </div>
                       {/* Events — all shown, no limit */}
                       <div style={{ padding:"0.3rem" }}>
                         {dayEvs.length === 0 && (
-                          <div style={{ fontSize:"0.58rem",color:"#2a2d3e",textAlign:"center",marginTop:"0.5rem" }}>—</div>
+                          <div style={{ fontSize:"0.58rem",color:"var(--border-strong)",textAlign:"center",marginTop:"0.5rem" }}>—</div>
                         )}
                         {dayEvs.map((e, idx) => {
                           const color = getTypeColor(e.type);
                           return (
-                            <div key={idx} className="pill"
+                            <button type="button" key={idx} className="pill"
                               onClick={ev => { ev.stopPropagation(); setSelectedEvent(e); setSelectedOccDate(e._occurrenceDate); }}
-                              style={{ background:color+"1e",borderLeft:`2px solid ${color}`,borderRadius:"4px",
-                                padding:"0.22rem 0.35rem",marginBottom:"3px",cursor:"pointer" }}>
+                              style={{ background:color+"1e",borderLeft:`2px solid ${color}`,border:"none",borderRadius:"4px",
+                                padding:"0.22rem 0.35rem",marginBottom:"3px",cursor:"pointer",
+                                width:"100%",textAlign:"left",display:"block",fontFamily:"inherit" }}>
                               <div style={{ fontSize:"0.58rem",color,opacity:0.9,fontFamily:"'Orbitron',sans-serif" }}>
                                 {e.recurrence && e.recurrence!=="none" && "🔁 "}{e.time}
                               </div>
-                              <div style={{ fontSize:"0.7rem",color:"#e2e8f0",overflow:"hidden",
+                              <div style={{ fontSize:"0.7rem",color:"var(--text)",overflow:"hidden",
                                 textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{e.title}</div>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -481,8 +500,8 @@ export default function App() {
           /* ── Upcoming list ── */
           <div style={{ display:"grid",gap:"0.6rem",animation:"fadeUp 0.25s ease" }}>
             {filteredUpcoming.length===0 ? (
-              <div style={{ textAlign:"center",color:"#4a5568",padding:"3rem",background:"#0f111a",
-                borderRadius:"12px",border:"1px solid #1a1d2e" }}>
+              <div style={{ textAlign:"center",color:"var(--text-faint)",padding:"3rem",background:"var(--bg-panel)",
+                borderRadius:"12px",border:"1px solid var(--bg-hover)" }}>
                 <div style={{ fontSize:"2rem",marginBottom:"0.5rem" }}>📭</div>
                 <div style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.78rem" }}>No upcoming events</div>
               </div>
@@ -494,28 +513,30 @@ export default function App() {
               return (
                 <div key={`${e.id}-${idx}`} className="upcoming-row"
                   onClick={() => { setSelectedEvent(e); setSelectedOccDate(e._occurrenceDate); }}
-                  style={{ background:"#0f111a",border:"1px solid #1e2132",borderLeft:`3px solid ${color}`,
+                  onKeyDown={onEnterOrSpace(() => { setSelectedEvent(e); setSelectedOccDate(e._occurrenceDate); })}
+                  role="button" tabIndex={0}
+                  style={{ background:"var(--bg-panel)",border:"1px solid var(--border)",borderLeft:`3px solid ${color}`,
                     borderRadius:"10px",padding:"0.85rem 1rem",
                     display:"flex",alignItems:"center",gap:"1rem",transition:"border-color 0.15s" }}>
                   <div style={{ textAlign:"center",minWidth:"46px" }}>
                     <div style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"1.25rem",fontWeight:"900",color,lineHeight:1 }}>
                       {String(d.getUTCDate()).padStart(2,"0")}
                     </div>
-                    <div style={{ fontSize:"0.65rem",color:"#64748b" }}>{MONTHS[d.getUTCMonth()].slice(0,3).toUpperCase()}</div>
+                    <div style={{ fontSize:"0.65rem",color:"var(--text-dim)" }}>{MONTHS[d.getUTCMonth()].slice(0,3).toUpperCase()}</div>
                   </div>
                   <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ fontWeight:"600",fontSize:"0.92rem",color:"#e2e8f0",marginBottom:"0.15rem",
+                    <div style={{ fontWeight:"600",fontSize:"0.92rem",color:"var(--text)",marginBottom:"0.15rem",
                       display:"flex",alignItems:"center",gap:"0.4rem" }}>
                       {e.recurrence && e.recurrence!=="none" && <span style={{ fontSize:"0.72rem",opacity:0.6 }}>🔁</span>}
                       {e.title}
                     </div>
-                    <div style={{ fontSize:"0.75rem",color:"#64748b" }}>
-                      ⏰ {e.time} <span style={{ color:"#ffd700",fontWeight:"700",fontSize:"0.68rem" }}>UTC</span>
-                      <span style={{ color:"#4a5568" }}> · {localT} your time</span>
+                    <div style={{ fontSize:"0.75rem",color:"var(--text-dim)" }}>
+                      ⏰ {e.time} <span style={{ color:"var(--gold)",fontWeight:"700",fontSize:"0.68rem" }}>UTC</span>
+                      <span style={{ color:"var(--text-faint)" }}> · {localT} your time</span>
                       <span> · {typeLabel} · by {e.author}</span>
                     </div>
                   </div>
-                  <div style={{ color:"#2a2d3e" }}>›</div>
+                  <div style={{ color:"var(--border-strong)" }}>›</div>
                 </div>
               );
             })}
@@ -523,7 +544,7 @@ export default function App() {
         )}
 
         <div style={{ textAlign:"center",marginTop:"1.5rem",fontSize:"0.6rem",
-          color:"#1e2132",letterSpacing:"0.12em" }}>
+          color:"var(--border)",letterSpacing:"0.12em" }}>
           AOZ ORIGINS · EVENTS CALENDAR · ALL TIMES IN UTC
         </div>
       </div>
@@ -547,6 +568,27 @@ export default function App() {
         <Modal onClose={() => setEditingEvent(null)}>
           <AddEventForm editingEvent={editingEvent} onSave={handleEditEvent}
             onClose={() => setEditingEvent(null)} loading={saving} />
+        </Modal>
+      )}
+      {dayListDay && (
+        <Modal onClose={() => setDayListDay(null)}>
+          <div style={{ minWidth:"260px",maxWidth:"340px" }}>
+            <div style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.85rem",color:"var(--text)",
+              marginBottom:"0.8rem",letterSpacing:"0.04em" }}>
+              {MONTHS[month].toUpperCase()} {dayListDay}, {year}
+            </div>
+            {eventsOnDay(dayListDay).map((e, idx) => (
+              <button key={idx} type="button" className="pill"
+                onClick={() => { setSelectedEvent(e); setSelectedOccDate(e._occurrenceDate); setDayListDay(null); }}
+                style={{ background:getTypeColor(e.type)+"1e",borderLeft:`2px solid ${getTypeColor(e.type)}`,
+                  border:"none",borderRadius:"4px",padding:"0.4rem 0.6rem",fontSize:"0.75rem",color:getTypeColor(e.type),
+                  marginBottom:"6px",cursor:"pointer",display:"flex",gap:"6px",alignItems:"center",
+                  width:"100%",textAlign:"left",fontFamily:"inherit" }}>
+                {e.recurrence && e.recurrence!=="none" && <span style={{ opacity:0.7,fontSize:"0.68rem" }}>🔁</span>}
+                {e.time} {e.title}
+              </button>
+            ))}
+          </div>
         </Modal>
       )}
     </>

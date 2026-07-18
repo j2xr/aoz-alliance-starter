@@ -19,8 +19,8 @@ export function EventCard({ event }) {
     <button
       onClick={() => navigate(`/tracking/alliances/${allianceId}/events/${event.id}`)}
       style={{
-        width: '100%', textAlign: 'left', background: '#0f111a',
-        border: '1px solid #1e2132', borderLeft: '3px solid #38bdf8',
+        width: '100%', textAlign: 'left', background: 'var(--bg-panel)',
+        border: '1px solid var(--border)', borderLeft: '3px solid var(--accent)',
         borderRadius: '10px', padding: '0.9rem 1rem', cursor: 'pointer',
         transition: 'border-color 0.15s, background 0.15s',
       }}
@@ -29,9 +29,9 @@ export function EventCard({ event }) {
         e.currentTarget.style.background = '#38bdf808';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = '#1e2132';
-        e.currentTarget.style.borderLeftColor = '#38bdf8';
-        e.currentTarget.style.background = '#0f111a';
+        e.currentTarget.style.borderColor = 'var(--border)';
+        e.currentTarget.style.borderLeftColor = 'var(--accent)';
+        e.currentTarget.style.background = 'var(--bg-panel)';
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
@@ -39,7 +39,7 @@ export function EventCard({ event }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
             marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-            <span style={{ background: '#38bdf822', color: '#38bdf8',
+            <span style={{ background: '#38bdf822', color: 'var(--accent)',
               border: '1px solid #38bdf844', borderRadius: '999px',
               padding: '0.1rem 0.55rem', fontSize: '0.65rem',
               fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.04em',
@@ -47,13 +47,13 @@ export function EventCard({ event }) {
               {typeName}
             </span>
             {event.alliance_rank != null && (
-              <span style={{ fontSize: '0.72rem', color: '#ffd700',
+              <span style={{ fontSize: '0.72rem', color: 'var(--gold)',
                 fontFamily: "'Orbitron',sans-serif" }}>
                 #{event.alliance_rank}
               </span>
             )}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
             {formatDatetime(event.event_datetime)}
           </div>
         </div>
@@ -61,15 +61,15 @@ export function EventCard({ event }) {
           {event.total_points != null && (
             <div>
               <span style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1rem',
-                fontWeight: '700', color: '#e2e8f0' }}>
+                fontWeight: '700', color: 'var(--text)' }}>
                 {event.total_points.toLocaleString()}
               </span>
-              <span style={{ fontSize: '0.6rem', color: '#4a5568',
+              <span style={{ fontSize: '0.6rem', color: 'var(--text-faint)',
                 display: 'block', textAlign: 'right' }}>total pts</span>
             </div>
           )}
           {event.total_battlers != null && (
-            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.15rem' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '0.15rem' }}>
               {event.total_battlers} fighters
             </div>
           )}

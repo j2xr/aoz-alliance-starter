@@ -13,10 +13,10 @@ function formatTick(iso) {
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#0f111a', border: '1px solid #a78bfa44',
+    <div style={{ background: 'var(--bg-panel)', border: '1px solid #a78bfa44',
       borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.78rem' }}>
-      <div style={{ color: '#64748b', marginBottom: '0.3rem' }}>{formatTick(label)}</div>
-      <div style={{ color: '#a78bfa', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
+      <div style={{ color: 'var(--text-dim)', marginBottom: '0.3rem' }}>{formatTick(label)}</div>
+      <div style={{ color: 'var(--purple)', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
         {payload[0].value?.toLocaleString()} pwr
       </div>
     </div>
@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 export function PowerHistoryChart({ data }) {
   if (!data?.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>
         No data
       </div>
@@ -42,28 +42,28 @@ export function PowerHistoryChart({ data }) {
       <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="powerGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="var(--purple)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e2132" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis
           dataKey="date" tickFormatter={formatTick}
-          tick={{ fill: '#4a5568', fontSize: 10 }}
-          axisLine={{ stroke: '#1e2132' }} tickLine={false}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
+          axisLine={{ stroke: 'var(--border)' }} tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#4a5568', fontSize: 10 }}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
           axisLine={false} tickLine={false}
           tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
           width={48}
         />
         <Tooltip content={<CustomTooltip />} />
         <Area
-          type="monotone" dataKey="power" stroke="#a78bfa"
+          type="monotone" dataKey="power" stroke="var(--purple)"
           strokeWidth={2} fill="url(#powerGrad)"
-          dot={{ fill: '#a78bfa', r: 3 }}
-          activeDot={{ r: 5, fill: '#a78bfa' }}
+          dot={{ fill: 'var(--purple)', r: 3 }}
+          activeDot={{ r: 5, fill: 'var(--purple)' }}
         />
       </AreaChart>
     </ResponsiveContainer>

@@ -27,27 +27,27 @@ export function EventDetailPage() {
     <div style={{ animation: 'fadeUp 0.25s ease' }}>
       {/* Breadcrumb */}
       <button onClick={() => navigate(`/tracking/alliances/${allianceId}/events`)}
-        style={{ background: 'transparent', border: 'none', color: '#38bdf8',
+        style={{ background: 'transparent', border: 'none', color: 'var(--accent)',
           cursor: 'pointer', fontSize: '0.75rem', padding: '0',
           marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
         ← Back to events
       </button>
 
       {/* Event header */}
-      <div style={{ background: '#0f111a', border: '1px solid #1e2132',
-        borderLeft: '3px solid #38bdf8', borderRadius: '12px',
+      <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        borderLeft: '3px solid var(--accent)', borderRadius: '12px',
         padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem',
           alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
-            <span style={{ background: '#38bdf822', color: '#38bdf8',
+            <span style={{ background: '#38bdf822', color: 'var(--accent)',
               border: '1px solid #38bdf844', borderRadius: '999px',
               padding: '0.15rem 0.65rem', fontSize: '0.68rem',
               fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.05em',
               fontWeight: '700' }}>
               {typeName}
             </span>
-            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               {event ? formatDatetime(event.event_datetime) : '—'}
             </div>
           </div>
@@ -55,28 +55,28 @@ export function EventDetailPage() {
             {event?.alliance_rank != null && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900', color: '#ffd700' }}>
+                  fontWeight: '900', color: 'var(--gold)' }}>
                   #{event.alliance_rank}
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Ranking</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Ranking</div>
               </div>
             )}
             {event?.total_battlers != null && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900', color: '#e2e8f0' }}>
+                  fontWeight: '900', color: 'var(--text)' }}>
                   {event.total_battlers}
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Fighters</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Fighters</div>
               </div>
             )}
             {event?.total_points != null && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900', color: '#38bdf8' }}>
+                  fontWeight: '900', color: 'var(--accent)' }}>
                   {event.total_points.toLocaleString()}
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Total points</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Total points</div>
               </div>
             )}
           </div>
@@ -84,20 +84,20 @@ export function EventDetailPage() {
       </div>
 
       {/* Leaderboard */}
-      <div style={{ background: '#0f111a', border: '1px solid #1e2132',
+      <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
         borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #1e2132',
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)',
           fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem',
-          color: '#e2e8f0', letterSpacing: '0.06em' }}>
+          color: 'var(--text)', letterSpacing: '0.06em' }}>
           LEADERBOARD
         </div>
         {lbLoading ? (
           <div style={{ textAlign: 'center', padding: '3rem',
-            fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem', color: '#4a5568' }}>
+            fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem', color: 'var(--text-faint)' }}>
             LOADING…
           </div>
         ) : lbError ? (
-          <div style={{ padding: '1.5rem', color: '#ff4d4d', fontSize: '0.82rem' }}>
+          <div style={{ padding: '1.5rem', color: 'var(--danger)', fontSize: '0.82rem' }}>
             Error: {lbError.message}
           </div>
         ) : (

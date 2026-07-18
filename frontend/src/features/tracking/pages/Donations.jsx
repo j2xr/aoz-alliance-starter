@@ -44,7 +44,7 @@ export function DonationsPage() {
 
   if (!allianceId) {
     return (
-      <div style={{ color: '#4a5568', textAlign: 'center', padding: '3rem',
+      <div style={{ color: 'var(--text-faint)', textAlign: 'center', padding: '3rem',
         fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem' }}>
         Select an alliance in the sidebar
       </div>
@@ -55,7 +55,7 @@ export function DonationsPage() {
     return (
       <div style={{ textAlign: 'center', padding: '4rem',
         fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem',
-        color: '#4a5568', letterSpacing: '0.1em' }}>
+        color: 'var(--text-faint)', letterSpacing: '0.1em' }}>
         LOADING…
       </div>
     );
@@ -64,7 +64,7 @@ export function DonationsPage() {
   if (periodsError) {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
-        borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
+        borderRadius: '10px', padding: '1.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>
         {isAccessDenied(periodsError)
           ? 'Access denied — you are not a member of this alliance.'
           : `Error: ${periodsError.message}`}
@@ -76,16 +76,16 @@ export function DonationsPage() {
     <div style={{ animation: 'fadeUp 0.25s ease' }} aria-busy={leaderboardLoading || undefined}>
       {/* Header */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <div style={{ fontSize: '0.62rem', letterSpacing: '0.3em', color: '#38bdf8',
+        <div style={{ fontSize: '0.62rem', letterSpacing: '0.3em', color: 'var(--accent)',
           textTransform: 'uppercase', fontFamily: "'Orbitron',sans-serif",
           marginBottom: '0.2rem' }}>
           Contributions
         </div>
         <h2 style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.1rem',
-          fontWeight: '900', color: '#e2e8f0' }}>
+          fontWeight: '900', color: 'var(--text)' }}>
           Weekly donations
         </h2>
-        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.25rem' }}>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '0.25rem' }}>
           Alliance Honor ranking per week · <em>latest-wins</em> values (latest capture).
         </div>
         <span
@@ -94,7 +94,7 @@ export function DonationsPage() {
             display: 'inline-block',
             marginTop: '0.5rem',
             fontSize: '0.68rem',
-            color: '#94a3b8',
+            color: 'var(--text-muted)',
             background: '#38bdf80f',
             border: '1px solid #38bdf833',
             borderRadius: '999px',
@@ -109,12 +109,12 @@ export function DonationsPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem',
         marginBottom: '1rem', flexWrap: 'wrap' }}>
         <label htmlFor="donation-period"
-          style={{ fontSize: '0.7rem', color: '#94a3b8',
+          style={{ fontSize: '0.7rem', color: 'var(--text-muted)',
             fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.06em' }}>
           PERIOD
         </label>
         {periods.length === 0 ? (
-          <span style={{ fontSize: '0.78rem', color: '#4a5568', fontStyle: 'italic' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-faint)', fontStyle: 'italic' }}>
             No weeks recorded
           </span>
         ) : (
@@ -124,10 +124,10 @@ export function DonationsPage() {
             value={selectedPeriodId ?? ''}
             onChange={e => setSelectedPeriodId(e.target.value)}
             style={{
-              background: '#0f111a',
-              border: '1px solid #2a2d3e',
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border-strong)',
               borderRadius: '8px',
-              color: '#e2e8f0',
+              color: 'var(--text)',
               padding: '0.4rem 0.7rem',
               fontSize: '0.82rem',
               fontFamily: "'Rajdhani',sans-serif",
@@ -145,18 +145,18 @@ export function DonationsPage() {
 
       {leaderboardError ? (
         <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
-          borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
+          borderRadius: '10px', padding: '1.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>
           Error: {leaderboardError.message}
         </div>
       ) : (
         <>
           <PlayerSearchInput value={search} onChange={setSearch} />
-          <div style={{ background: '#0f111a', border: '1px solid #1e2132',
+          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
             borderRadius: '12px', overflow: 'hidden' }}>
             {leaderboardLoading ? (
               <div style={{ textAlign: 'center', padding: '3rem',
                 fontFamily: "'Orbitron',sans-serif", fontSize: '0.78rem',
-                color: '#4a5568', letterSpacing: '0.1em' }}>
+                color: 'var(--text-faint)', letterSpacing: '0.1em' }}>
                 LOADING…
               </div>
             ) : (
