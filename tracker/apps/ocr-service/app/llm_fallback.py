@@ -180,7 +180,12 @@ def _call_ollama(
         "images": [encoded_image],
         "stream": False,
         "keep_alive": keep_alive,
-        "options": {"num_ctx": num_ctx, "num_predict": num_predict},
+        "options": {
+            "num_ctx": num_ctx,
+            "num_predict": num_predict,
+            "temperature": 0,
+            "seed": 42,
+        },
     }
     if _uses_json_format(model):
         payload["format"] = "json"

@@ -7,6 +7,7 @@ import numpy as np
 from app.llm_fallback import (
     _resize_for_llm,
     llm_fallback,
+    llm_fallback_donation,
     llm_fallback_player_stats,
 )
 
@@ -32,6 +33,39 @@ def _mock_response(response_text: str = _DEFAULT_RESPONSE) -> MagicMock:
         "eval_duration": 1_000_000_000,
     }
     return mock_resp
+
+
+class TestDeterministicOptions:
+    """All three fallback entry points route through _call_ollama, which must
+    always send temperature=0 and seed=42 so re-running a fallback on the same
+    crop reproduces the same reading (see Lot 3, aoz-master-plan.md)."""
+
+    def test_llm_fallback_sends_deterministic_options(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response()
+            llm_fallback(_fake_image())
+
+            options = mock_post.call_args.kwargs["json"]["options"]
+            assert options["temperature"] == 0
+            assert options["seed"] == 42
+
+    def test_llm_fallback_donation_sends_deterministic_options(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response()
+            llm_fallback_donation(_fake_image())
+
+            options = mock_post.call_args.kwargs["json"]["options"]
+            assert options["temperature"] == 0
+            assert options["seed"] == 42
+
+    def test_llm_fallback_player_stats_sends_deterministic_options(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _player_stats_response('{"members": []}')
+            llm_fallback_player_stats(np.zeros((800, 720, 3), dtype=np.uint8))
+
+            options = mock_post.call_args.kwargs["json"]["options"]
+            assert options["temperature"] == 0
+            assert options["seed"] == 42
 
 
 class TestKeepAlive:
