@@ -263,6 +263,15 @@ async function upsertMemberships(
   return newPlayerRows.length;
 }
 
+/**
+ * True quand la confiance OCR est basse (0 <= confidence < 0.5) — à distinguer
+ * du sentinel -1 (correction LLM acceptée, voir _rewrite_name côté ocr-service)
+ * qui n'est PAS un signal de mauvaise qualité et ne doit donc jamais être flaggé.
+ */
+function needsReview(confidence: number): boolean {
+  return confidence >= 0 && confidence < 0.5;
+}
+
 /** True si une capture (file_hash, alliance_id) a déjà été enregistrée. */
 async function findExistingUpload(fileHash: string, allianceId: string): Promise<boolean> {
   const { data } = await supabase
@@ -470,6 +479,7 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
         power: m.power,
         points: m.points,
         ocr_confidence: m.confidence,
+        needs_review: needsReview(m.confidence),
         raw_ocr: m as unknown as Record<string, unknown>,
       },
     ];
@@ -667,6 +677,7 @@ export async function upsertDonationResult(
       alliance_tag: m.alliance_tag,
       leaderboard_position: m.leaderboard_position ?? null,
       ocr_confidence: m.confidence,
+      needs_review: needsReview(m.confidence),
       raw_ocr: m as unknown as Record<string, unknown>,
       source_message_id: messageId,
       source_upload_id: uploadId,

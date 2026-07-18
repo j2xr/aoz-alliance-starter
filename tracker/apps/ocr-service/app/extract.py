@@ -26,22 +26,12 @@ _LEADING_RANK_RE = re.compile(r"^\s*\d{1,2}\s+")
 logger = logging.getLogger(__name__)
 
 _CONFIDENCE_THRESHOLD = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.75"))
-# Per-field thresholds: fall back to the global if the specific var is unset.
 # Names have structurally lower Tesseract confidence than numeric fields
-# (e.g. a correctly-read name can score ~0.29 on certain game fonts).
-# rank/power/points are near-certain with whitelisted OCR so their thresholds
-# sit higher; they are not wired to LLM fallback (the LLM only improves names).
+# (e.g. a correctly-read name can score ~0.29 on certain game fonts), hence a
+# dedicated threshold; rank/power/points are near-certain with whitelisted OCR
+# and are not wired to LLM fallback (the LLM only improves names).
 _CONFIDENCE_THRESHOLD_NAME = float(
     os.getenv("OCR_CONFIDENCE_THRESHOLD_NAME", str(_CONFIDENCE_THRESHOLD))
-)
-_CONFIDENCE_THRESHOLD_RANK = float(
-    os.getenv("OCR_CONFIDENCE_THRESHOLD_RANK", str(_CONFIDENCE_THRESHOLD))
-)
-_CONFIDENCE_THRESHOLD_POWER = float(
-    os.getenv("OCR_CONFIDENCE_THRESHOLD_POWER", str(_CONFIDENCE_THRESHOLD))
-)
-_CONFIDENCE_THRESHOLD_POINTS = float(
-    os.getenv("OCR_CONFIDENCE_THRESHOLD_POINTS", str(_CONFIDENCE_THRESHOLD))
 )
 _LLM_FALLBACK_ENABLED = os.getenv("LLM_FALLBACK_ENABLED", "false").lower() == "true"
 # Stop calling the LLM after this many CONSECUTIVE failures within a single
@@ -176,7 +166,13 @@ def _apply_llm_fallback(
                         llm_score,
                         member.alliance_honor,
                     )
-                    updated.append(member)
+                    # Flag the rejection itself: the original OCR confidence gave
+                    # no signal that a correction was attempted and failed, so a
+                    # row could look merely "low-confidence" when it's actually
+                    # one we know is suspect. 0.0 forces needs_review downstream
+                    # (see discord-bot upsert.ts) without touching the sentinel
+                    # -1.0 used for an *accepted* LLM correction.
+                    updated.append(member.model_copy(update={"confidence": 0.0}))
                 else:
                     new_name = str(llm_name)
                     if new_name != member.name:
