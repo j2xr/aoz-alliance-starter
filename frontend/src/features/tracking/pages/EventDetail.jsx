@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useEventLeaderboard } from '../hooks/useEventLeaderboard';
-import { useAllianceEvents } from '../hooks/useAllianceEvents';
+import { useAllianceEvent } from '../hooks/useAllianceEvents';
 import { LeaderboardTable } from '../components/LeaderboardTable';
 
 function formatDatetime(iso) {
@@ -17,9 +17,7 @@ export function EventDetailPage() {
   const navigate = useNavigate();
   const { data: leaderboard = [], isLoading: lbLoading, error: lbError } = useEventLeaderboard(eventId);
 
-  // Fetch event meta from the events list (avoid a separate query for now)
-  const { data: events = [] } = useAllianceEvents(allianceId, 100);
-  const event = events.find(e => e.id === eventId);
+  const { data: event } = useAllianceEvent(eventId);
 
   const typeName = event?.at_event_types?.display_name ?? event?.at_event_types?.code ?? '—';
 
