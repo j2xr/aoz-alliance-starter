@@ -146,6 +146,53 @@ describe('upsertEventResult', () => {
     expect(allTables).toContain('at_participations');
   });
 
+  it('flags needs_review from ocr_confidence, excluding the LLM-corrected sentinel', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
+    queueFrom({ id: 'event-1' }); // at_events upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
+    queueFrom([                    // at_players upsert
+      { id: 'p1', name: 'Alpha' },
+      { id: 'p2', name: 'Beta' },
+      { id: 'p3', name: 'Gamma' },
+    ]);
+    queueFrom([]);   // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    // at_participations: chaîne capturée pour inspecter le payload de l'upsert
+    const participationsChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      participationsChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.3 },
+          { name: 'Beta', rank: 'R4', power: 800_000, points: 40_000, confidence: 0.9 },
+          // -1 sentinel: an LLM correction that was accepted — never needs_review.
+          { name: 'Gamma', rank: 'R3', power: 600_000, points: 30_000, confidence: -1 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    const upsertMock = participationsChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = upsertMock.mock.calls[0]?.[0] as {
+      player_id: string;
+      needs_review: boolean;
+    }[];
+    expect(payload.find((r) => r.player_id === 'p1')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p2')?.needs_review).toBe(false);
+    expect(payload.find((r) => r.player_id === 'p3')?.needs_review).toBe(false);
+  });
+
   it('merges aliased members into the single at_players upsert with canonical names', async () => {
     queueFrom(null);               // at_screenshot_uploads dedup: clear
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
@@ -399,6 +446,52 @@ describe('upsertDonationResult', () => {
     const upsertMock = donationsChain['upsert'] as ReturnType<typeof vi.fn>;
     const payload = upsertMock.mock.calls[0]?.[0] as { leaderboard_position: number | null }[];
     expect(payload[0]?.leaderboard_position).toBeNull();
+  });
+
+  it('flags needs_review from ocr_confidence, excluding the LLM-corrected sentinel', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
+    queueFrom([
+      { id: 'p1', name: 'Alpha' },
+      { id: 'p2', name: 'Beta' },
+      { id: 'p3', name: 'Gamma' },
+    ]); // at_players upsert
+    queueFrom([]);   // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    // at_donations: chaîne capturée pour inspecter le payload de l'upsert
+    const donationsChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      donationsChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const params = {
+      ...BASE_DONATION_PARAMS,
+      ocr: {
+        ...BASE_DONATION_PARAMS.ocr,
+        members: [
+          { name: 'Alpha', alliance_tag: 'SOD', rank: 'R5', alliance_honor: 5_000, confidence: 0.3 },
+          { name: 'Beta', alliance_tag: 'SOD', rank: 'R4', alliance_honor: 4_000, confidence: 0.9 },
+          // -1 sentinel: an LLM correction that was accepted — never needs_review.
+          { name: 'Gamma', alliance_tag: 'SOD', rank: 'R3', alliance_honor: 3_000, confidence: -1 },
+        ],
+      },
+    };
+
+    const result = await upsertDonationResult(params);
+    expect(result.status).toBe('processed');
+
+    const upsertMock = donationsChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = upsertMock.mock.calls[0]?.[0] as {
+      player_id: string;
+      needs_review: boolean;
+    }[];
+    expect(payload.find((r) => r.player_id === 'p1')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p2')?.needs_review).toBe(false);
+    expect(payload.find((r) => r.player_id === 'p3')?.needs_review).toBe(false);
   });
 
   it('logs a warning when leaderboard_position is not strictly increasing within a capture', async () => {
