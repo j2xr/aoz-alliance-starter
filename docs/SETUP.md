@@ -260,17 +260,18 @@ The `/tracking` dashboard requires a logged-in user, and RLS only shows a user
 the alliances they belong to. So you need (a) a Supabase Auth account and (b) a
 row linking that account to an alliance.
 
-1. **Create your alliance row.** In the Supabase **SQL Editor**:
+1. **Create your alliance row.** In the Discord channel you listed in
+   `DISCORD_ALLOWED_CHANNEL_IDS` (step 6), run:
 
-   ```sql
-   insert into at_alliances (name, discord_channel_id)
-   values ('My Alliance', '000000000000000000')   -- use a real channel ID from step 4
-   on conflict (name) do update
-     set discord_channel_id = excluded.discord_channel_id;
+   ```
+   /setup-alliance name:My Alliance
    ```
 
-   (The bot also needs this row to map incoming screenshots — the
-   `discord_channel_id` must match one of your `DISCORD_ALLOWED_CHANNEL_IDS`.)
+   This requires the **Manage Server** permission and creates the
+   `at_alliances` row linked to that channel — the bot uses this link to map
+   incoming screenshots to the alliance. If the channel is already linked, or
+   the name is taken by another channel, the command tells you instead of
+   creating a duplicate.
 
 2. **Create a user account.** In Supabase, go to **Authentication → Users → Add
    user** (set an email + password), or sign up through the login screen at
