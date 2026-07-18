@@ -14,6 +14,8 @@ services:
       dockerfile: Dockerfile
     container_name: alliance-ocr-service
     restart: unless-stopped
+    labels:
+      - "priority=P2"
     env_file: ./apps/ocr-service/.env
     expose:
       - "8000"
@@ -50,6 +52,8 @@ services:
       dockerfile: apps/discord-bot/Dockerfile
     container_name: alliance-discord-bot
     restart: unless-stopped
+    labels:
+      - "priority=P2"
     env_file: ./apps/discord-bot/.env
     # The bot reaches the OCR service over the internal network by container name.
     environment:
