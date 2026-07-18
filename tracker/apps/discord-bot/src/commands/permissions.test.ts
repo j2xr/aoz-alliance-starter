@@ -20,16 +20,18 @@ vi.mock('../logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// These five commands can delete/alter alliance data (merge deletes a player,
+// These six commands can delete/alter alliance data (merge deletes a player,
 // upload can delete at_screenshot_uploads rows, reprocess-channel re-runs OCR
-// on an entire channel, membership/player-alias edit canonical player data)
-// and previously had no permission restriction at all.
+// on an entire channel, membership/player-alias edit canonical player data,
+// setup-alliance creates a new at_alliances row) and previously had no
+// permission restriction at all.
 const SENSITIVE_COMMANDS = [
   'merge',
   'upload',
   'reprocess-channel',
   'membership',
   'player-alias',
+  'setup-alliance',
 ];
 
 describe('sensitive command permissions', () => {
