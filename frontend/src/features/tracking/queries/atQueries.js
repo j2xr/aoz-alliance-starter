@@ -35,6 +35,16 @@ export async function fetchAllianceEvents(allianceId, limit = 20) {
   return data ?? [];
 }
 
+export async function fetchAllianceEvent(eventId) {
+  const { data, error } = await supabase
+    .from('at_events')
+    .select('id, event_datetime, alliance_rank, total_battlers, total_points, at_event_types(code, display_name)')
+    .eq('id', eventId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchEventLeaderboard(eventId) {
   const { data, error } = await supabase
     .from('at_v_event_leaderboard')
