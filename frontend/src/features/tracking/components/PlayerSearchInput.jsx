@@ -9,10 +9,10 @@ export function PlayerSearchInput({ value, onChange, placeholder = 'Search by pl
       style={{
         width: '100%',
         maxWidth: '280px',
-        background: '#0f111a',
-        border: '1px solid #1e2132',
+        background: 'var(--bg-panel)',
+        border: '1px solid var(--border)',
         borderRadius: '8px',
-        color: '#e2e8f0',
+        color: 'var(--text)',
         padding: '0.5rem 0.75rem',
         fontSize: '0.82rem',
         outline: 'none',

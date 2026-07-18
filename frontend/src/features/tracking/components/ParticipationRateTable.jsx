@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { onEnterOrSpace } from '@/lib/a11y';
 
 const COLS = [
   { key: 'player_name', label: 'Player', numeric: false },
@@ -11,10 +12,10 @@ const COLS = [
 ];
 
 function rateColor(pct) {
-  if (pct == null) return '#4a5568';
-  if (pct >= 80) return '#22c55e';
-  if (pct >= 50) return '#ffd700';
-  return '#ff4d4d';
+  if (pct == null) return 'var(--text-faint)';
+  if (pct >= 80) return 'var(--success)';
+  if (pct >= 50) return 'var(--gold)';
+  return 'var(--danger)';
 }
 
 function formatDate(iso) {
@@ -55,7 +56,7 @@ export function ParticipationRateTable({ rows }) {
 
   if (rows.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.8rem', fontFamily: "'Orbitron',sans-serif" }}>
         No participation data
       </div>
@@ -66,14 +67,17 @@ export function ParticipationRateTable({ rows }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
         <thead>
-          <tr style={{ borderBottom: '1px solid #1e2132' }}>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
             {COLS.map(col => (
               <th key={col.key}
                 onClick={() => handleSort(col.key)}
+                tabIndex={0}
+                onKeyDown={onEnterOrSpace(() => handleSort(col.key))}
+                aria-sort={sortKey === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
                 style={{
                   padding: '0.55rem 0.75rem',
                   textAlign: col.numeric ? 'right' : 'left',
-                  color: sortKey === col.key ? '#38bdf8' : '#64748b',
+                  color: sortKey === col.key ? 'var(--accent)' : 'var(--text-dim)',
                   fontFamily: "'Orbitron',sans-serif", fontSize: '0.6rem',
                   letterSpacing: '0.06em', cursor: 'pointer', whiteSpace: 'nowrap',
                   userSelect: 'none',
@@ -88,15 +92,17 @@ export function ParticipationRateTable({ rows }) {
           {sorted.map((row, i) => (
             <tr key={row.player_id ?? i}
               onClick={() => row.player_id && navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}
+              tabIndex={row.player_id ? 0 : undefined}
+              onKeyDown={row.player_id ? onEnterOrSpace(() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)) : undefined}
               style={{
-                borderBottom: '1px solid #1a1d2e',
+                borderBottom: '1px solid var(--bg-hover)',
                 cursor: row.player_id ? 'pointer' : 'default',
                 transition: 'background 0.1s',
               }}
               onMouseEnter={e => e.currentTarget.style.background = '#38bdf808'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
-              <td style={{ padding: '0.55rem 0.75rem', color: '#e2e8f0', fontWeight: '600' }}>
+              <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text)', fontWeight: '600' }}>
                 {row.player_name ?? '—'}
               </td>
               <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right' }}>
@@ -107,16 +113,16 @@ export function ParticipationRateTable({ rows }) {
                     : '—'}
                 </span>
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: '#94a3b8' }}>
+              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: 'var(--text-muted)' }}>
                 {row.events_participated ?? '—'}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: '#64748b' }}>
+              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: 'var(--text-dim)' }}>
                 {row.eligible_events ?? '—'}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: '#94a3b8' }}>
+              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: 'var(--text-muted)' }}>
                 {row.avg_points != null ? Math.round(row.avg_points).toLocaleString() : '—'}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', color: '#64748b', fontSize: '0.75rem' }}>
+              <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
                 {formatDate(row.last_participation)}
               </td>
             </tr>

@@ -11,17 +11,17 @@ function formatTick(d) {
 }
 
 const LINES = [
-  { key: 'attack_pct', color: '#38bdf8', label: 'Attack %' },
-  { key: 'hp_pct', color: '#22c55e', label: 'HP %' },
+  { key: 'attack_pct', color: 'var(--accent)', label: 'Attack %' },
+  { key: 'hp_pct', color: 'var(--success)', label: 'HP %' },
   { key: 'defense_pct', color: '#fb923c', label: 'Defense %' },
 ];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#0f111a', border: '1px solid #2a2d3e',
+    <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-strong)',
       borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.78rem' }}>
-      <div style={{ color: '#64748b', marginBottom: '0.4rem' }}>{formatTick(label)}</div>
+      <div style={{ color: 'var(--text-dim)', marginBottom: '0.4rem' }}>{formatTick(label)}</div>
       {payload.map(p => (
         <div key={p.dataKey} style={{ color: p.color, fontFamily: "'Orbitron',sans-serif",
           fontWeight: '700', marginBottom: '0.2rem' }}>
@@ -35,7 +35,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 export function StatsEvolutionChart({ data }) {
   if (!data?.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>
         No data
       </div>
@@ -52,21 +52,21 @@ export function StatsEvolutionChart({ data }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e2132" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis
           dataKey="date" tickFormatter={formatTick}
-          tick={{ fill: '#4a5568', fontSize: 10 }}
-          axisLine={{ stroke: '#1e2132' }} tickLine={false}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
+          axisLine={{ stroke: 'var(--border)' }} tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#4a5568', fontSize: 10 }}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
           axisLine={false} tickLine={false}
           tickFormatter={v => `${v}%`}
           domain={[0, 'auto']}
           width={44}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend wrapperStyle={{ fontSize: '0.7rem', color: '#94a3b8', paddingTop: '0.5rem' }} />
+        <Legend wrapperStyle={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingTop: '0.5rem' }} />
         {LINES.map(l => (
           <Line
             key={l.key}

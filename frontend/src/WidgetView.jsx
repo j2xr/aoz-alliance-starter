@@ -57,8 +57,8 @@ export default function WidgetView() {
 
   const styles = {
     root: {
-      background: "#070810",
-      color: "#e2e8f0",
+      background: "var(--bg)",
+      color: "var(--text)",
       fontFamily: "'Rajdhani', 'Segoe UI', sans-serif",
       minHeight: "100vh",
       padding: "12px",
@@ -69,13 +69,13 @@ export default function WidgetView() {
       alignItems: "center",
       justifyContent: "space-between",
       marginBottom: "10px",
-      borderBottom: "1px solid #1a1d2e",
+      borderBottom: "1px solid var(--bg-hover)",
       paddingBottom: "8px",
     },
     title: {
       fontFamily: "'Orbitron', monospace",
       fontSize: "0.75rem",
-      color: "#ffd700",
+      color: "var(--gold)",
       letterSpacing: "0.05em",
       textTransform: "uppercase",
     },
@@ -87,12 +87,12 @@ export default function WidgetView() {
       padding: "6px 0",
       borderBottom: "1px solid #0f1120",
     },
-    time: { color: "#94a3b8", fontSize: "0.78rem", minWidth: 36, fontVariantNumeric: "tabular-nums" },
-    eventTitle: { fontSize: "0.88rem", color: "#e2e8f0", flex: 1, lineHeight: 1.3 },
-    date: { fontSize: "0.7rem", color: "#4a5568", marginRight: 4 },
-    loading: { color: "#4a5568", fontSize: "0.8rem", textAlign: "center", marginTop: 20 },
-    empty: { color: "#4a5568", fontSize: "0.82rem", textAlign: "center", marginTop: 20 },
-    sectionLabel: { fontSize: "0.7rem", color: "#4a5568", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" },
+    time: { color: "var(--text-muted)", fontSize: "0.78rem", minWidth: 36, fontVariantNumeric: "tabular-nums" },
+    eventTitle: { fontSize: "0.88rem", color: "var(--text)", flex: 1, lineHeight: 1.3 },
+    date: { fontSize: "0.7rem", color: "var(--text-faint)", marginRight: 4 },
+    loading: { color: "var(--text-faint)", fontSize: "0.8rem", textAlign: "center", marginTop: 20 },
+    empty: { color: "var(--text-faint)", fontSize: "0.82rem", textAlign: "center", marginTop: 20 },
+    sectionLabel: { fontSize: "0.7rem", color: "var(--text-faint)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" },
     refreshed: { fontSize: "0.65rem", color: "#2d3748" },
   };
 

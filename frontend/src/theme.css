@@ -1,0 +1,25 @@
+/* Design tokens (A5). Values are unchanged from their prior hardcoded hex —
+   this file only names the colors already in use so they stop drifting.
+   Rare one-off colors (chart accents, medal bronze, etc.) are intentionally
+   left as literals; fold them in here if they start repeating. */
+:root {
+  --bg: #070810;
+  --bg-panel: #0f111a;
+  --bg-deep: #0a0c14;
+  --bg-hover: #1a1d2e;
+
+  --border: #1e2132;
+  --border-strong: #2a2d3e;
+
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --text-faint: #4a5568;
+
+  --accent: #38bdf8;
+  --gold: #ffd700;
+  --gold-alt: #ff9500;
+  --danger: #ff4d4d;
+  --success: #22c55e;
+  --purple: #a78bfa;
+}
