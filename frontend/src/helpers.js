@@ -6,8 +6,8 @@ export const MONTHS = ["January","February","March","April","May","June",
 export const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 export const EVENT_TYPES = [
-  { id: "raid",       label: "KE",       color: "#ff4d4d" },
-  { id: "tournament", label: "Alliance", color: "#ffd700" },
+  { id: "raid",       label: "KE",       color: "var(--danger)" },
+  { id: "tournament", label: "Alliance", color: "var(--gold)" },
   { id: "event",      label: "Event",    color: "#4dffb8" },
   { id: "other",      label: "Other",    color: "#60a5fa" },
 ];
@@ -223,11 +223,11 @@ export function downloadWeekICS(weekEvents, weekLabel) {
 
 // ─── Shared styles ───────────────────────────────────────────────────────────
 export const input = {
-  width: "100%", background: "#1a1d2e", border: "1px solid #2a2d3e",
-  borderRadius: "8px", color: "#e2e8f0", padding: "0.6rem 0.8rem",
+  width: "100%", background: "var(--bg-hover)", border: "1px solid var(--border-strong)",
+  borderRadius: "8px", color: "var(--text)", padding: "0.6rem 0.8rem",
   fontSize: "0.9rem", outline: "none", boxSizing: "border-box",
 };
-export const label = { color: "#94a3b8", fontSize: "0.8rem", marginBottom: "0.3rem", display: "block" };
+export const label = { color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.3rem", display: "block" };
 
 // ─── parseCountdown ───────────────────────────────────────────────────────────
 export function parseCountdown(str) {

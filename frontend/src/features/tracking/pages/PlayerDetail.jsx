@@ -26,7 +26,7 @@ export function PlayerDetailPage() {
     return (
       <div style={{ textAlign: 'center', padding: '4rem',
         fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem',
-        color: '#4a5568', letterSpacing: '0.1em' }}>
+        color: 'var(--text-faint)', letterSpacing: '0.1em' }}>
         LOADING…
       </div>
     );
@@ -35,7 +35,7 @@ export function PlayerDetailPage() {
   if (statsError) {
     return (
       <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
-        borderRadius: '10px', padding: '1.5rem', color: '#ff4d4d', fontSize: '0.85rem' }}>
+        borderRadius: '10px', padding: '1.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>
         Error: {statsError.message}
       </div>
     );
@@ -51,25 +51,25 @@ export function PlayerDetailPage() {
     <div style={{ animation: 'fadeUp 0.25s ease' }}>
       {/* Breadcrumb */}
       <button onClick={() => navigate(`/tracking/alliances/${allianceId}/players`)}
-        style={{ background: 'transparent', border: 'none', color: '#38bdf8',
+        style={{ background: 'transparent', border: 'none', color: 'var(--accent)',
           cursor: 'pointer', fontSize: '0.75rem', padding: '0',
           marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
         ← Back to players
       </button>
 
       {/* Player header */}
-      <div style={{ background: '#0f111a', border: '1px solid #1e2132',
-        borderLeft: '3px solid #38bdf8', borderRadius: '12px',
+      <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        borderLeft: '3px solid var(--accent)', borderRadius: '12px',
         padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem',
           alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.2rem',
-              fontWeight: '900', color: '#e2e8f0', marginBottom: '0.2rem' }}>
+              fontWeight: '900', color: 'var(--text)', marginBottom: '0.2rem' }}>
               {player?.name ?? '—'}
             </h2>
             {player?.game_id && (
-              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
                 ID : {player.game_id}
               </div>
             )}
@@ -79,38 +79,38 @@ export function PlayerDetailPage() {
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
                   fontWeight: '900',
-                  color: participation.participation_rate_pct >= 80 ? '#22c55e'
-                    : participation.participation_rate_pct >= 50 ? '#ffd700' : '#ff4d4d' }}>
+                  color: participation.participation_rate_pct >= 80 ? 'var(--success)'
+                    : participation.participation_rate_pct >= 50 ? 'var(--gold)' : 'var(--danger)' }}>
                   {Math.round(participation.participation_rate_pct)}%
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Participation</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Participation</div>
               </div>
             )}
             {latestPower != null && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900', color: '#a78bfa' }}>
+                  fontWeight: '900', color: 'var(--purple)' }}>
                   {latestPower >= 1000000
                     ? `${(latestPower / 1000000).toFixed(1)}M`
                     : latestPower.toLocaleString()}
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Power</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Power</div>
               </div>
             )}
             <div style={{ textAlign: 'center' }} data-testid="avg-donations-card">
               <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                fontWeight: '900', color: '#38bdf8' }}>
+                fontWeight: '900', color: 'var(--accent)' }}>
                 {avgDonationDisplay}
               </div>
-              <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Avg. donations / week</div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Avg. donations / week</div>
             </div>
             {participation && (
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900', color: '#e2e8f0' }}>
+                  fontWeight: '900', color: 'var(--text)' }}>
                   {participation.events_participated}/{participation.eligible_events}
                 </div>
-                <div style={{ fontSize: '0.62rem', color: '#4a5568' }}>Attendances</div>
+                <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Attendances</div>
               </div>
             )}
           </div>
@@ -120,11 +120,11 @@ export function PlayerDetailPage() {
       {/* Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))',
         gap: '1rem' }}>
-        <div style={{ background: '#0f111a', border: '1px solid #1e2132',
+        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
           borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid #1e2132',
+          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid var(--border)',
             fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem',
-            color: '#38bdf8', letterSpacing: '0.06em' }}>
+            color: 'var(--accent)', letterSpacing: '0.06em' }}>
             POINTS EVOLUTION
           </div>
           <div style={{ padding: '1rem' }}>
@@ -132,11 +132,11 @@ export function PlayerDetailPage() {
           </div>
         </div>
 
-        <div style={{ background: '#0f111a', border: '1px solid #1e2132',
+        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
           borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid #1e2132',
+          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid var(--border)',
             fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem',
-            color: '#a78bfa', letterSpacing: '0.06em' }}>
+            color: 'var(--purple)', letterSpacing: '0.06em' }}>
             POWER HISTORY
           </div>
           <div style={{ padding: '1rem' }}>
@@ -147,9 +147,9 @@ export function PlayerDetailPage() {
 
       {/* Military stats */}
       {militaryStats.length > 0 && (
-        <div style={{ marginTop: '1rem', background: '#0f111a',
-          border: '1px solid #1e2132', borderRadius: '12px', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid #1e2132',
+        <div style={{ marginTop: '1rem', background: 'var(--bg-panel)',
+          border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid var(--border)',
             fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem',
             color: '#fb923c', letterSpacing: '0.06em' }}>
             COMBAT STATS EVOLUTION
@@ -161,11 +161,11 @@ export function PlayerDetailPage() {
       )}
 
       {/* Donations history */}
-      <div style={{ marginTop: '1rem', background: '#0f111a',
-        border: '1px solid #1e2132', borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid #1e2132',
+      <div style={{ marginTop: '1rem', background: 'var(--bg-panel)',
+        border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem 0.5rem', borderBottom: '1px solid var(--border)',
           fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem',
-          color: '#38bdf8', letterSpacing: '0.06em' }}>
+          color: 'var(--accent)', letterSpacing: '0.06em' }}>
           DONATION HISTORY (LAST 5 WEEKS)
         </div>
         <div style={{ padding: '0.75rem 1.25rem 1rem' }}>

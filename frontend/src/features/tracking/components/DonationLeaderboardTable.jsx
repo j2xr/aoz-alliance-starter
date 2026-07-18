@@ -1,14 +1,15 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { formatHonor, formatUpdatedAt } from '../utils/donationFormat';
+import { onEnterOrSpace } from '@/lib/a11y';
 
 const PAGE_SIZE = 50;
 
 function positionDecoration(position) {
-  if (position === 1) return { medal: '🥇', color: '#ffd700' };
+  if (position === 1) return { medal: '🥇', color: 'var(--gold)' };
   if (position === 2) return { medal: '🥈', color: '#cbd5e1' };
   if (position === 3) return { medal: '🥉', color: '#cd7f32' };
-  return { medal: null, color: '#4a5568' };
+  return { medal: null, color: 'var(--text-faint)' };
 }
 
 const COLS = [
@@ -49,7 +50,7 @@ export function DonationLeaderboardTable({ rows }) {
   if (!rows || rows.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '2.5rem 1.5rem',
-        color: '#4a5568', fontSize: '0.8rem',
+        color: 'var(--text-faint)', fontSize: '0.8rem',
         fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.05em' }}>
         No donations recorded for this period
       </div>
@@ -62,14 +63,17 @@ export function DonationLeaderboardTable({ rows }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
         <thead>
-          <tr style={{ borderBottom: '1px solid #1e2132' }}>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
             {COLS.map(col => (
               <th
                 key={col.key}
                 onClick={() => handleSort(col.key)}
+                tabIndex={0}
+                onKeyDown={onEnterOrSpace(() => handleSort(col.key))}
+                aria-sort={sortKey === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
                 style={{
                   ...thStyle(col.align),
-                  color: sortKey === col.key ? '#38bdf8' : thStyle().color,
+                  color: sortKey === col.key ? 'var(--accent)' : thStyle().color,
                   cursor: 'pointer',
                 }}
               >
@@ -85,8 +89,10 @@ export function DonationLeaderboardTable({ rows }) {
             return (
               <tr key={row.player_id ?? `${row.donation_period_id}-${i}`}
                 onClick={() => row.player_id && navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}
+                tabIndex={row.player_id ? 0 : undefined}
+                onKeyDown={row.player_id ? onEnterOrSpace(() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)) : undefined}
                 style={{
-                  borderBottom: '1px solid #1a1d2e',
+                  borderBottom: '1px solid var(--bg-hover)',
                   cursor: row.player_id ? 'pointer' : 'default',
                   transition: 'background 0.1s',
                 }}
@@ -99,16 +105,16 @@ export function DonationLeaderboardTable({ rows }) {
                   {deco.medal ? <span style={{ marginRight: '0.3rem' }}>{deco.medal}</span> : null}
                   {row.position}
                 </td>
-                <td style={{ padding: '0.55rem 0.75rem', color: '#e2e8f0', fontWeight: '600' }}>
+                <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text)', fontWeight: '600' }}>
                   {row.player_name ?? '—'}
                 </td>
-                <td style={{ padding: '0.55rem 0.75rem', color: '#94a3b8', fontSize: '0.75rem' }}>
+                <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                   {row.player_rank ?? '—'}
                 </td>
                 <td
                   title={row.updated_at ? `Updated on ${formatUpdatedAt(row.updated_at)}` : undefined}
                   style={{ padding: '0.55rem 0.75rem', textAlign: 'right',
-                    fontWeight: '700', color: '#38bdf8',
+                    fontWeight: '700', color: 'var(--accent)',
                     fontFamily: "'Orbitron',sans-serif" }}>
                   {formatHonor(row.alliance_honor)}
                 </td>
@@ -121,8 +127,8 @@ export function DonationLeaderboardTable({ rows }) {
       {rows.length > PAGE_SIZE && (
         <div style={{ textAlign: 'center', padding: '0.75rem' }}>
           <button onClick={() => setShowAll(s => !s)}
-            style={{ background: 'transparent', border: '1px solid #2a2d3e',
-              borderRadius: '8px', color: '#94a3b8', padding: '0.4rem 1rem',
+            style={{ background: 'transparent', border: '1px solid var(--border-strong)',
+              borderRadius: '8px', color: 'var(--text-muted)', padding: '0.4rem 1rem',
               cursor: 'pointer', fontSize: '0.72rem',
               fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.05em' }}>
             {showAll ? `Collapse (first ${PAGE_SIZE})` : `Show all (${rows.length})`}
@@ -137,7 +143,7 @@ function thStyle(align) {
   return {
     padding: '0.55rem 0.75rem',
     textAlign: align,
-    color: '#64748b',
+    color: 'var(--text-dim)',
     fontFamily: "'Orbitron',sans-serif",
     fontSize: '0.62rem',
     letterSpacing: '0.06em',

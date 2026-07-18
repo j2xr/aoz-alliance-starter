@@ -5,9 +5,9 @@ const ToastContext = createContext(null);
 const DEFAULT_DURATION_MS = 5000;
 
 const TYPE_STYLES = {
-  success: { icon: "✓", color: "#22c55e" },
-  error: { icon: "✕", color: "#ff4d4d" },
-  info: { icon: "ℹ", color: "#38bdf8" },
+  success: { icon: "✓", color: "var(--success)" },
+  error: { icon: "✕", color: "var(--danger)" },
+  info: { icon: "ℹ", color: "var(--accent)" },
 };
 
 // Module-level escape hatch so non-component code (helpers.js) can push a
@@ -98,11 +98,11 @@ const styles = {
     alignItems: "center",
     gap: "0.5rem",
     background: "#12131c",
-    border: "1px solid #2a2d3e",
+    border: "1px solid var(--border-strong)",
     borderLeftWidth: "4px",
     borderRadius: "8px",
     padding: "0.6rem 0.75rem",
-    color: "#e2e8f0",
+    color: "var(--text)",
     fontSize: "0.85rem",
     boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
   },
@@ -110,7 +110,7 @@ const styles = {
   close: {
     background: "none",
     border: "none",
-    color: "#64748b",
+    color: "var(--text-dim)",
     cursor: "pointer",
     fontSize: "1rem",
     lineHeight: 1,

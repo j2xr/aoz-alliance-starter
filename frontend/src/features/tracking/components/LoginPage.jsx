@@ -18,36 +18,36 @@ export function LoginPage() {
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#070810',
+      minHeight: '100vh', background: 'var(--bg)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: "'Rajdhani',sans-serif", padding: '1rem',
     }}>
       <div style={{ width: '100%', maxWidth: '380px' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ fontSize: '0.62rem', letterSpacing: '0.3em', color: '#38bdf8',
+          <div style={{ fontSize: '0.62rem', letterSpacing: '0.3em', color: 'var(--accent)',
             textTransform: 'uppercase', marginBottom: '0.3rem',
             fontFamily: "'Orbitron',sans-serif" }}>
             Alliance Tracker
           </div>
           <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.6rem', fontWeight: '900',
-            background: 'linear-gradient(135deg,#38bdf8,#0ea5e9)',
+            background: 'linear-gradient(135deg,var(--accent),#0ea5e9)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             AOZ ORIGINS
           </div>
         </div>
 
         {/* Card */}
-        <div style={{ background: '#0a0c14', border: '1px solid #1e2132',
+        <div style={{ background: 'var(--bg-deep)', border: '1px solid var(--border)',
           borderRadius: '14px', padding: '2rem' }}>
           <div style={{ fontSize: '0.7rem', fontFamily: "'Orbitron',sans-serif",
-            color: '#4a5568', letterSpacing: '0.08em', marginBottom: '1.5rem' }}>
+            color: 'var(--text-faint)', letterSpacing: '0.08em', marginBottom: '1.5rem' }}>
             LOGIN
           </div>
 
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8',
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)',
                 marginBottom: '0.4rem', letterSpacing: '0.04em' }}>
                 Email
               </label>
@@ -58,19 +58,19 @@ export function LoginPage() {
                 required
                 autoComplete="email"
                 style={{
-                  width: '100%', background: '#070810', border: '1px solid #2a2d3e',
+                  width: '100%', background: 'var(--bg)', border: '1px solid var(--border-strong)',
                   borderRadius: '8px', padding: '0.65rem 0.85rem',
-                  color: '#e2e8f0', fontSize: '0.9rem',
+                  color: 'var(--text)', fontSize: '0.9rem',
                   fontFamily: "'Rajdhani',sans-serif", outline: 'none',
                   boxSizing: 'border-box',
                 }}
                 onFocus={e => e.target.style.borderColor = '#38bdf844'}
-                onBlur={e => e.target.style.borderColor = '#2a2d3e'}
+                onBlur={e => e.target.style.borderColor = 'var(--border-strong)'}
               />
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8',
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)',
                 marginBottom: '0.4rem', letterSpacing: '0.04em' }}>
                 Password
               </label>
@@ -81,20 +81,20 @@ export function LoginPage() {
                 required
                 autoComplete="current-password"
                 style={{
-                  width: '100%', background: '#070810', border: '1px solid #2a2d3e',
+                  width: '100%', background: 'var(--bg)', border: '1px solid var(--border-strong)',
                   borderRadius: '8px', padding: '0.65rem 0.85rem',
-                  color: '#e2e8f0', fontSize: '0.9rem',
+                  color: 'var(--text)', fontSize: '0.9rem',
                   fontFamily: "'Rajdhani',sans-serif", outline: 'none',
                   boxSizing: 'border-box',
                 }}
                 onFocus={e => e.target.style.borderColor = '#38bdf844'}
-                onBlur={e => e.target.style.borderColor = '#2a2d3e'}
+                onBlur={e => e.target.style.borderColor = 'var(--border-strong)'}
               />
             </div>
 
             {error && (
               <div style={{ background: '#ff4d4d0d', border: '1px solid #ff4d4d44',
-                borderRadius: '8px', padding: '0.75rem', color: '#ff4d4d',
+                borderRadius: '8px', padding: '0.75rem', color: 'var(--danger)',
                 fontSize: '0.8rem', marginBottom: '1rem' }}>
                 {error}
               </div>
@@ -105,9 +105,9 @@ export function LoginPage() {
               disabled={loading}
               style={{
                 width: '100%', padding: '0.75rem',
-                background: loading ? '#0ea5e930' : 'linear-gradient(135deg,#38bdf8,#0ea5e9)',
+                background: loading ? '#0ea5e930' : 'linear-gradient(135deg,var(--accent),#0ea5e9)',
                 border: 'none', borderRadius: '8px',
-                color: loading ? '#38bdf8' : '#0a0c14',
+                color: loading ? 'var(--accent)' : 'var(--bg-deep)',
                 fontFamily: "'Orbitron',sans-serif", fontWeight: '700',
                 fontSize: '0.8rem', letterSpacing: '0.06em',
                 cursor: loading ? 'not-allowed' : 'pointer',
@@ -120,7 +120,7 @@ export function LoginPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '1.5rem',
-          fontSize: '0.75rem', color: '#2a2d3e', lineHeight: 1.6 }}>
+          fontSize: '0.75rem', color: 'var(--border-strong)', lineHeight: 1.6 }}>
           Access by invitation only.<br />
           Contact an administrator to obtain your credentials.
         </div>

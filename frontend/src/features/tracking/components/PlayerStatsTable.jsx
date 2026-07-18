@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { onEnterOrSpace } from '@/lib/a11y';
 
 function fmtPct(v) {
   if (v == null) return '—';
@@ -16,9 +17,9 @@ const TH_STYLE = (align = 'left') => ({
   textAlign: align,
   fontSize: '0.68rem',
   fontFamily: "'Orbitron',sans-serif",
-  color: '#4a5568',
+  color: 'var(--text-faint)',
   letterSpacing: '0.06em',
-  borderBottom: '1px solid #1e2132',
+  borderBottom: '1px solid var(--border)',
   whiteSpace: 'nowrap',
 });
 
@@ -57,7 +58,7 @@ export function PlayerStatsTable({ rows }) {
 
   if (!rows.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>
         No data
       </div>
@@ -65,6 +66,7 @@ export function PlayerStatsTable({ rows }) {
   }
 
   return (
+    <div style={{ overflowX: 'auto' }}>
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr>
@@ -73,9 +75,12 @@ export function PlayerStatsTable({ rows }) {
             <th
               key={col.key}
               onClick={() => handleSort(col.key)}
+              tabIndex={0}
+              onKeyDown={onEnterOrSpace(() => handleSort(col.key))}
+              aria-sort={sortKey === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
               style={{
                 ...TH_STYLE(col.align),
-                color: sortKey === col.key ? '#38bdf8' : TH_STYLE().color,
+                color: sortKey === col.key ? 'var(--accent)' : TH_STYLE().color,
                 cursor: 'pointer',
                 userSelect: 'none',
               }}
@@ -91,22 +96,24 @@ export function PlayerStatsTable({ rows }) {
           <tr
             key={row.player_id}
             onClick={() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}
-            style={{ cursor: 'pointer', borderBottom: '1px solid #1e2132',
+            tabIndex={0}
+            onKeyDown={onEnterOrSpace(() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`))}
+            style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)',
               transition: 'background 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.background = '#38bdf808'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#4a5568',
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: 'var(--text-faint)',
               fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>{i + 1}</td>
-            <td style={{ padding: '0.65rem 1rem', color: '#e2e8f0', fontSize: '0.85rem',
+            <td style={{ padding: '0.65rem 1rem', color: 'var(--text)', fontSize: '0.85rem',
               fontWeight: '600' }}>{row.player_name ?? '—'}</td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#ffd700',
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: 'var(--gold)',
               fontSize: '0.8rem', fontFamily: "'Orbitron',sans-serif" }}>{row.last_rank ?? '—'}</td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: '#38bdf8',
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--accent)',
               fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
               {fmtPct(row.attack_pct)}
             </td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: '#22c55e',
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--success)',
               fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif" }}>
               {fmtPct(row.hp_pct)}
             </td>
@@ -114,11 +121,12 @@ export function PlayerStatsTable({ rows }) {
               fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif" }}>
               {fmtPct(row.defense_pct)}
             </td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: '#64748b',
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--text-dim)',
               fontSize: '0.75rem' }}>{fmtDate(row.recorded_date)}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
