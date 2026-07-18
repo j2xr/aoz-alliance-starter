@@ -13,8 +13,9 @@ import logger from '../logger.js';
 // routeOcrResult is the dispatch shared between messageCreate.ts and
 // reprocess.ts (Cleanup-2): given an OCR result, decide which upsert*Result
 // to call and turn its status into a caller-agnostic outcome. Response
-// wording is caller-supplied (see MESSAGES below) — messageCreate.ts and
-// reprocess.ts each use their own, deliberately different, wording.
+// wording is caller-supplied (see MESSAGES below) — real callers both use
+// the shared lib/messages.ts wording (B4); this test uses distinctive
+// wording instead, to prove routeOcrResult actually uses what's injected.
 
 // ingestion.ts imports `config` at module top, and config.ts calls
 // requireEnv(...) at evaluation time — throwing if the env vars are unset (as
