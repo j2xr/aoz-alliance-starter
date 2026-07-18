@@ -624,6 +624,76 @@ def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
     assert members[1].alliance_honor == 9044
 
 
+# ── Leaderboard position repair ──────────────────────────────────────────────────
+
+
+def test_repair_position_sequence_reconstructs_a_clean_leading_digit_drop() -> None:
+    """A single dropped leading digit (position 63 read as '3') is repaired via
+    the offset that explains every other reading exactly."""
+    parser = ContributionRankingV1Parser()
+    members = [_donor(leaderboard_position=p) for p in [60, 61, 62, 3, 64, 65]]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == [60, 61, 62, 63, 64, 65]
+
+
+def test_repair_position_sequence_nulls_the_tail_when_no_offset_has_a_majority() -> None:
+    """A real degenerate capture: no single offset explains >=50% of the
+    readings, so the strictly-increasing prefix is kept and the rest is
+    nulled rather than fabricated."""
+    parser = ContributionRankingV1Parser()
+    members = [_donor(leaderboard_position=p) for p in [60, 61, 69, 2, 8, 7, 7, 4]]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == [
+        60,
+        61,
+        69,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ]
+
+
+def test_repair_position_sequence_noop_when_already_sequential() -> None:
+    """Nominal case: the offset that fits is a no-op rewrite (same values)."""
+    parser = ContributionRankingV1Parser()
+    members = [_donor(leaderboard_position=p) for p in [10, 11, 12, 13]]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == [10, 11, 12, 13]
+
+
+def test_repair_position_sequence_fills_gaps_when_offset_has_a_majority() -> None:
+    """A row where OCR returned no position at all is reconstructed too, once
+    a single offset explains the rest of the capture."""
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(leaderboard_position=10),
+        _donor(leaderboard_position=None),
+        _donor(leaderboard_position=12),
+        _donor(leaderboard_position=13),
+    ]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == [10, 11, 12, 13]
+
+
+def test_repair_position_sequence_noop_when_all_positions_are_none() -> None:
+    parser = ContributionRankingV1Parser()
+    members = [_donor(leaderboard_position=None) for _ in range(3)]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == [None, None, None]
+
+
 # ── Dispatcher ──────────────────────────────────────────────────────────────────
 
 
