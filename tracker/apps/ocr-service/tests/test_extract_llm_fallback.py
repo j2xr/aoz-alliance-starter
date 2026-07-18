@@ -141,9 +141,7 @@ def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:
         name="rs", alliance_tag=None, rank="R1", alliance_honor=2235, confidence=0.2
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
-    with patch(
-        "app.llm_fallback.llm_fallback_donation", return_value=("(SOD) BenOVerbich", 2235)
-    ):
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("(SOD) BenOVerbich", 2235)):
         out = _apply_llm_fallback(_IMG, result, _StubParser())
 
     m = out.members[0]
