@@ -1,19 +1,26 @@
 import type { Attachment, Message, EmbedBuilder, TextChannel } from 'discord.js';
-import { isOcrError, isPlayerStatsResult } from '@alliance-tracker/shared-types';
 import { config } from '../config.js';
 import logger from '../logger.js';
-import { ensureKind, processImageAttachment } from '../lib/ingestion.js';
+import { processImageAttachment, routeOcrResult, type OcrRoutingMessages } from '../lib/ingestion.js';
 import { resolveAlliance } from '../lib/alliance.js';
 import type { AllianceRow } from '../lib/alliance.js';
-import {
-  recordUploadError,
-  upsertDonationResult,
-  upsertEventResult,
-  upsertPlayerStatsResult,
-} from '../lib/upsert.js';
-import { buildDonationEmbed, buildEventEmbed, buildPlayerStatsEmbed } from '../lib/embed.js';
 import { isImageAttachment } from '../lib/attachment.js';
 import { safeProgressEdit } from '../lib/progress-reply.js';
+
+// Wording specific to the /upload-time path — see reprocess.ts for the
+// (deliberately different) /reprocess wording. Unifying these is B4, not
+// this refactor.
+const MESSAGES: OcrRoutingMessages = {
+  screenUnrecognized: (filename, detail) =>
+    `⚠️ **${filename}** — type d'écran non reconnu : \`${detail}\`. Utilisez \`/upload event:<type>\` ou \`/upload kind:donation\`.`,
+  ocrError: (filename, error, detail) =>
+    `⚠️ **${filename}** — OCR : ${error}${detail ? ` (${detail})` : ''}`,
+  databaseError: (filename, err) => `❌ **${filename}** — erreur base de données : ${err}`,
+  unknownEventType: (filename, eventType) =>
+    `⚠️ **${filename}** — type d'événement inconnu : \`${eventType}\`. Utilisez \`/upload event:<type>\`.`,
+  missingDatetime: (filename) =>
+    `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
+};
 
 export async function handleMessageCreate(message: Message): Promise<void> {
   if (message.author.bot) return;
@@ -77,161 +84,19 @@ export async function handleMessageCreate(message: Message): Promise<void> {
 
     const { filename, fileHash, filePath, ocr } = result;
 
-    if (isOcrError(ocr)) {
-      logger.warn({ messageId: message.id, filename, error: ocr.error }, 'OCR returned error');
-      const uploadStatus = ocr.error === 'unknown_event' ? 'unknown_event' as const : 'failed' as const;
-      try {
-        await recordUploadError({
-          messageId: message.id,
-          userId: message.author.id,
-          allianceId: resolvedAlliance.id,
-          fileHash,
-          filePath,
-          status: uploadStatus,
-          errorMessage: ocr.error + (ocr.detail ? `: ${ocr.detail}` : ''),
-        });
-      } catch (err) {
-        logger.error({ err: String(err) }, 'Failed to record upload error');
-      }
-      if (uploadStatus === 'unknown_event') {
-        lines.push(
-          `⚠️ **${filename}** — type d'écran non reconnu : \`${ocr.detail ?? ocr.error}\`. Utilisez \`/upload event:<type>\` ou \`/upload kind:donation\`.`,
-        );
-      } else {
-        lines.push(`⚠️ **${filename}** — OCR : ${ocr.error}${ocr.detail ? ` (${ocr.detail})` : ''}`);
-      }
-      return;
-    }
+    const routed = await routeOcrResult({
+      message,
+      allianceId: resolvedAlliance.id,
+      fileHash,
+      filePath,
+      filename,
+      ocr,
+      messages: MESSAGES,
+    });
 
-    const typedOcr = ensureKind(ocr);
-
-    if (isPlayerStatsResult(typedOcr)) {
-      let statsResult;
-      try {
-        statsResult = await upsertPlayerStatsResult({
-          messageId: message.id,
-          userId: message.author.id,
-          allianceId: resolvedAlliance.id,
-          fileHash,
-          filePath,
-          messageCreatedAt: message.createdAt,
-          ocr: typedOcr,
-        });
-      } catch (err) {
-        logger.error(
-          { messageId: message.id, filename, err: String(err) },
-          'Player stats upsert failed',
-        );
-        lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-        return;
-      }
-
-      if (statsResult.status === 'duplicate') {
-        lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-        return;
-      }
-
-      if (statsResult.status === 'no_members') {
-        lines.push(`⚠️ **${filename}** — aucun joueur extrait de la capture stats.`);
-        return;
-      }
-
-      logger.info(
-        { messageId: message.id, filename, memberCount: statsResult.memberCount, skippedCount: statsResult.skippedCount },
-        'Player stats upsert successful',
-      );
-      embeds.push(buildPlayerStatsEmbed(filename, typedOcr, statsResult));
-      if (statsResult.rejectedRawTexts.length > 0) {
-        allRejectedRawTexts.push(...statsResult.rejectedRawTexts);
-      }
-      return;
-    }
-
-    if (typedOcr.kind === 'donation') {
-      let donationResult;
-      try {
-        donationResult = await upsertDonationResult({
-          messageId: message.id,
-          userId: message.author.id,
-          allianceId: resolvedAlliance.id,
-          fileHash,
-          filePath,
-          messageCreatedAt: message.createdAt,
-          ocr: typedOcr,
-        });
-      } catch (err) {
-        logger.error(
-          { messageId: message.id, filename, err: String(err) },
-          'Donation upsert failed',
-        );
-        lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-        return;
-      }
-
-      if (donationResult.status === 'duplicate') {
-        lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-        return;
-      }
-
-      if (donationResult.status === 'unsupported_period_type') {
-        lines.push(
-          `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
-        );
-        return;
-      }
-
-      logger.info(
-        { messageId: message.id, filename, periodId: donationResult.periodId },
-        'Donation upsert successful',
-      );
-      embeds.push(buildDonationEmbed(filename, typedOcr, donationResult));
-      return;
-    }
-
-    // kind === 'event'
-    let upsertResult;
-    try {
-      upsertResult = await upsertEventResult({
-        messageId: message.id,
-        userId: message.author.id,
-        allianceId: resolvedAlliance.id,
-        fileHash,
-        filePath,
-        ocr: typedOcr,
-      });
-    } catch (err) {
-      logger.error(
-        { messageId: message.id, filename, err: String(err) },
-        'Upsert failed',
-      );
-      lines.push(`❌ **${filename}** — erreur base de données : ${String(err)}`);
-      return;
-    }
-
-    if (upsertResult.status === 'duplicate') {
-      lines.push(`🔁 **${filename}** — capture déjà traitée (doublon).`);
-      return;
-    }
-
-    if (upsertResult.status === 'unknown_event') {
-      lines.push(
-        `⚠️ **${filename}** — type d'événement inconnu : \`${upsertResult.eventType}\`. Utilisez \`/upload event:<type>\`.`,
-      );
-      return;
-    }
-
-    if (upsertResult.status === 'missing_datetime') {
-      lines.push(
-        `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
-      );
-      return;
-    }
-
-    logger.info(
-      { messageId: message.id, filename, eventId: upsertResult.eventId },
-      'Upsert successful',
-    );
-    embeds.push(buildEventEmbed(filename, typedOcr, upsertResult));
+    if (routed.line) lines.push(routed.line);
+    if (routed.embed) embeds.push(routed.embed);
+    if (routed.rejectedRawTexts) allRejectedRawTexts.push(...routed.rejectedRawTexts);
   }
 
   const channel = message.channel as TextChannel;
