@@ -35,7 +35,7 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
 
   return (
     <div>
-      <h2 style={{ color:"#ffd700",fontFamily:"'Orbitron',sans-serif",fontSize:"1rem",
+      <h2 style={{ color:"var(--gold)",fontFamily:"'Orbitron',sans-serif",fontSize:"1rem",
         marginBottom:"1.5rem",letterSpacing:"0.05em" }}>{editingEvent ? "✦ Edit Event" : "✦ New Event"}</h2>
       <div style={{ display:"grid",gap:"1rem" }}>
         <div>
@@ -45,15 +45,15 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
         {/* Mode toggle */}
         <div style={{ display:"flex",gap:"0.4rem",marginBottom:"0.2rem" }}>
           <button onClick={() => setCountdownMode(false)} style={{
-            padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid #2a2d3e",
+            padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid var(--border-strong)",
             background:!countdownMode?"#ffd70022":"transparent",
-            color:!countdownMode?"#ffd700":"#94a3b8",
+            color:!countdownMode?"var(--gold)":"var(--text-muted)",
             fontSize:"0.78rem",cursor:"pointer",fontWeight:!countdownMode?"700":"400"
           }}>Date/Time</button>
           <button onClick={() => setCountdownMode(true)} style={{
-            padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid #2a2d3e",
+            padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid var(--border-strong)",
             background:countdownMode?"#ffd70022":"transparent",
-            color:countdownMode?"#ffd700":"#94a3b8",
+            color:countdownMode?"var(--gold)":"var(--text-muted)",
             fontSize:"0.78rem",cursor:"pointer",fontWeight:countdownMode?"700":"400"
           }}>Countdown</button>
         </div>
@@ -67,17 +67,17 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
           </div>
           {countdownPreview && (
             <div style={{ background:"#ffd70011",border:"1px solid #ffd70033",borderRadius:"8px",
-              padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"#ffd700",display:"flex",gap:"0.5rem",alignItems:"center" }}>
+              padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"var(--gold)",display:"flex",gap:"0.5rem",alignItems:"center" }}>
               🎯 Target: {countdownPreview.date} at {countdownPreview.time} UTC
               <button onClick={() => handleCountdownChange(countdownInput)}
                 style={{ marginLeft:"auto",background:"transparent",border:"1px solid #ffd70044",
-                  borderRadius:"4px",color:"#ffd700",fontSize:"0.7rem",cursor:"pointer",
+                  borderRadius:"4px",color:"var(--gold)",fontSize:"0.7rem",cursor:"pointer",
                   padding:"0.15rem 0.4rem" }}>↻ Recalculate</button>
             </div>
           )}
           {!countdownPreview && countdownInput && (
             <div style={{ background:"#ff4d4d11",border:"1px solid #ff4d4d33",borderRadius:"8px",
-              padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"#ff4d4d" }}>
+              padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"var(--danger)" }}>
               Invalid format. Use 1d:02:30:00 or 02:30:00 or 30:00
             </div>
           )}
@@ -93,7 +93,7 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
             </div>
           </div>
           <div style={{ background:"#ffd70011",border:"1px solid #ffd70033",borderRadius:"8px",
-            padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"#ffd700",display:"flex",gap:"0.5rem",alignItems:"center" }}>
+            padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:"var(--gold)",display:"flex",gap:"0.5rem",alignItems:"center" }}>
             🌍 All times are in <strong>UTC</strong>. Members convert to their local timezone.
           </div>
         </>)}
@@ -118,9 +118,9 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
           <div style={{ display:"flex",gap:"0.4rem",flexWrap:"wrap" }}>
             {RECURRENCE_OPTIONS.map(r => (
               <button key={r.id} onClick={() => set("recurrence",r.id)} style={{
-                padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid #2a2d3e",
+                padding:"0.3rem 0.75rem",borderRadius:"999px",border:"1px solid var(--border-strong)",
                 background: form.recurrence===r.id ? "#ffd70022":"transparent",
-                color: form.recurrence===r.id ? "#ffd700":"#94a3b8",
+                color: form.recurrence===r.id ? "var(--gold)":"var(--text-muted)",
                 fontSize:"0.78rem",cursor:"pointer",fontWeight:form.recurrence===r.id?"700":"400"
               }}>{r.label}</button>
             ))}
@@ -150,11 +150,11 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
       </div>
       <div style={{ display:"flex",gap:"0.8rem",marginTop:"1.5rem" }}>
         <button onClick={onClose} style={{ flex:1,padding:"0.7rem",borderRadius:"8px",
-          background:"transparent",border:"1px solid #2a2d3e",color:"#94a3b8",cursor:"pointer" }}>
+          background:"transparent",border:"1px solid var(--border-strong)",color:"var(--text-muted)",cursor:"pointer" }}>
           Cancel
         </button>
         <button onClick={handleSubmit} disabled={loading} style={{ flex:2,padding:"0.7rem",borderRadius:"8px",
-          background:"linear-gradient(135deg,#ffd700,#ff9500)",border:"none",color:"#0a0c14",
+          background:"linear-gradient(135deg,var(--gold),var(--gold-alt))",border:"none",color:"var(--bg-deep)",
           fontWeight:"700",cursor:loading?"wait":"pointer",fontFamily:"'Orbitron',sans-serif",
           fontSize:"0.82rem",letterSpacing:"0.05em",opacity:loading?0.7:1 }}>
           {loading ? "SAVING…" : editingEvent ? "SAVE CHANGES" : "ADD EVENT"}

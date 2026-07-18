@@ -13,10 +13,10 @@ function formatTick(iso) {
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: '#0f111a', border: '1px solid #38bdf844',
+    <div style={{ background: 'var(--bg-panel)', border: '1px solid #38bdf844',
       borderRadius: '8px', padding: '0.65rem 0.9rem', fontSize: '0.78rem' }}>
-      <div style={{ color: '#64748b', marginBottom: '0.3rem' }}>{formatTick(label)}</div>
-      <div style={{ color: '#38bdf8', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
+      <div style={{ color: 'var(--text-dim)', marginBottom: '0.3rem' }}>{formatTick(label)}</div>
+      <div style={{ color: 'var(--accent)', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
         {payload[0].value?.toLocaleString()} pts
       </div>
     </div>
@@ -26,7 +26,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 export function PointsEvolutionChart({ data }) {
   if (!data?.length) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>
         No data
       </div>
@@ -40,23 +40,23 @@ export function PointsEvolutionChart({ data }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e2132" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis
           dataKey="date" tickFormatter={formatTick}
-          tick={{ fill: '#4a5568', fontSize: 10 }}
-          axisLine={{ stroke: '#1e2132' }} tickLine={false}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
+          axisLine={{ stroke: 'var(--border)' }} tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#4a5568', fontSize: 10 }}
+          tick={{ fill: 'var(--text-faint)', fontSize: 10 }}
           axisLine={false} tickLine={false}
           tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
           width={40}
         />
         <Tooltip content={<CustomTooltip />} />
         <Line
-          type="monotone" dataKey="points" stroke="#38bdf8"
-          strokeWidth={2} dot={{ fill: '#38bdf8', r: 3 }}
-          activeDot={{ r: 5, fill: '#38bdf8' }}
+          type="monotone" dataKey="points" stroke="var(--accent)"
+          strokeWidth={2} dot={{ fill: 'var(--accent)', r: 3 }}
+          activeDot={{ r: 5, fill: 'var(--accent)' }}
         />
       </LineChart>
     </ResponsiveContainer>

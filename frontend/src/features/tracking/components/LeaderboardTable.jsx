@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
+import { onEnterOrSpace } from '@/lib/a11y';
 
 const COLS = [
   { key: 'position', label: '#', numeric: true },
@@ -32,7 +33,7 @@ export function LeaderboardTable({ rows }) {
 
   if (rows.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '2rem', color: '#4a5568',
+      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.8rem', fontFamily: "'Orbitron',sans-serif" }}>
         No ranking data
       </div>
@@ -43,14 +44,17 @@ export function LeaderboardTable({ rows }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
         <thead>
-          <tr style={{ borderBottom: '1px solid #1e2132' }}>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
             {COLS.map(col => (
               <th key={col.key}
                 onClick={() => handleSort(col.key)}
+                tabIndex={0}
+                onKeyDown={onEnterOrSpace(() => handleSort(col.key))}
+                aria-sort={sortKey === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
                 style={{
                   padding: '0.55rem 0.75rem',
                   textAlign: col.numeric ? 'right' : 'left',
-                  color: sortKey === col.key ? '#38bdf8' : '#64748b',
+                  color: sortKey === col.key ? 'var(--accent)' : 'var(--text-dim)',
                   fontFamily: "'Orbitron',sans-serif", fontSize: '0.62rem',
                   letterSpacing: '0.06em', cursor: 'pointer', whiteSpace: 'nowrap',
                   userSelect: 'none',
@@ -65,8 +69,10 @@ export function LeaderboardTable({ rows }) {
           {sorted.map((row, i) => (
             <tr key={row.player_id ?? i}
               onClick={() => row.player_id && navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}
+              tabIndex={row.player_id ? 0 : undefined}
+              onKeyDown={row.player_id ? onEnterOrSpace(() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)) : undefined}
               style={{
-                borderBottom: '1px solid #1a1d2e',
+                borderBottom: '1px solid var(--bg-hover)',
                 cursor: row.player_id ? 'pointer' : 'default',
                 transition: 'background 0.1s',
               }}
@@ -75,20 +81,20 @@ export function LeaderboardTable({ rows }) {
             >
               <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right',
                 fontFamily: "'Orbitron',sans-serif", fontWeight: '700',
-                color: row.position === 1 ? '#ffd700' : row.position === 2 ? '#94a3b8' : row.position === 3 ? '#cd7f32' : '#4a5568' }}>
+                color: row.position === 1 ? 'var(--gold)' : row.position === 2 ? 'var(--text-muted)' : row.position === 3 ? '#cd7f32' : 'var(--text-faint)' }}>
                 {row.position}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', color: '#e2e8f0', fontWeight: '600' }}>
+              <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text)', fontWeight: '600' }}>
                 {row.player_name ?? '—'}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', color: '#94a3b8', fontSize: '0.75rem' }}>
+              <td style={{ padding: '0.55rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                 {row.player_rank ?? '—'}
               </td>
-              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: '#94a3b8' }}>
+              <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', color: 'var(--text-muted)' }}>
                 {row.power != null ? row.power.toLocaleString() : '—'}
               </td>
               <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right',
-                fontWeight: '700', color: '#38bdf8' }}>
+                fontWeight: '700', color: 'var(--accent)' }}>
                 {row.points != null ? row.points.toLocaleString() : '—'}
               </td>
             </tr>
