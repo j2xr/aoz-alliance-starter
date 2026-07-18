@@ -285,6 +285,7 @@ class ContributionRankingV1Parser(BaseParser):
                 members.append(member)
 
         self._enforce_honor_monotonicity(image, members, scale)
+        self._repair_position_sequence(members)
 
         return DonationParseResult(period_type=period_type, members=members)
 
@@ -352,6 +353,74 @@ class ContributionRankingV1Parser(BaseParser):
                     member.alliance_honor,
                 )
                 member.confidence = self._MONOTONICITY_NO_FIX_CONFIDENCE
+
+    # ── Leaderboard position repair ──────────────────────────────────────────
+    #
+    # leaderboard_position is informational only (never an identity/dedup
+    # key — see DonationMember.leaderboard_position), but a per-row
+    # digit-vote misread is still worth repairing when it's cheap: rows
+    # within one capture are sequential by construction (scroll position is
+    # fixed), so position - row_index should be a single constant offset for
+    # the whole capture. In practice the failure mode is a dropped leading
+    # digit (e.g. true position 62 read as "2"), so a reading supports a
+    # candidate offset either exactly or when the expected value ends with
+    # the digits actually read.
+    #
+    # A single offset explaining most of the readings lets us reconstruct
+    # the *entire* sequence (including rows where OCR returned no reading at
+    # all). When no offset clears a majority, we don't guess: real degenerate
+    # captures produce noise offsets from garbage reads that don't converge
+    # on any one value, so instead we keep the leading run that's already
+    # strictly increasing and null out everything after the first break —
+    # same "never fabricate a number" philosophy as the honor guard above.
+    _POSITION_REPAIR_MIN_SUPPORT_RATIO = 0.5
+
+    def _repair_position_sequence(self, members: list[DonationMember]) -> None:
+        readings = [
+            (i, m.leaderboard_position)
+            for i, m in enumerate(members)
+            if m.leaderboard_position is not None
+        ]
+        if not readings:
+            return
+
+        def support(offset: int) -> int:
+            count = 0
+            for index, position in readings:
+                expected = offset + index
+                if expected == position:
+                    count += 1
+                elif expected >= 0 and str(expected).endswith(str(position)):
+                    count += 1
+            return count
+
+        candidate_offsets = sorted({position - index for index, position in readings})
+        best_offset = max(candidate_offsets, key=support)
+        best_support = support(best_offset)
+
+        if best_support / len(readings) >= self._POSITION_REPAIR_MIN_SUPPORT_RATIO:
+            for i, member in enumerate(members):
+                member.leaderboard_position = best_offset + i
+            logger.info(
+                "donation positions repaired via offset=%d (support %d/%d)",
+                best_offset,
+                best_support,
+                len(readings),
+            )
+            return
+
+        logger.warning(
+            "donation positions: no offset explains a majority of %d readings "
+            "(best support %d) — nulling out the non-increasing tail instead of guessing",
+            len(readings),
+            best_support,
+        )
+        last_valid: int | None = None
+        for index, position in readings:
+            if last_valid is not None and position <= last_valid:
+                members[index].leaderboard_position = None
+            else:
+                last_valid = position
 
     # ── Tab detection ────────────────────────────────────────────────────────
     #
