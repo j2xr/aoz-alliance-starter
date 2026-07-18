@@ -20,6 +20,26 @@ export function registerInteractionCreate(
 }
 
 async function handleInteraction(interaction: Interaction): Promise<void> {
+  if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
+    const command = commands.get(interaction.commandName);
+    if (!command?.autocomplete) {
+      await interaction.respond([]);
+      return;
+    }
+    try {
+      await command.autocomplete(interaction);
+    } catch (err) {
+      logger.error(
+        { commandName: interaction.commandName, err: toLogError(err) },
+        'Autocomplete handler error',
+      );
+      // Autocomplete has no reply/deferReply state to fall back on — an
+      // empty list is the only valid response left once one attempt failed.
+      await interaction.respond([]);
+    }
+    return;
+  }
+
   if (interaction.type === InteractionType.ApplicationCommand) {
     if (!interaction.isChatInputCommand()) return;
 
