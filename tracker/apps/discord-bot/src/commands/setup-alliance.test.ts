@@ -14,6 +14,7 @@ vi.mock('../logger.js', () => ({
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn() } }));
 
 import { execute } from './setup-alliance.js';
+import { invalidateAllianceCache } from '../lib/alliance.js';
 
 type SupabaseFrom = typeof supabase.from;
 
@@ -52,6 +53,11 @@ function fakeInteraction(name: string, channelId = 'channel-1'): ChatInputComman
 describe('/setup-alliance execute', () => {
   beforeEach(() => {
     vi.mocked(supabase.from).mockReset();
+    // resolveAlliance now caches per channelId (30s TTL, see lib/alliance.ts)
+    // — every test below reuses 'channel-1', so without this a cached "no
+    // alliance" miss (or hit) from an earlier test would short-circuit the
+    // queued mock in a later one.
+    invalidateAllianceCache('channel-1');
   });
 
   it('creates the alliance and links the current channel when name and channel are both free', async () => {

@@ -189,6 +189,7 @@ describe('handleMessageCreate', () => {
       eventTypeDisplayName: 'Polar Invasion',
       memberCount: 1,
       newMemberCount: 0,
+      reversedCorrectionsCount: 0,
     });
     const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
     vi.mocked(buildEventEmbed).mockReturnValue(fakeEmbed);
@@ -246,6 +247,7 @@ describe('handleMessageCreate', () => {
       eventTypeDisplayName: 'Polar Invasion',
       memberCount: 1,
       newMemberCount: 0,
+      reversedCorrectionsCount: 0,
     });
     const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
     vi.mocked(buildEventEmbed).mockReturnValue(fakeEmbed);
