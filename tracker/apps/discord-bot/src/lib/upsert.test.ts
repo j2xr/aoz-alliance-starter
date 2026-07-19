@@ -128,6 +128,7 @@ describe('upsertEventResult', () => {
     ]);
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     queueFrom(null); // at_participations upsert
     queueFrom(null); // at_screenshot_uploads update → processed
 
@@ -139,11 +140,58 @@ describe('upsertEventResult', () => {
       eventTypeDisplayName: 'Polar Invasion',
       memberCount: 3,
       newMemberCount: 3,
+      reversedCorrectionsCount: 0,
     });
 
     // Verify participations were written
     const allTables = vi.mocked(supabase.from).mock.calls.map(([t]) => t);
     expect(allTables).toContain('at_participations');
+  });
+
+  it('audits and reports a reversal when re-ingestion overwrites a manually corrected points value', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
+    queueFrom({ id: 'event-1' }); // at_events upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
+    queueFrom([                    // at_players upsert
+      { id: 'p1', name: 'Alpha' },
+      { id: 'p2', name: 'Beta' },
+      { id: 'p3', name: 'Gamma' },
+    ]);
+    queueFrom([]);   // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    // Alpha's participation was manually corrected (points: 999, power
+    // untouched at 1_000_000 — matches what OCR is about to write, so power
+    // must NOT be flagged even though it also has an existing value).
+    queueFrom([{ id: 'part-1', player_id: 'p1', points: 999, power: 1_000_000 }]);
+    // Correction history exists only for 'points' on this row.
+    queueFrom([{ target_id: 'part-1', field: 'points' }]);
+    queueFrom(null); // at_participations upsert
+    const correctionsInsertChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      correctionsInsertChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const result = await upsertEventResult(BASE_EVENT_PARAMS);
+
+    expect(result).toMatchObject({ status: 'processed', reversedCorrectionsCount: 1 });
+
+    const insertMock = correctionsInsertChain['insert'] as ReturnType<typeof vi.fn>;
+    expect(insertMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        alliance_id: 'alliance-1',
+        player_id: 'p1',
+        target_table: 'at_participations',
+        target_id: 'part-1',
+        field: 'points',
+        old_value: 999,
+        new_value: 50_000, // Alpha's points in BASE_EVENT_PARAMS
+        corrected_by: 'auto:ocr-reingest',
+      }),
+    ]);
   });
 
   it('flags needs_review from ocr_confidence, excluding the LLM-corrected sentinel', async () => {
@@ -161,6 +209,7 @@ describe('upsertEventResult', () => {
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
     // at_participations: chaîne capturée pour inspecter le payload de l'upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     const participationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
       participationsChain as unknown as ReturnType<SupabaseFrom>,
@@ -211,6 +260,7 @@ describe('upsertEventResult', () => {
     );
     queueFrom([]);   // at_alliance_memberships select
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     queueFrom(null); // at_participations upsert
     queueFrom(null); // at_screenshot_uploads update
 
@@ -265,6 +315,7 @@ describe('upsertEventResult', () => {
     );
     queueFrom([]);   // at_alliance_memberships select
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     queueFrom(null); // at_participations upsert
     queueFrom(null); // at_screenshot_uploads update
 
@@ -314,6 +365,7 @@ describe('upsertEventResult', () => {
     queueFrom([{ id: 'p3', name: 'Somethin-koo1' }]); // at_players upsert: a genuinely new player
     queueFrom([]);   // at_alliance_memberships select
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     queueFrom(null); // at_participations upsert
     queueFrom(null); // at_screenshot_uploads update
 
@@ -379,6 +431,7 @@ describe('upsertDonationResult', () => {
     queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     queueFrom(null); // at_donations upsert
     queueFrom(null); // at_screenshot_uploads update → processed
 
@@ -389,7 +442,70 @@ describe('upsertDonationResult', () => {
       periodId: 'period-1',
       memberCount: 1,
       newMemberCount: 1,
+      reversedCorrectionsCount: 0,
     });
+  });
+
+  it('audits and reports a reversal when re-ingestion overwrites a manually corrected honor value', async () => {
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
+    queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
+    queueFrom([]);   // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    // Alpha's donation was manually corrected to 1_200 honor previously.
+    queueFrom([{ id: 'donation-1', player_id: 'p1', alliance_honor: 1_200 }]);
+    queueFrom([{ target_id: 'donation-1', field: 'honor' }]);
+    queueFrom(null); // at_donations upsert
+    const correctionsInsertChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      correctionsInsertChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const result = await upsertDonationResult(BASE_DONATION_PARAMS);
+
+    expect(result).toMatchObject({ status: 'processed', reversedCorrectionsCount: 1 });
+
+    const insertMock = correctionsInsertChain['insert'] as ReturnType<typeof vi.fn>;
+    expect(insertMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        alliance_id: 'alliance-1',
+        player_id: 'p1',
+        target_table: 'at_donations',
+        target_id: 'donation-1',
+        field: 'honor',
+        old_value: 1_200,
+        new_value: 5_000, // Alpha's alliance_honor in BASE_DONATION_PARAMS
+        corrected_by: 'auto:ocr-reingest',
+      }),
+    ]);
+  });
+
+  it('does not audit or report a reversal when the corrected value already matches the incoming OCR value', async () => {
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'period-1' });
+    queueFrom([]);
+    queueFrom([]);
+    queueFrom([{ id: 'p1', name: 'Alpha' }]);
+    queueFrom([]);
+    queueFrom(null);
+    // Correction history exists, but the stored value already equals what
+    // OCR is about to write (5_000) — this capture doesn't actually change
+    // anything, so it must not be flagged as a reversal.
+    queueFrom([{ id: 'donation-1', player_id: 'p1', alliance_honor: 5_000 }]);
+    queueFrom([{ target_id: 'donation-1', field: 'honor' }]);
+    queueFrom(null); // at_donations upsert
+    queueFrom(null); // at_screenshot_uploads update → processed
+    // No at_corrections insert queued: an unexpected extra supabase.from()
+    // call here would exhaust the mock queue and throw.
+
+    const result = await upsertDonationResult(BASE_DONATION_PARAMS);
+
+    expect(result).toMatchObject({ status: 'processed', reversedCorrectionsCount: 0 });
   });
 
   it('passes leaderboard_position through to the at_donations upsert payload', async () => {
@@ -402,6 +518,7 @@ describe('upsertDonationResult', () => {
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
     // at_donations : chaîne capturée pour inspecter le payload de l'upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     const donationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
       donationsChain as unknown as ReturnType<SupabaseFrom>,
@@ -433,6 +550,7 @@ describe('upsertDonationResult', () => {
     queueFrom([{ id: 'p1', name: 'Alpha' }]);
     queueFrom([]);
     queueFrom(null);
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     const donationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
       donationsChain as unknown as ReturnType<SupabaseFrom>,
@@ -462,6 +580,7 @@ describe('upsertDonationResult', () => {
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
     // at_donations: chaîne capturée pour inspecter le payload de l'upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     const donationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
       donationsChain as unknown as ReturnType<SupabaseFrom>,
@@ -506,6 +625,7 @@ describe('upsertDonationResult', () => {
     ]); // at_players upsert
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     queueFrom(null); // at_donations upsert
     queueFrom(null); // at_screenshot_uploads update → processed
 

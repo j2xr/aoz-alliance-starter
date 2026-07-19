@@ -15,6 +15,11 @@ export type ProcessedUpsertResult = {
   eventTypeDisplayName: string;
   memberCount: number;
   newMemberCount: number;
+  // Number of at_participations values with /correct audit history that
+  // this upsert just overwrote (latest-capture-wins is intended — see
+  // detectAndAuditReversedCorrections — but each one is itself now
+  // audit-logged and should be surfaced to the user, not silent).
+  reversedCorrectionsCount: number;
 };
 
 export type UpsertResult =
@@ -29,6 +34,9 @@ export type ProcessedDonationUpsertResult = {
   periodStart: string;
   memberCount: number;
   newMemberCount: number;
+  // See ProcessedUpsertResult.reversedCorrectionsCount — same concept, for
+  // at_donations' `honor` field.
+  reversedCorrectionsCount: number;
 };
 
 export type DonationUpsertResult =
@@ -46,6 +54,33 @@ interface UpsertParams {
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Returns the `${target_id}:${field}` keys among `targetIds` that have at
+ * least one /correct audit row (migration 0022/0023) — i.e. rows a manual
+ * correction has touched, regardless of whether that correction is still
+ * the currently-stored value. Used by upsertEventResult/upsertDonationResult
+ * to detect when an OCR re-ingestion is about to silently overwrite one of
+ * these (see the callers' "detect reversed corrections" step).
+ */
+async function fetchCorrectedFieldKeys(
+  targetTable: 'at_participations' | 'at_donations',
+  targetIds: string[],
+): Promise<Set<string>> {
+  if (targetIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from('at_corrections')
+    .select('target_id, field')
+    .eq('target_table', targetTable)
+    .in('target_id', targetIds);
+
+  if (error) throw new Error(`Failed to check correction history: ${error.message}`);
+
+  return new Set(
+    ((data ?? []) as { target_id: string; field: string }[]).map((r) => `${r.target_id}:${r.field}`),
+  );
+}
 
 /**
  * Deduplicates members by name (keeping the highest-confidence entry), then
@@ -485,11 +520,99 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
     ];
   });
 
+  // 6b. Detect manual corrections this upsert is about to overwrite.
+  // Latest-capture-wins is the intended semantics for re-ingestion (a
+  // deleted-then-reposted screenshot, /upload forcing a re-run, …) — but
+  // silently reverting a /correct'd value defeats the point of that audit
+  // trail, so a reversal gets its own audit row (corrected_by =
+  // 'auto:ocr-reingest') and is surfaced as a warning instead.
+  const targetPlayerIds = participationRows.map((r) => r.player_id);
+  const { data: existingParticipations, error: existingPartError } =
+    targetPlayerIds.length > 0
+      ? await supabase
+          .from('at_participations')
+          .select('id, player_id, points, power')
+          .eq('event_id', eventId)
+          .in('player_id', targetPlayerIds)
+      : { data: [] as unknown[], error: null };
+  if (existingPartError) {
+    throw new Error(`Failed to check existing participations: ${existingPartError.message}`);
+  }
+
+  const existingParticipationByPlayerId = new Map(
+    (existingParticipations as { id: string; player_id: string; points: number; power: number | null }[]).map(
+      (r) => [r.player_id, r],
+    ),
+  );
+  const correctedParticipationKeys = await fetchCorrectedFieldKeys(
+    'at_participations',
+    [...existingParticipationByPlayerId.values()].map((r) => r.id),
+  );
+
+  const participationReversals: {
+    playerId: string;
+    targetId: string;
+    field: 'points' | 'power';
+    oldValue: number;
+    newValue: number;
+  }[] = [];
+  for (const row of participationRows) {
+    const existing = existingParticipationByPlayerId.get(row.player_id);
+    if (!existing) continue;
+    if (correctedParticipationKeys.has(`${existing.id}:points`) && existing.points !== row.points) {
+      participationReversals.push({
+        playerId: row.player_id,
+        targetId: existing.id,
+        field: 'points',
+        oldValue: existing.points,
+        newValue: row.points,
+      });
+    }
+    if (
+      correctedParticipationKeys.has(`${existing.id}:power`) &&
+      existing.power !== null &&
+      row.power !== null &&
+      existing.power !== row.power
+    ) {
+      participationReversals.push({
+        playerId: row.player_id,
+        targetId: existing.id,
+        field: 'power',
+        oldValue: existing.power,
+        newValue: row.power,
+      });
+    }
+  }
+
   const { error: partError } = await supabase
     .from('at_participations')
     .upsert(participationRows, { onConflict: 'event_id,player_id' });
 
   if (partError) throw new Error(`Participations upsert failed: ${partError.message} [${partError.code}]`);
+
+  if (participationReversals.length > 0) {
+    const { error: auditError } = await supabase.from('at_corrections').insert(
+      participationReversals.map((r) => ({
+        alliance_id: allianceId,
+        player_id: r.playerId,
+        target_table: 'at_participations' as const,
+        target_id: r.targetId,
+        field: r.field,
+        old_value: r.oldValue,
+        new_value: r.newValue,
+        corrected_by: 'auto:ocr-reingest',
+      })),
+    );
+    if (auditError) {
+      // Best-effort, same rationale as recordUploadError below: the
+      // ingestion itself already succeeded and must not be masked by a
+      // failure to audit-log the reversal.
+      logger.error(
+        { err: auditError.message, allianceId, eventId },
+        'Failed to audit-log correction reversal(s)',
+      );
+    }
+  }
 
   // 7. Mark screenshot upload as processed
   await supabase
@@ -512,6 +635,7 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
     eventTypeDisplayName: et.display_name,
     memberCount: playerRows.length,
     newMemberCount,
+    reversedCorrectionsCount: participationReversals.length,
   };
 }
 
@@ -685,11 +809,74 @@ export async function upsertDonationResult(
     };
   });
 
+  // 7b. Detect manual honor corrections this upsert is about to overwrite —
+  // see upsertEventResult's equivalent step for the full rationale. Donation
+  // captures are re-posted routinely as the week's totals grow, so this is
+  // the more likely-to-fire of the two call sites.
+  const donationPlayerIds = donationRows.map((r) => r.player_id);
+  const { data: existingDonations, error: existingDonationsError } =
+    donationPlayerIds.length > 0
+      ? await supabase
+          .from('at_donations')
+          .select('id, player_id, alliance_honor')
+          .eq('donation_period_id', periodId)
+          .in('player_id', donationPlayerIds)
+      : { data: [] as unknown[], error: null };
+  if (existingDonationsError) {
+    throw new Error(`Failed to check existing donations: ${existingDonationsError.message}`);
+  }
+
+  const existingDonationByPlayerId = new Map(
+    (existingDonations as { id: string; player_id: string; alliance_honor: number }[]).map((r) => [
+      r.player_id,
+      r,
+    ]),
+  );
+  const correctedDonationKeys = await fetchCorrectedFieldKeys(
+    'at_donations',
+    [...existingDonationByPlayerId.values()].map((r) => r.id),
+  );
+
+  const donationReversals: { playerId: string; targetId: string; oldValue: number; newValue: number }[] = [];
+  for (const row of donationRows) {
+    const existing = existingDonationByPlayerId.get(row.player_id);
+    if (!existing) continue;
+    if (correctedDonationKeys.has(`${existing.id}:honor`) && existing.alliance_honor !== row.alliance_honor) {
+      donationReversals.push({
+        playerId: row.player_id,
+        targetId: existing.id,
+        oldValue: existing.alliance_honor,
+        newValue: row.alliance_honor,
+      });
+    }
+  }
+
   const { error: donationError } = await supabase
     .from('at_donations')
     .upsert(donationRows, { onConflict: 'donation_period_id,player_id' });
 
   if (donationError) throw new Error(`Donations upsert failed: ${donationError.message}`);
+
+  if (donationReversals.length > 0) {
+    const { error: auditError } = await supabase.from('at_corrections').insert(
+      donationReversals.map((r) => ({
+        alliance_id: allianceId,
+        player_id: r.playerId,
+        target_table: 'at_donations' as const,
+        target_id: r.targetId,
+        field: 'honor' as const,
+        old_value: r.oldValue,
+        new_value: r.newValue,
+        corrected_by: 'auto:ocr-reingest',
+      })),
+    );
+    if (auditError) {
+      logger.error(
+        { err: auditError.message, allianceId, periodId },
+        'Failed to audit-log donation correction reversal(s)',
+      );
+    }
+  }
 
   // 8. Mark upload processed
   await supabase
@@ -708,6 +895,7 @@ export async function upsertDonationResult(
     periodStart,
     memberCount: playerRows.length,
     newMemberCount,
+    reversedCorrectionsCount: donationReversals.length,
   };
 }
 
