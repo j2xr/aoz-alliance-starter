@@ -185,11 +185,31 @@ describe('routeOcrResult — donation', () => {
       periodStart: '2026-05-18',
       memberCount: 3,
       newMemberCount: 1,
+      reversedCorrectionsCount: 0,
     });
 
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
     expect(result).toEqual({ outcome: 'success', embed: fakeEmbed });
+  });
+
+  it('success with a reversed correction: embed and warning line both come through', async () => {
+    const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
+    vi.mocked(buildDonationEmbed).mockReturnValue(fakeEmbed);
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'processed',
+      periodId: 'period-1',
+      periodStart: '2026-05-18',
+      memberCount: 3,
+      newMemberCount: 1,
+      reversedCorrectionsCount: 2,
+    });
+
+    const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
+
+    expect(result.embed).toBe(fakeEmbed);
+    expect(result.line).toContain('shot.png');
+    expect(result.line).toContain('2 corrections');
   });
 
   it('duplicate', async () => {
@@ -243,6 +263,7 @@ describe('routeOcrResult — event', () => {
       eventTypeDisplayName: 'Polar Invasion',
       memberCount: 1,
       newMemberCount: 1,
+      reversedCorrectionsCount: 0,
     });
 
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
@@ -292,6 +313,7 @@ describe('routeOcrResult — legacy OCR results without a kind discriminator', (
       eventTypeDisplayName: 'Polar Invasion',
       memberCount: 1,
       newMemberCount: 1,
+      reversedCorrectionsCount: 0,
     });
 
     const legacyOcr = {
