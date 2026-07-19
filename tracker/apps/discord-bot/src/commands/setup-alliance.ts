@@ -5,7 +5,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { supabase } from '../lib/supabase.js';
-import { resolveAlliance } from '../lib/alliance.js';
+import { resolveAlliance, invalidateAllianceCache } from '../lib/alliance.js';
 import { messages } from '../lib/messages.js';
 import logger from '../logger.js';
 
@@ -44,6 +44,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     .from('at_alliances')
     .insert({ name, discord_channel_id: channelId });
   if (error) throw error;
+
+  // The earlier `resolveAlliance(channelId)` call above cached a "no
+  // alliance" miss for this channel (30s TTL) — drop it now so this new
+  // alliance resolves immediately instead of waiting out the cache.
+  invalidateAllianceCache(channelId);
 
   logger.info({ name, channelId }, 'Alliance created via /setup-alliance');
 

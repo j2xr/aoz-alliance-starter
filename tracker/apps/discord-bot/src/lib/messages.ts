@@ -36,6 +36,11 @@ export const messages = {
   allianceNameTaken: (name: string): string =>
     `⚠️ Une alliance nommée **${name}** existe déjà (liée à un autre channel). Choisissez un autre nom.`,
 
+  correctionReverted: (filename: string, count: number): string =>
+    `⚠️ **${filename}** — ${count} correction${count > 1 ? 's' : ''} manuelle${count > 1 ? 's' : ''} ` +
+    `(\`/correct\`) écrasée${count > 1 ? 's' : ''} par cette capture. Historique conservé dans ` +
+    '`at_corrections`.',
+
   allianceCreated: (name: string): string =>
     `Alliance **${name}** créée et liée à ce channel.\n\n` +
     `⚠️ Pour que le bot traite les captures postées ici, ajoutez l'ID de ce ` +

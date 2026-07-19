@@ -7,6 +7,12 @@ import { isOcrError, isPlayerStatsResult } from '@alliance-tracker/shared-types'
 import { config } from '../config.js';
 import logger from '../logger.js';
 import { sha256 } from './hash.js';
+// Aliased: this file's `routeOcrResult` already destructures an injectable
+// param named `messages` (OcrRoutingMessages, wording that differs between
+// callers — see B4). `correctionReverted` below is new and identical across
+// callers, so it's imported directly from the shared module instead of
+// being threaded through that per-caller indirection.
+import { messages as sharedMessages } from './messages.js';
 import { buildDonationEmbed, buildEventEmbed, buildPlayerStatsEmbed } from './embed.js';
 import {
   recordUploadError,
@@ -180,7 +186,13 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
       { messageId: message.id, filename, periodId: donationResult.periodId },
       'Donation upsert successful',
     );
-    return { outcome: 'success', embed: buildDonationEmbed(filename, typedOcr, donationResult) };
+    return {
+      outcome: 'success',
+      embed: buildDonationEmbed(filename, typedOcr, donationResult),
+      ...(donationResult.reversedCorrectionsCount > 0 && {
+        line: sharedMessages.correctionReverted(filename, donationResult.reversedCorrectionsCount),
+      }),
+    };
   }
 
   // kind === 'event'
@@ -216,7 +228,13 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
     { messageId: message.id, filename, eventId: upsertResult.eventId },
     'Upsert successful',
   );
-  return { outcome: 'success', embed: buildEventEmbed(filename, typedOcr, upsertResult) };
+  return {
+    outcome: 'success',
+    embed: buildEventEmbed(filename, typedOcr, upsertResult),
+    ...(upsertResult.reversedCorrectionsCount > 0 && {
+      line: sharedMessages.correctionReverted(filename, upsertResult.reversedCorrectionsCount),
+    }),
+  };
 }
 
 type JobStartResponse = { job_id: string; status: 'pending' };
