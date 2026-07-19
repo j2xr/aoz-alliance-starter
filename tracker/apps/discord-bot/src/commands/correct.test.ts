@@ -15,22 +15,39 @@ vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() }
 
 import { autocomplete, data, execute } from './correct.js';
 import { invalidateAllianceCache } from '../lib/alliance.js';
+import { isoWeekStartParis } from '../lib/period.js';
 
 type SupabaseFrom = typeof supabase.from;
 
 const ALLIANCE = { id: 'alliance-1', name: 'Test Alliance', discord_channel_id: 'channel-1' };
 const PLAYER = { id: 'player-1', name: 'Rin' };
 
-/** Queues a `.select(...).eq(...)[.eq(...)...].maybeSingle()` chain. */
-function queueMaybeSingle(data: unknown, error: unknown = null, eqCount = 1) {
+/**
+ * Queues a `.select(...).eq(...)[.eq(...)...].maybeSingle()` chain and
+ * returns the `.eq()` mocks in call order (first call = index 0). Real code
+ * previously got away with a swapped filter (e.g. findPlayer checking
+ * `.eq('alliance_id', playerId)` instead of `.eq('id', playerId)`) because
+ * nothing asserted which column/value each `.eq()` call actually used —
+ * returning the mocks lets tests pin that down with
+ * `expect(eqMocks[0]).toHaveBeenCalledWith('id', playerId)`.
+ */
+function queueMaybeSingle(
+  data: unknown,
+  error: unknown = null,
+  eqCount = 1,
+): ReturnType<typeof vi.fn>[] {
+  const eqMocks: ReturnType<typeof vi.fn>[] = [];
   let chain: Record<string, unknown> = { maybeSingle: vi.fn().mockResolvedValue({ data, error }) };
   for (let i = 0; i < eqCount; i++) {
     const inner = chain;
-    chain = { eq: vi.fn().mockReturnValue(inner) };
+    const eqFn = vi.fn().mockReturnValue(inner);
+    eqMocks.unshift(eqFn); // built inside-out; unshift restores outer-to-inner (= call) order
+    chain = { eq: eqFn };
   }
   vi.mocked(supabase.from).mockReturnValueOnce({
     select: vi.fn().mockReturnValue(chain),
   } as unknown as ReturnType<SupabaseFrom>);
+  return eqMocks;
 }
 
 /**
@@ -188,18 +205,35 @@ describe('/correct execute', () => {
   });
 
   it('corrects points on an existing participation and logs an audit row', async () => {
-    queueMaybeSingle(ALLIANCE, null, 1); // requireAlliance
-    queueMaybeSingle(PLAYER, null, 2); // findPlayer
-    queueMaybeSingle(
+    const allianceEq = queueMaybeSingle(ALLIANCE, null, 1); // requireAlliance
+    const playerEq = queueMaybeSingle(PLAYER, null, 2); // findPlayer
+    const eventEq = queueMaybeSingle(
       { id: 'event-1', event_datetime: '2026-07-10T18:00:00Z', at_event_types: { display_name: 'Elite Wars' } },
       null,
       2,
     ); // event lookup
-    queueMaybeSingle({ id: 'part-1' }, null, 2); // participation lookup
+    const participationEq = queueMaybeSingle({ id: 'part-1' }, null, 2); // participation lookup
     queueRpc({ old_value: 100, new_value: 999 }); // at_apply_correction
 
     const interaction = fakeInteraction({ field: 'points', value: 999, eventId: 'event-1' });
     await execute(interaction);
+
+    // Pins down exactly which column/value each lookup filters on — a
+    // swapped .eq() argument (e.g. findPlayer filtering alliance_id by
+    // playerId) previously passed every test unnoticed.
+    expect(vi.mocked(supabase.from).mock.calls.map(([table]) => table)).toEqual([
+      'at_alliances',
+      'at_players',
+      'at_events',
+      'at_participations',
+    ]);
+    expect(allianceEq[0]).toHaveBeenCalledWith('discord_channel_id', 'channel-1');
+    expect(playerEq[0]).toHaveBeenCalledWith('id', PLAYER.id);
+    expect(playerEq[1]).toHaveBeenCalledWith('alliance_id', ALLIANCE.id);
+    expect(eventEq[0]).toHaveBeenCalledWith('id', 'event-1');
+    expect(eventEq[1]).toHaveBeenCalledWith('alliance_id', ALLIANCE.id);
+    expect(participationEq[0]).toHaveBeenCalledWith('event_id', 'event-1');
+    expect(participationEq[1]).toHaveBeenCalledWith('player_id', PLAYER.id);
 
     expect(supabase.rpc).toHaveBeenCalledWith('at_apply_correction', {
       p_target_table: 'at_participations',
@@ -245,14 +279,29 @@ describe('/correct execute', () => {
   });
 
   it('corrects honor on an existing donation for a given week', async () => {
-    queueMaybeSingle(ALLIANCE, null, 1);
-    queueMaybeSingle(PLAYER, null, 2);
-    queueMaybeSingle({ id: 'period-1' }, null, 3); // donation period lookup
-    queueMaybeSingle({ id: 'donation-1' }, null, 2); // donation lookup
+    const allianceEq = queueMaybeSingle(ALLIANCE, null, 1); // requireAlliance
+    const playerEq = queueMaybeSingle(PLAYER, null, 2); // findPlayer
+    const periodEq = queueMaybeSingle({ id: 'period-1' }, null, 3); // donation period lookup
+    const donationEq = queueMaybeSingle({ id: 'donation-1' }, null, 2); // donation lookup
     queueRpc({ old_value: 1200, new_value: 5000 }); // at_apply_correction
 
     const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: '2026-07-13' });
     await execute(interaction);
+
+    expect(vi.mocked(supabase.from).mock.calls.map(([table]) => table)).toEqual([
+      'at_alliances',
+      'at_players',
+      'at_donation_periods',
+      'at_donations',
+    ]);
+    expect(allianceEq[0]).toHaveBeenCalledWith('discord_channel_id', 'channel-1');
+    expect(playerEq[0]).toHaveBeenCalledWith('id', PLAYER.id);
+    expect(playerEq[1]).toHaveBeenCalledWith('alliance_id', ALLIANCE.id);
+    expect(periodEq[0]).toHaveBeenCalledWith('alliance_id', ALLIANCE.id);
+    expect(periodEq[1]).toHaveBeenCalledWith('period_type', 'weekly');
+    expect(periodEq[2]).toHaveBeenCalledWith('period_start', '2026-07-13');
+    expect(donationEq[0]).toHaveBeenCalledWith('donation_period_id', 'period-1');
+    expect(donationEq[1]).toHaveBeenCalledWith('player_id', PLAYER.id);
 
     expect(supabase.rpc).toHaveBeenCalledWith('at_apply_correction', {
       p_target_table: 'at_donations',
@@ -313,6 +362,21 @@ describe('/correct execute', () => {
 
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('2026-07-13'));
     expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringContaining('2026-07-15'));
+  });
+
+  it('defaults honor corrections to the current Paris ISO week when week is omitted', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1);
+    queueMaybeSingle(PLAYER, null, 2);
+    const periodEq = queueMaybeSingle(null, null, 3); // no donation period for the default week
+
+    const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: null });
+    await execute(interaction);
+
+    // Computed the same way execute() does, at call time — this test must
+    // stay correct regardless of which day it actually runs on.
+    const expectedWeek = isoWeekStartParis(new Date());
+    expect(periodEq[2]).toHaveBeenCalledWith('period_start', expectedWeek);
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining(expectedWeek));
   });
 
   it('refuses cleanly when the player does not belong to this alliance', async () => {
