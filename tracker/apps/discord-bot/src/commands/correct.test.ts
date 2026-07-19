@@ -11,7 +11,7 @@ vi.mock('../config.js', () => ({
 vi.mock('../logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn() } }));
+vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 
 import { execute } from './correct.js';
 
@@ -32,19 +32,15 @@ function queueMaybeSingle(data: unknown, error: unknown = null, eqCount = 1) {
   } as unknown as ReturnType<SupabaseFrom>);
 }
 
-/** Queues a `.update(...).eq('id', ...)` chain resolving to { error }. */
-function queueUpdate(error: unknown = null) {
-  const eq = vi.fn().mockResolvedValue({ error });
-  const update = vi.fn().mockReturnValue({ eq });
-  vi.mocked(supabase.from).mockReturnValueOnce({ update } as unknown as ReturnType<SupabaseFrom>);
-  return update;
-}
-
-/** Queues a `.insert(...)` chain resolving to { error } (at_corrections audit log). */
-function queueInsert(error: unknown = null) {
-  const insert = vi.fn().mockResolvedValue({ error });
-  vi.mocked(supabase.from).mockReturnValueOnce({ insert } as unknown as ReturnType<SupabaseFrom>);
-  return insert;
+/**
+ * Queues a `.rpc('at_apply_correction', {...}).single()` call resolving to
+ * { data, error } — the atomic update+audit-insert (migration 0023) that
+ * replaced the old separate `.update()` + `.insert()` pair.
+ */
+function queueRpc(data: unknown, error: unknown = null) {
+  vi.mocked(supabase.rpc).mockReturnValueOnce({
+    single: vi.fn().mockResolvedValue({ data, error }),
+  } as unknown as ReturnType<typeof supabase.rpc>);
 }
 
 function fakeInteraction(opts: {
@@ -86,6 +82,7 @@ function fakeInteraction(opts: {
 describe('/correct execute', () => {
   beforeEach(() => {
     vi.mocked(supabase.from).mockReset();
+    vi.mocked(supabase.rpc).mockReset();
   });
 
   it('corrects points on an existing participation and logs an audit row', async () => {
@@ -96,26 +93,21 @@ describe('/correct execute', () => {
       null,
       2,
     ); // event lookup
-    queueMaybeSingle({ id: 'part-1', points: 100, power: 500000 }, null, 2); // participation lookup
-    const update = queueUpdate(null);
-    const insert = queueInsert(null);
+    queueMaybeSingle({ id: 'part-1' }, null, 2); // participation lookup
+    queueRpc({ old_value: 100, new_value: 999 }); // at_apply_correction
 
     const interaction = fakeInteraction({ field: 'points', value: 999, eventId: 'event-1' });
     await execute(interaction);
 
-    expect(update).toHaveBeenCalledWith({ points: 999 });
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        alliance_id: ALLIANCE.id,
-        player_id: PLAYER.id,
-        target_table: 'at_participations',
-        target_id: 'part-1',
-        field: 'points',
-        old_value: 100,
-        new_value: 999,
-        corrected_by: 'user-1',
-      }),
-    );
+    expect(supabase.rpc).toHaveBeenCalledWith('at_apply_correction', {
+      p_target_table: 'at_participations',
+      p_target_id: 'part-1',
+      p_field: 'points',
+      p_new_value: 999,
+      p_alliance_id: ALLIANCE.id,
+      p_player_id: PLAYER.id,
+      p_corrected_by: 'user-1',
+    });
     const reply = vi.mocked(interaction.editReply).mock.calls[0]![0] as { embeds: unknown[] };
     expect(reply.embeds).toHaveLength(1);
   });
@@ -153,23 +145,21 @@ describe('/correct execute', () => {
     queueMaybeSingle(ALLIANCE, null, 1);
     queueMaybeSingle(PLAYER, null, 2);
     queueMaybeSingle({ id: 'period-1' }, null, 3); // donation period lookup
-    queueMaybeSingle({ id: 'donation-1', alliance_honor: 1200 }, null, 2); // donation lookup
-    const update = queueUpdate(null);
-    const insert = queueInsert(null);
+    queueMaybeSingle({ id: 'donation-1' }, null, 2); // donation lookup
+    queueRpc({ old_value: 1200, new_value: 5000 }); // at_apply_correction
 
     const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: '2026-07-13' });
     await execute(interaction);
 
-    expect(update).toHaveBeenCalledWith({ alliance_honor: 5000 });
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        target_table: 'at_donations',
-        target_id: 'donation-1',
-        field: 'honor',
-        old_value: 1200,
-        new_value: 5000,
-      }),
-    );
+    expect(supabase.rpc).toHaveBeenCalledWith('at_apply_correction', {
+      p_target_table: 'at_donations',
+      p_target_id: 'donation-1',
+      p_field: 'honor',
+      p_new_value: 5000,
+      p_alliance_id: ALLIANCE.id,
+      p_player_id: PLAYER.id,
+      p_corrected_by: 'user-1',
+    });
   });
 
   it('refuses cleanly when no donation period exists for the given week (ligne absente)', async () => {

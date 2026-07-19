@@ -231,7 +231,7 @@ async function correctParticipation(
 
   const { data: participationRow, error: partError } = await supabase
     .from('at_participations')
-    .select('id, points, power')
+    .select('id')
     .eq('event_id', eventId)
     .eq('player_id', player.id)
     .maybeSingle();
@@ -243,28 +243,20 @@ async function correctParticipation(
     );
     return;
   }
-  const participation = participationRow as { id: string; points: number; power: number | null };
-  const oldValue = field === 'points' ? participation.points : participation.power;
+  const participation = participationRow as { id: string };
 
-  const { error: updateError } = await supabase
-    .from('at_participations')
-    .update({ [field]: value })
-    .eq('id', participation.id);
-  if (updateError) throw updateError;
-
-  await recordCorrection({
-    allianceId: alliance.id,
-    playerId: player.id,
+  const { oldValue, newValue } = await applyCorrection({
     targetTable: 'at_participations',
     targetId: participation.id,
     field,
-    oldValue,
     newValue: value,
+    allianceId: alliance.id,
+    playerId: player.id,
     correctedBy: interaction.user.id,
   });
 
   logger.info(
-    { allianceId: alliance.id, playerId: player.id, eventId, field, oldValue, newValue: value },
+    { allianceId: alliance.id, playerId: player.id, eventId, field, oldValue, newValue },
     'Manual score correction applied (participation)',
   );
 
@@ -274,7 +266,7 @@ async function correctParticipation(
         player.name,
         field,
         oldValue,
-        value,
+        newValue,
         formatEventOptionLabel(event),
         interaction.user.id,
       ),
@@ -306,7 +298,7 @@ async function correctDonation(
 
   const { data: donationRow, error: donationError } = await supabase
     .from('at_donations')
-    .select('id, alliance_honor')
+    .select('id')
     .eq('donation_period_id', period.id)
     .eq('player_id', player.id)
     .maybeSingle();
@@ -318,27 +310,20 @@ async function correctDonation(
     );
     return;
   }
-  const donation = donationRow as { id: string; alliance_honor: number };
+  const donation = donationRow as { id: string };
 
-  const { error: updateError } = await supabase
-    .from('at_donations')
-    .update({ alliance_honor: value })
-    .eq('id', donation.id);
-  if (updateError) throw updateError;
-
-  await recordCorrection({
-    allianceId: alliance.id,
-    playerId: player.id,
+  const { oldValue, newValue } = await applyCorrection({
     targetTable: 'at_donations',
     targetId: donation.id,
     field: 'honor',
-    oldValue: donation.alliance_honor,
     newValue: value,
+    allianceId: alliance.id,
+    playerId: player.id,
     correctedBy: interaction.user.id,
   });
 
   logger.info(
-    { allianceId: alliance.id, playerId: player.id, week, oldValue: donation.alliance_honor, newValue: value },
+    { allianceId: alliance.id, playerId: player.id, week, oldValue, newValue },
     'Manual score correction applied (donation)',
   );
 
@@ -347,8 +332,8 @@ async function correctDonation(
       buildCorrectionEmbed(
         player.name,
         'honor',
-        donation.alliance_honor,
-        value,
+        oldValue,
+        newValue,
         `Semaine ${week}`,
         interaction.user.id,
       ),
@@ -356,27 +341,43 @@ async function correctDonation(
   });
 }
 
-async function recordCorrection(params: {
-  allianceId: string;
-  playerId: string;
+/**
+ * Applies a correction via the `at_apply_correction` DB function (migration
+ * 0023): reads the current value, writes the new one, and inserts the
+ * at_corrections audit row, all inside one Postgres transaction. Replaces
+ * what used to be a separate `.update()` + `.insert()` pair — that left a
+ * window where the score changed but the audit insert could still fail,
+ * leaving the correction applied-but-unaudited and poisoning old_value on
+ * retry. The row-existence checks in correctParticipation/correctDonation
+ * still run first so a genuinely missing target gets the friendly French
+ * message instead of this function's generic "not found" error (P0002),
+ * which is only reachable via a TOCTOU race (row deleted between that check
+ * and this call) — rare enough not to special-case here.
+ */
+async function applyCorrection(params: {
   targetTable: 'at_participations' | 'at_donations';
   targetId: string;
   field: Field;
-  oldValue: number | null;
   newValue: number;
+  allianceId: string;
+  playerId: string;
   correctedBy: string;
-}): Promise<void> {
-  const { error } = await supabase.from('at_corrections').insert({
-    alliance_id: params.allianceId,
-    player_id: params.playerId,
-    target_table: params.targetTable,
-    target_id: params.targetId,
-    field: params.field,
-    old_value: params.oldValue,
-    new_value: params.newValue,
-    corrected_by: params.correctedBy,
-  });
-  if (error) throw new Error(`Failed to record correction audit log: ${error.message}`);
+}): Promise<{ oldValue: number | null; newValue: number }> {
+  const { data, error } = await supabase
+    .rpc('at_apply_correction', {
+      p_target_table: params.targetTable,
+      p_target_id: params.targetId,
+      p_field: params.field,
+      p_new_value: params.newValue,
+      p_alliance_id: params.allianceId,
+      p_player_id: params.playerId,
+      p_corrected_by: params.correctedBy,
+    })
+    .single();
+
+  if (error) throw new Error(`Failed to apply correction: ${error.message}`);
+  const row = data as { old_value: number | null; new_value: number };
+  return { oldValue: row.old_value, newValue: row.new_value };
 }
 
 function buildCorrectionEmbed(
