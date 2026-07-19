@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { ChatInputCommandInteraction } from 'discord.js';
+import type { AutocompleteInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { supabase } from '../lib/supabase.js';
 
 // Every command module pulls in ../lib/supabase.js -> ../config.js, whose
@@ -13,7 +13,8 @@ vi.mock('../logger.js', () => ({
 }));
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 
-import { data, execute } from './correct.js';
+import { autocomplete, data, execute } from './correct.js';
+import { invalidateAllianceCache } from '../lib/alliance.js';
 
 type SupabaseFrom = typeof supabase.from;
 
@@ -41,6 +42,34 @@ function queueRpc(data: unknown, error: unknown = null) {
   vi.mocked(supabase.rpc).mockReturnValueOnce({
     single: vi.fn().mockResolvedValue({ data, error }),
   } as unknown as ReturnType<typeof supabase.rpc>);
+}
+
+/**
+ * Queues a `.select(...).eq(...).order(...).limit(...)[.ilike(...)]` chain
+ * that resolves directly to `{ data, error }` when awaited (no
+ * `.maybeSingle()` terminal) — the shape both autocompletePlayer and
+ * autocompleteEvent build their query on.
+ */
+function queueChain(data: unknown, error: unknown = null) {
+  const builder: Record<string, unknown> = {
+    then: (resolve: (v: { data: unknown; error: unknown }) => void) => resolve({ data, error }),
+  };
+  for (const method of ['select', 'eq', 'order', 'limit', 'ilike']) {
+    builder[method] = vi.fn().mockReturnValue(builder);
+  }
+  vi.mocked(supabase.from).mockReturnValueOnce(builder as unknown as ReturnType<SupabaseFrom>);
+}
+
+function fakeAutocompleteInteraction(
+  focusedName: 'player' | 'event_id',
+  focusedValue: string,
+  channelId = 'channel-1',
+): AutocompleteInteraction {
+  return {
+    channelId,
+    options: { getFocused: () => ({ name: focusedName, value: focusedValue }) },
+    respond: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AutocompleteInteraction;
 }
 
 function fakeInteraction(opts: {
@@ -89,10 +118,73 @@ describe('/correct command definition', () => {
   });
 });
 
+describe('/correct autocomplete', () => {
+  beforeEach(() => {
+    vi.mocked(supabase.from).mockReset();
+    invalidateAllianceCache('channel-1');
+  });
+
+  it('slices player names to 100 chars and drops blank names', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1); // resolveAlliance
+    const longName = 'x'.repeat(150);
+    queueChain([
+      { id: 'p1', name: longName },
+      { id: 'p2', name: '   ' }, // OCR-blank name, must not reach Discord
+      { id: 'p3', name: 'Rin' },
+    ]);
+
+    const interaction = fakeAutocompleteInteraction('player', 'r');
+    await autocomplete(interaction);
+
+    const choices = vi.mocked(interaction.respond).mock.calls[0]![0] as { name: string; value: string }[];
+    expect(choices).toHaveLength(2);
+    expect(choices.find((c) => c.value === 'p1')!.name).toHaveLength(100);
+    expect(choices.some((c) => c.value === 'p2')).toBe(false);
+  });
+
+  it('filters event suggestions client-side by the typed text', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1);
+    queueChain([
+      { id: 'e1', event_datetime: '2026-07-10T18:00:00Z', at_event_types: { display_name: 'Elite Wars' } },
+      { id: 'e2', event_datetime: '2026-07-11T18:00:00Z', at_event_types: { display_name: 'Polar Invasion' } },
+      { id: 'e3', event_datetime: '2026-07-12T18:00:00Z', at_event_types: { display_name: 'Elite Wars' } },
+    ]);
+
+    const interaction = fakeAutocompleteInteraction('event_id', 'elite');
+    await autocomplete(interaction);
+
+    const choices = vi.mocked(interaction.respond).mock.calls[0]![0] as { name: string; value: string }[];
+    expect(choices).toHaveLength(2);
+    expect(choices.every((c) => c.name.toLowerCase().includes('elite'))).toBe(true);
+  });
+
+  it('caps event suggestions at 25 even when every row matches', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1);
+    queueChain(
+      Array.from({ length: 50 }, (_, i) => ({
+        id: `event-${i}`,
+        event_datetime: '2026-07-10T18:00:00Z',
+        at_event_types: { display_name: 'Elite Wars' },
+      })),
+    );
+
+    const interaction = fakeAutocompleteInteraction('event_id', '');
+    await autocomplete(interaction);
+
+    const choices = vi.mocked(interaction.respond).mock.calls[0]![0] as unknown[];
+    expect(choices).toHaveLength(25);
+  });
+});
+
 describe('/correct execute', () => {
   beforeEach(() => {
     vi.mocked(supabase.from).mockReset();
     vi.mocked(supabase.rpc).mockReset();
+    // requireAlliance -> resolveAlliance now caches per channelId (30s TTL,
+    // see lib/alliance.ts) — every test below reuses 'channel-1', so without
+    // this the first test's queued mock would satisfy every later test's
+    // requireAlliance call too, leaving their own queued mocks unconsumed.
+    invalidateAllianceCache('channel-1');
   });
 
   it('corrects points on an existing participation and logs an audit row', async () => {
