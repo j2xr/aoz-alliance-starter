@@ -20,6 +20,25 @@ type PlayerRow = { id: string; name: string };
 // even though they're meant to be filled via autocomplete.
 const INVALID_UUID_CODE = '22P02';
 
+const WEEK_FORMAT_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Validates a `week` option value and snaps it to its Paris ISO-week Monday.
+ * Returns null on a malformed or calendar-invalid date — the regex alone
+ * admits impossible dates like `2026-02-30` (JS Date rolls those over to
+ * `2026-03-02` instead of rejecting them, so the round-trip through
+ * toISOString() is what actually catches it). A valid but non-Monday date
+ * (e.g. a Wednesday within a known week) used to produce a misleading "no
+ * period found" reply since the period lookup is an exact match on
+ * period_start; snapping here means it now resolves the right week instead.
+ */
+function parseWeekInput(input: string): string | null {
+  if (!WEEK_FORMAT_RE.test(input)) return null;
+  const parsed = new Date(`${input}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== input) return null;
+  return isoWeekStartParis(parsed);
+}
+
 export const data = new SlashCommandBuilder()
   .setName('correct')
   .setDescription("Corriger manuellement un score mal lu par l'OCR")
@@ -43,7 +62,15 @@ export const data = new SlashCommandBuilder()
       ),
   )
   .addIntegerOption((opt) =>
-    opt.setName('value').setDescription('Nouvelle valeur').setRequired(true).setMinValue(0),
+    opt
+      .setName('value')
+      .setDescription('Nouvelle valeur')
+      .setRequired(true)
+      .setMinValue(0)
+      // at_participations.points is a Postgres int4 (max 2147483647); power/honor are
+      // bigint and would tolerate more, but a single shared cap keeps the option simple
+      // and every legitimate score is far below this bound anyway.
+      .setMaxValue(2_147_483_647),
   )
   .addStringOption((opt) =>
     opt
@@ -178,11 +205,17 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  if (weekInput && !/^\d{4}-\d{2}-\d{2}$/.test(weekInput)) {
-    await interaction.editReply("❌ Format `week` attendu : `YYYY-MM-DD` (lundi de la semaine).");
-    return;
+  let week: string;
+  if (weekInput) {
+    const snapped = parseWeekInput(weekInput);
+    if (!snapped) {
+      await interaction.editReply("❌ Format `week` attendu : `YYYY-MM-DD` (lundi de la semaine).");
+      return;
+    }
+    week = snapped;
+  } else {
+    week = isoWeekStartParis(new Date());
   }
-  const week = weekInput ?? isoWeekStartParis(new Date());
   await correctDonation(interaction, alliance, player, value, week);
 }
 

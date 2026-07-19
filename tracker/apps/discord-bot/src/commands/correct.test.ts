@@ -13,7 +13,7 @@ vi.mock('../logger.js', () => ({
 }));
 vi.mock('../lib/supabase.js', () => ({ supabase: { from: vi.fn(), rpc: vi.fn() } }));
 
-import { execute } from './correct.js';
+import { data, execute } from './correct.js';
 
 type SupabaseFrom = typeof supabase.from;
 
@@ -78,6 +78,16 @@ function fakeInteraction(opts: {
     editReply: vi.fn().mockResolvedValue(undefined),
   } as unknown as ChatInputCommandInteraction;
 }
+
+describe('/correct command definition', () => {
+  it('caps value at the int4 bound (at_participations.points column)', () => {
+    const valueOption = data.toJSON().options?.find((o) => o.name === 'value') as
+      | { min_value?: number; max_value?: number }
+      | undefined;
+    expect(valueOption?.min_value).toBe(0);
+    expect(valueOption?.max_value).toBe(2_147_483_647);
+  });
+});
 
 describe('/correct execute', () => {
   beforeEach(() => {
@@ -183,6 +193,33 @@ describe('/correct execute', () => {
 
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('YYYY-MM-DD'));
     expect(supabase.from).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a calendar-invalid week date (regex passes, date does not exist)', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1);
+    queueMaybeSingle(PLAYER, null, 2);
+
+    // Matches \d{4}-\d{2}-\d{2} but February never has a 30th — plain JS
+    // Date rolls this over to 2026-03-02 instead of rejecting it, which is
+    // exactly the gap the round-trip check in parseWeekInput closes.
+    const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: '2026-02-30' });
+    await execute(interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('YYYY-MM-DD'));
+    expect(supabase.from).toHaveBeenCalledTimes(2);
+  });
+
+  it('snaps a non-Monday week to its Paris ISO Monday before looking up the donation period', async () => {
+    queueMaybeSingle(ALLIANCE, null, 1);
+    queueMaybeSingle(PLAYER, null, 2);
+    queueMaybeSingle(null, null, 3); // no donation period for the snapped Monday
+
+    // 2026-07-15 is a Wednesday; its week's Monday is 2026-07-13.
+    const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: '2026-07-15' });
+    await execute(interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('2026-07-13'));
+    expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringContaining('2026-07-15'));
   });
 
   it('refuses cleanly when the player does not belong to this alliance', async () => {
