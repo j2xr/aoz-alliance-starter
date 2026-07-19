@@ -234,13 +234,14 @@ describe('/correct execute', () => {
 
   it('requires event_id for points/power corrections', async () => {
     queueMaybeSingle(ALLIANCE, null, 1);
-    queueMaybeSingle(PLAYER, null, 2);
+    // No findPlayer mock queued: this is a pure input check that now runs
+    // before findPlayer, so the player lookup must never fire.
 
     const interaction = fakeInteraction({ field: 'points', value: 999, eventId: null });
     await execute(interaction);
 
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('event_id'));
-    expect(supabase.from).toHaveBeenCalledTimes(2);
+    expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 
   it('corrects honor on an existing donation for a given week', async () => {
@@ -278,18 +279,18 @@ describe('/correct execute', () => {
 
   it('rejects an invalid week format for honor corrections', async () => {
     queueMaybeSingle(ALLIANCE, null, 1);
-    queueMaybeSingle(PLAYER, null, 2);
+    // No findPlayer mock queued: this pure input check now runs first.
 
     const interaction = fakeInteraction({ field: 'honor', value: 5000, eventId: null, week: 'not-a-date' });
     await execute(interaction);
 
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('YYYY-MM-DD'));
-    expect(supabase.from).toHaveBeenCalledTimes(2);
+    expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a calendar-invalid week date (regex passes, date does not exist)', async () => {
     queueMaybeSingle(ALLIANCE, null, 1);
-    queueMaybeSingle(PLAYER, null, 2);
+    // No findPlayer mock queued: this pure input check now runs first.
 
     // Matches \d{4}-\d{2}-\d{2} but February never has a 30th — plain JS
     // Date rolls this over to 2026-03-02 instead of rejecting it, which is
@@ -298,7 +299,7 @@ describe('/correct execute', () => {
     await execute(interaction);
 
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('YYYY-MM-DD'));
-    expect(supabase.from).toHaveBeenCalledTimes(2);
+    expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 
   it('snaps a non-Monday week to its Paris ISO Monday before looking up the donation period', async () => {

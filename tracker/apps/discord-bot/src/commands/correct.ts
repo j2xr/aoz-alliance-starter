@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase.js';
 import { requireAlliance, resolveAlliance, type AllianceRow } from '../lib/alliance.js';
 import { isoWeekStartParis } from '../lib/period.js';
 import { escapeLike } from '../lib/escape.js';
+import { formatEventDateTime } from '../lib/format.js';
 import logger from '../logger.js';
 
 type Field = 'points' | 'power' | 'honor';
@@ -185,16 +186,46 @@ async function autocompleteEvent(
 }
 
 function formatEventOptionLabel(e: EventOption): string {
-  const dt = new Date(e.event_datetime).toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Paris',
-  });
   const typeName = e.at_event_types?.display_name ?? '?';
-  return `${typeName} — ${dt}`.slice(0, 100);
+  return `${typeName} — ${formatEventDateTime(e.event_datetime)}`.slice(0, 100);
+}
+
+type CorrectionTarget =
+  | { kind: 'participation'; field: 'points' | 'power'; eventId: string }
+  | { kind: 'donation'; week: string };
+
+/**
+ * Validates `event_id`/`week` against `field` — pure input checks, no DB
+ * round-trip — and replies+returns null on anything invalid. Deliberately
+ * runs before `findPlayer` in `execute()`: the common invalid-input cases
+ * (missing event_id, malformed week) used to pay for a wasted at_players
+ * query first since they were checked after it.
+ */
+async function resolveCorrectionTarget(
+  interaction: ChatInputCommandInteraction,
+  field: Field,
+  eventId: string | null,
+  weekInput: string | null,
+): Promise<CorrectionTarget | null> {
+  if (field === 'points' || field === 'power') {
+    if (!eventId) {
+      await interaction.editReply(
+        '❌ `event_id` est requis pour corriger `points` ou `power`. Choisissez un événement dans les suggestions.',
+      );
+      return null;
+    }
+    return { kind: 'participation', field, eventId };
+  }
+
+  if (!weekInput) {
+    return { kind: 'donation', week: isoWeekStartParis(new Date()) };
+  }
+  const snapped = parseWeekInput(weekInput);
+  if (!snapped) {
+    await interaction.editReply("❌ Format `week` attendu : `YYYY-MM-DD` (lundi de la semaine).");
+    return null;
+  }
+  return { kind: 'donation', week: snapped };
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -209,35 +240,20 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const eventId = interaction.options.getString('event_id');
   const weekInput = interaction.options.getString('week');
 
+  const target = await resolveCorrectionTarget(interaction, field, eventId, weekInput);
+  if (!target) return;
+
   const player = await findPlayer(playerId, alliance.id);
   if (!player) {
     await interaction.editReply('❌ Joueur introuvable dans cette alliance. Utilisez les suggestions proposées.');
     return;
   }
 
-  if (field === 'points' || field === 'power') {
-    if (!eventId) {
-      await interaction.editReply(
-        '❌ `event_id` est requis pour corriger `points` ou `power`. Choisissez un événement dans les suggestions.',
-      );
-      return;
-    }
-    await correctParticipation(interaction, alliance, player, field, value, eventId);
-    return;
-  }
-
-  let week: string;
-  if (weekInput) {
-    const snapped = parseWeekInput(weekInput);
-    if (!snapped) {
-      await interaction.editReply("❌ Format `week` attendu : `YYYY-MM-DD` (lundi de la semaine).");
-      return;
-    }
-    week = snapped;
+  if (target.kind === 'participation') {
+    await correctParticipation(interaction, alliance, player, target.field, value, target.eventId);
   } else {
-    week = isoWeekStartParis(new Date());
+    await correctDonation(interaction, alliance, player, value, target.week);
   }
-  await correctDonation(interaction, alliance, player, value, week);
 }
 
 async function findPlayer(playerId: string, allianceId: string): Promise<PlayerRow | null> {
@@ -255,6 +271,36 @@ async function findPlayer(playerId: string, allianceId: string): Promise<PlayerR
   return data as PlayerRow | null;
 }
 
+async function findEvent(eventId: string, allianceId: string): Promise<EventOption | null> {
+  const { data, error } = await supabase
+    .from('at_events')
+    .select('id, event_datetime, at_event_types(display_name)')
+    .eq('id', eventId)
+    .eq('alliance_id', allianceId)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === INVALID_UUID_CODE) return null;
+    throw error;
+  }
+  return data as unknown as EventOption | null;
+}
+
+async function findParticipation(
+  eventId: string,
+  playerId: string,
+): Promise<{ id: string } | null> {
+  const { data, error } = await supabase
+    .from('at_participations')
+    .select('id')
+    .eq('event_id', eventId)
+    .eq('player_id', playerId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as { id: string } | null;
+}
+
 async function correctParticipation(
   interaction: ChatInputCommandInteraction,
   alliance: AllianceRow,
@@ -263,41 +309,25 @@ async function correctParticipation(
   value: number,
   eventId: string,
 ): Promise<void> {
-  const { data: eventRow, error: eventError } = await supabase
-    .from('at_events')
-    .select('id, event_datetime, at_event_types(display_name)')
-    .eq('id', eventId)
-    .eq('alliance_id', alliance.id)
-    .maybeSingle();
+  // Independent lookups (event by id, participation by event+player) — run
+  // concurrently instead of two serial round-trips. Error-check order
+  // (event first, then participation) is preserved so the reply text stays
+  // identical to before.
+  const [event, participation] = await Promise.all([
+    findEvent(eventId, alliance.id),
+    findParticipation(eventId, player.id),
+  ]);
 
-  if (eventError) {
-    if (eventError.code === INVALID_UUID_CODE) {
-      await interaction.editReply('❌ Événement introuvable dans cette alliance. Utilisez les suggestions proposées.');
-      return;
-    }
-    throw eventError;
-  }
-  if (!eventRow) {
+  if (!event) {
     await interaction.editReply('❌ Événement introuvable dans cette alliance. Utilisez les suggestions proposées.');
     return;
   }
-  const event = eventRow as unknown as EventOption;
-
-  const { data: participationRow, error: partError } = await supabase
-    .from('at_participations')
-    .select('id')
-    .eq('event_id', eventId)
-    .eq('player_id', player.id)
-    .maybeSingle();
-
-  if (partError) throw partError;
-  if (!participationRow) {
+  if (!participation) {
     await interaction.editReply(
       `❌ Aucune participation enregistrée pour **${player.name}** sur cet événement.`,
     );
     return;
   }
-  const participation = participationRow as { id: string };
 
   const { oldValue, newValue } = await applyCorrection({
     targetTable: 'at_participations',
