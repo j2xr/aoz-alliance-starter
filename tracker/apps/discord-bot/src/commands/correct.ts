@@ -101,7 +101,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
     return;
   }
   if (focused.name === 'event_id') {
-    await autocompleteEvent(interaction, alliance.id);
+    await autocompleteEvent(interaction, alliance.id, focused.value);
     return;
   }
   await interaction.respond([]);
@@ -130,7 +130,13 @@ async function autocompletePlayer(
   }
 
   await interaction.respond(
-    ((data ?? []) as PlayerRow[]).map((p) => ({ name: p.name, value: p.id })),
+    ((data ?? []) as PlayerRow[])
+      // Discord rejects the whole respond() payload if any choice name is
+      // outside 1-100 chars; at_players.name is untrusted OCR/LLM text with
+      // no length bound in the schema, so one bad row would otherwise blank
+      // out suggestions for every query that includes it.
+      .filter((p) => p.name.trim().length > 0)
+      .map((p) => ({ name: p.name.slice(0, 100), value: p.id })),
   );
 }
 
@@ -140,16 +146,23 @@ type EventOption = {
   at_event_types: { display_name: string } | null;
 };
 
+// Fetched pool for the event_id autocomplete: wider than the 25 Discord
+// choices actually shown, so typing can narrow past the most recent 25
+// (mirrors upload.ts's client-side filter over at_event_types — same
+// rationale, applied here to at_events instead of the small lookup table).
+const EVENT_AUTOCOMPLETE_POOL_SIZE = 50;
+
 async function autocompleteEvent(
   interaction: AutocompleteInteraction,
   allianceId: string,
+  typed: string,
 ): Promise<void> {
   const { data, error } = await supabase
     .from('at_events')
     .select('id, event_datetime, at_event_types(display_name)')
     .eq('alliance_id', allianceId)
     .order('event_datetime', { ascending: false })
-    .limit(25);
+    .limit(EVENT_AUTOCOMPLETE_POOL_SIZE);
 
   if (error) {
     logger.error({ err: String(error) }, 'event_id autocomplete query failed');
@@ -158,8 +171,16 @@ async function autocompleteEvent(
   }
 
   const rows = (data ?? []) as unknown as EventOption[];
+  const labeled = rows.map((e) => ({ id: e.id, label: formatEventOptionLabel(e) }));
+
+  const trimmed = typed.trim().toLowerCase();
+  const matches =
+    trimmed.length === 0
+      ? labeled
+      : labeled.filter((e) => e.label.toLowerCase().includes(trimmed));
+
   await interaction.respond(
-    rows.map((e) => ({ name: formatEventOptionLabel(e), value: e.id })),
+    matches.slice(0, 25).map((e) => ({ name: e.label, value: e.id })),
   );
 }
 
