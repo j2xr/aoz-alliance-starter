@@ -195,6 +195,21 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   );
   if (aliasInsertError) throw new Error(`Failed to insert alias: ${aliasInsertError.message}`);
 
+  // Re-point the alias player's /correct audit history (at_corrections,
+  // migration 0022/0023) to the canonical player before deleting it. Unlike
+  // participations/memberships there's no unique-per-player constraint on
+  // at_corrections to conflict with, so this is a plain unconditional
+  // reassignment — without it, at_corrections.player_id's `on delete set
+  // null` (0023) would silently orphan the alias's correction history the
+  // moment the delete below runs.
+  const { error: correctionsReassignError } = await supabase
+    .from('at_corrections')
+    .update({ player_id: canonicalPlayer.id })
+    .eq('player_id', aliasPlayer.id);
+  if (correctionsReassignError) {
+    throw new Error(`Failed to reassign correction history: ${correctionsReassignError.message}`);
+  }
+
   // Delete the duplicate player (cascade will clean up any remaining FK rows)
   const { error: deleteError } = await supabase
     .from('at_players')
