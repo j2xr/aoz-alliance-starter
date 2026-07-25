@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "moco",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2458
+    },
+    {
+      "name": "Somethin_kool",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2385
+    },
+    {
+      "name": "BenOVerbich",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2235
+    },
+    {
+      "name": "AL3X2414",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2207
+    },
+    {
+      "name": "Darkseid",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2201
+    },
+    {
+      "name": "TarecK",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2178
+    },
+    {
+      "name": "LATAM.REYCOLIMAN",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2140
+    },
+    {
+      "name": "Blake",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2120
+    },
+    {
+      "name": "DOSKYNG",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2094
+    },
+    {
+      "name": "Doug",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2070
+    },
+    {
+      "name": "中本",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2051
+    },
+    {
+      "name": "Natasha",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2035
+    }
+  ]
+}
