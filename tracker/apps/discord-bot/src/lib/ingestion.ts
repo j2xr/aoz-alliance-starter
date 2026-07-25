@@ -186,12 +186,19 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
       { messageId: message.id, filename, periodId: donationResult.periodId },
       'Donation upsert successful',
     );
+    const donationWarnings: string[] = [];
+    if (typedOcr.possible_truncation) {
+      donationWarnings.push(sharedMessages.possibleTruncation(filename));
+    }
+    if (donationResult.reversedCorrectionsCount > 0) {
+      donationWarnings.push(
+        sharedMessages.correctionReverted(filename, donationResult.reversedCorrectionsCount),
+      );
+    }
     return {
       outcome: 'success',
       embed: buildDonationEmbed(filename, typedOcr, donationResult),
-      ...(donationResult.reversedCorrectionsCount > 0 && {
-        line: sharedMessages.correctionReverted(filename, donationResult.reversedCorrectionsCount),
-      }),
+      ...(donationWarnings.length > 0 && { line: donationWarnings.join('\n') }),
     };
   }
 

@@ -58,6 +58,13 @@ class DonationParseResult(BaseModel):
     kind: Literal["donation"] = "donation"
     period_type: Literal["weekly", "daily", "history"]
     members: list[DonationMember] = []
+    # True when the row loop broke on 3 consecutive unreadable rows before
+    # reaching the last possible row of the capture — rows that should still
+    # have been onscreen may have been silently dropped. Advisory only: a
+    # legitimately short capture (few real members) can also trip this, so a
+    # human should double-check rather than treat it as a hard failure. See
+    # ContributionRankingV1Parser.parse.
+    possible_truncation: bool = False
 
 
 class PlayerStatsMember(BaseModel):

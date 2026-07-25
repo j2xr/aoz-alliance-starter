@@ -212,6 +212,50 @@ describe('routeOcrResult — donation', () => {
     expect(result.line).toContain('2 corrections');
   });
 
+  it('success with possible_truncation: embed and warning line both come through', async () => {
+    const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
+    vi.mocked(buildDonationEmbed).mockReturnValue(fakeEmbed);
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'processed',
+      periodId: 'period-1',
+      periodStart: '2026-05-18',
+      memberCount: 3,
+      newMemberCount: 1,
+      reversedCorrectionsCount: 0,
+    });
+
+    const result = await routeOcrResult({
+      ...BASE_PARAMS,
+      ocr: { ...OCR, possible_truncation: true },
+    });
+
+    expect(result.embed).toBe(fakeEmbed);
+    expect(result.line).toContain('shot.png');
+    expect(result.line).toContain('interrompue');
+  });
+
+  it('success with both a reversed correction and possible_truncation: one line, both warnings', async () => {
+    const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
+    vi.mocked(buildDonationEmbed).mockReturnValue(fakeEmbed);
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'processed',
+      periodId: 'period-1',
+      periodStart: '2026-05-18',
+      memberCount: 3,
+      newMemberCount: 1,
+      reversedCorrectionsCount: 2,
+    });
+
+    const result = await routeOcrResult({
+      ...BASE_PARAMS,
+      ocr: { ...OCR, possible_truncation: true },
+    });
+
+    expect(result.embed).toBe(fakeEmbed);
+    expect(result.line).toContain('interrompue');
+    expect(result.line).toContain('2 corrections');
+  });
+
   it('duplicate', async () => {
     vi.mocked(upsertDonationResult).mockResolvedValue({ status: 'duplicate' });
 

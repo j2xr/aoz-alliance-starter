@@ -23,20 +23,20 @@
   },
   "contribution_ranking": {
     "alliance_honor": {
-      "correct": 104,
-      "total": 108
+      "correct": 115,
+      "total": 120
     },
     "name": {
-      "correct": 103,
-      "total": 108
+      "correct": 114,
+      "total": 120
     },
     "name_exact": {
-      "correct": 90,
-      "total": 108
+      "correct": 101,
+      "total": 120
     },
     "rank": {
-      "correct": 107,
-      "total": 108
+      "correct": 119,
+      "total": 120
     }
   },
   "elite_wars": {
