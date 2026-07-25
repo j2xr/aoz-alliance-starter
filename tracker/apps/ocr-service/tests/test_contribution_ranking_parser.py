@@ -12,10 +12,12 @@ import pytest
 from app.dispatcher import DONATION_CODE, UnknownEventError, detect_screen_kind
 from app.parsers.base import DonationMember, DonationParseResult
 from app.parsers.contribution_ranking_v1 import (
+    _MAX_ROWS,
     _POSITION_PSMS,
     _POSITION_THRESHOLDS,
     _TAB_X,
     _TABS_Y,
+    CANONICAL_HEIGHT,
     ContributionRankingV1Parser,
     _ocr_position_from_crop,
     _strip_alliance_tag,
@@ -271,6 +273,68 @@ def test_parser_returns_donation_result_kind() -> None:
     assert result.kind == "donation"
     assert result.period_type == "weekly"
     assert result.members == []
+
+
+# ── Silent-truncation flag ────────────────────────────────────────────────────
+
+
+def _tall_image() -> np.ndarray:
+    """Twice the canonical height with list_top pinned to 0 (see callers):
+    every one of _MAX_ROWS rows fits comfortably, so the parse loop's exit is
+    governed purely by consecutive_none, not by running out of vertical
+    space — isolates the possible_truncation logic under test."""
+    return np.zeros((CANONICAL_HEIGHT * 2, 1080), dtype=np.uint8)
+
+
+def test_possible_truncation_flagged_on_early_break() -> None:
+    """3 consecutive unreadable rows well before the last possible row: flag it."""
+    parser = ContributionRankingV1Parser()
+    row_returns = [_donor(alliance_honor=500), _donor(alliance_honor=400), None, None, None]
+
+    with (
+        patch.object(parser, "_detect_list_top", return_value=0),
+        patch.object(parser, "_parse_row", side_effect=row_returns),
+    ):
+        result = parser.parse(_tall_image())
+
+    assert result.possible_truncation is True
+    assert len(result.members) == 2
+
+
+def test_possible_truncation_not_flagged_at_natural_last_row() -> None:
+    """3 consecutive unreadable rows landing exactly on the capture's last
+    possible row (i == _MAX_ROWS - 1) is indistinguishable from a short,
+    legitimately-ending capture — must not be flagged."""
+    parser = ContributionRankingV1Parser()
+    valid_count = _MAX_ROWS - 3
+    row_returns: list[DonationMember | None] = [
+        _donor(alliance_honor=1000 - i * 10) for i in range(valid_count)
+    ] + [None, None, None]
+    assert len(row_returns) == _MAX_ROWS
+
+    with (
+        patch.object(parser, "_detect_list_top", return_value=0),
+        patch.object(parser, "_parse_row", side_effect=row_returns),
+    ):
+        result = parser.parse(_tall_image())
+
+    assert result.possible_truncation is False
+    assert len(result.members) == valid_count
+
+
+def test_possible_truncation_false_when_every_row_reads() -> None:
+    """The loop runs every row without a 3-in-a-row failure: no flag."""
+    parser = ContributionRankingV1Parser()
+    row_returns = [_donor(alliance_honor=1000 - i * 10) for i in range(_MAX_ROWS)]
+
+    with (
+        patch.object(parser, "_detect_list_top", return_value=0),
+        patch.object(parser, "_parse_row", side_effect=row_returns),
+    ):
+        result = parser.parse(_tall_image())
+
+    assert result.possible_truncation is False
+    assert len(result.members) == _MAX_ROWS
 
 
 # ── Tab detection ─────────────────────────────────────────────────────────────

@@ -36,6 +36,11 @@ export const messages = {
   allianceNameTaken: (name: string): string =>
     `⚠️ Une alliance nommée **${name}** existe déjà (liée à un autre channel). Choisissez un autre nom.`,
 
+  possibleTruncation: (filename: string): string =>
+    `⚠️ **${filename}** — lecture interrompue avant la fin possible de la liste ` +
+    '(plusieurs lignes illisibles à la suite). Des joueurs pourraient manquer : ' +
+    'vérifiez le classement complet.',
+
   correctionReverted: (filename: string, count: number): string =>
     `⚠️ **${filename}** — ${count} correction${count > 1 ? 's' : ''} manuelle${count > 1 ? 's' : ''} ` +
     `(\`/correct\`) écrasée${count > 1 ? 's' : ''} par cette capture. Historique conservé dans ` +
