@@ -257,6 +257,7 @@ class ContributionRankingV1Parser(BaseParser):
 
         members: list[DonationMember] = []
         consecutive_none = 0
+        possible_truncation = False
         name_end_offset = int(_NAME_Y_OFF[1] * scale)
         # Per-image cache of the (threshold, psm) combo that won the last
         # rank vote; mirrors PolarInvasionV1Parser.parse.
@@ -278,6 +279,23 @@ class ContributionRankingV1Parser(BaseParser):
             if member is None:
                 consecutive_none += 1
                 if consecutive_none >= 3:
+                    # Reaching this on the last possible row (i == _MAX_ROWS - 1)
+                    # is indistinguishable from a legitimate short capture (fewer
+                    # than _MAX_ROWS real members onscreen) — don't flag that
+                    # case. Breaking any earlier means rows that should still be
+                    # readable within this capture went dark; a real batch once
+                    # lost 8 rows (ranks 42-49) exactly this way, silently.
+                    if i < _MAX_ROWS - 1:
+                        possible_truncation = True
+                        logger.warning(
+                            "contribution_ranking: stopped after %d consecutive "
+                            "unreadable rows at row index %d/%d (%d members parsed "
+                            "so far) — possible silent truncation",
+                            consecutive_none,
+                            i,
+                            _MAX_ROWS - 1,
+                            len(members),
+                        )
                     break
                 continue
             consecutive_none = 0
@@ -287,7 +305,9 @@ class ContributionRankingV1Parser(BaseParser):
         self._enforce_honor_monotonicity(image, members, scale)
         self._repair_position_sequence(members)
 
-        return DonationParseResult(period_type=period_type, members=members)
+        return DonationParseResult(
+            period_type=period_type, members=members, possible_truncation=possible_truncation
+        )
 
     # ── Cross-row consistency ────────────────────────────────────────────────
     #
