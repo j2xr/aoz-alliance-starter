@@ -40,6 +40,13 @@ export type OcrDonationResult = {
   kind: 'donation';
   period_type: 'weekly' | 'daily' | 'history';
   members: OcrDonationMember[];
+  // True when the parser broke off the row loop early (3 consecutive
+  // unreadable rows before the capture's last possible row) — rows that
+  // should still have been onscreen may have been silently dropped.
+  // Advisory only, not a hard failure. Optional so existing fixtures/tests
+  // that predate this field don't need updating (same rationale as
+  // leaderboard_position above).
+  possible_truncation?: boolean;
 };
 
 // ── Player stats chat domain ─────────────────────────────────────────────────

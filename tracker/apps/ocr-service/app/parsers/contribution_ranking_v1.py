@@ -83,6 +83,9 @@ _DEFAULT_PERIOD_TYPE: Literal["weekly"] = "weekly"
 _MEMBER_LIST_TOP = 395  # y-start of first row (canonical)
 _ROW_HEIGHT = 175  # 12 rows fit in ~2100 px after the tabs/headers band
 _MAX_ROWS = 12
+# Upper bound on a "first name line" text-density band in _detect_list_top
+# (see there for why the column header needs excluding this way).
+_MAX_NAME_BAND_HEIGHT = 32
 
 # Badge crop for R1..R5 detection. Same x as polar invasion (identical avatar
 # widget), but a taller y window: the donation screen packs 12 rows, so the
@@ -257,6 +260,7 @@ class ContributionRankingV1Parser(BaseParser):
 
         members: list[DonationMember] = []
         consecutive_none = 0
+        possible_truncation = False
         name_end_offset = int(_NAME_Y_OFF[1] * scale)
         # Per-image cache of the (threshold, psm) combo that won the last
         # rank vote; mirrors PolarInvasionV1Parser.parse.
@@ -278,6 +282,23 @@ class ContributionRankingV1Parser(BaseParser):
             if member is None:
                 consecutive_none += 1
                 if consecutive_none >= 3:
+                    # Reaching this on the last possible row (i == _MAX_ROWS - 1)
+                    # is indistinguishable from a legitimate short capture (fewer
+                    # than _MAX_ROWS real members onscreen) — don't flag that
+                    # case. Breaking any earlier means rows that should still be
+                    # readable within this capture went dark; a real batch once
+                    # lost 8 rows (ranks 42-49) exactly this way, silently.
+                    if i < _MAX_ROWS - 1:
+                        possible_truncation = True
+                        logger.warning(
+                            "contribution_ranking: stopped after %d consecutive "
+                            "unreadable rows at row index %d/%d (%d members parsed "
+                            "so far) — possible silent truncation",
+                            consecutive_none,
+                            i,
+                            _MAX_ROWS - 1,
+                            len(members),
+                        )
                     break
                 continue
             consecutive_none = 0
@@ -287,7 +308,9 @@ class ContributionRankingV1Parser(BaseParser):
         self._enforce_honor_monotonicity(image, members, scale)
         self._repair_position_sequence(members)
 
-        return DonationParseResult(period_type=period_type, members=members)
+        return DonationParseResult(
+            period_type=period_type, members=members, possible_truncation=possible_truncation
+        )
 
     # ── Cross-row consistency ────────────────────────────────────────────────
     #
@@ -486,8 +509,9 @@ class ContributionRankingV1Parser(BaseParser):
 
         After preprocess the image is grayscale on a light background with dark
         text. We scan the column where Commander Names live (x=270..720) for
-        text-density bands; the first band whose centre lies below the column
-        header (y > 350×scale) marks the first row's name line. We then
+        text-density bands sized like a single name line (see
+        _MAX_NAME_BAND_HEIGHT — this excludes the bolder/taller column header
+        text); the first such band marks the first row's name line. We then
         back-compute row_top so the name crop _NAME_Y_OFF=(45, 130) is centred
         on it.
         """
@@ -516,18 +540,32 @@ class ContributionRankingV1Parser(BaseParser):
         threshold = baseline + span * 0.25
         above = row_score > threshold
 
-        # First sustained band (≥ 8 rows) is the first member name.
+        # First sustained band (8-32 rows) is the first member name. The
+        # upper bound excludes the column header ("Commander Name"): across
+        # every shipped fixture a genuine single-line name band is 22-29px
+        # tall, but the header text renders bolder/taller — one real capture
+        # measured it at 37px, sustained enough to otherwise win the race as
+        # "first" band and shift every row's crop ~110px too high, corrupting
+        # the entire read. A position-based cutoff can't separate the two:
+        # a legitimate row-0 band can itself land anywhere from ~365 to
+        # ~411 (measured across fixtures), a range that fully overlaps where
+        # a header band can sit — only the height reliably tells them apart.
+        max_band_height = int(_MAX_NAME_BAND_HEIGHT * scale)
         run_start: int | None = None
         first_band_centre: int | None = None
         for i, v in enumerate(above):
             if v and run_start is None:
                 run_start = i
             elif not v and run_start is not None:
-                if i - run_start >= 8:
+                if 8 <= i - run_start <= max_band_height:
                     first_band_centre = (run_start + i) // 2
                     break
                 run_start = None
-        if first_band_centre is None and run_start is not None and len(above) - run_start >= 8:
+        if (
+            first_band_centre is None
+            and run_start is not None
+            and 8 <= len(above) - run_start <= max_band_height
+        ):
             first_band_centre = (run_start + len(above)) // 2
 
         if first_band_centre is None:
