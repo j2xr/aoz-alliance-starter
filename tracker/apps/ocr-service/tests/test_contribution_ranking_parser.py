@@ -821,7 +821,9 @@ def test_repair_position_sequence_reconstructs_a_clean_leading_digit_drop() -> N
     """A single dropped leading digit (position 63 read as '3') is repaired via
     the offset that explains every other reading exactly."""
     parser = ContributionRankingV1Parser()
-    members = [_donor(leaderboard_position=p) for p in [60, 61, 62, 3, 64, 65]]
+    members = [
+        _donor(leaderboard_position=p, row_index=i) for i, p in enumerate([60, 61, 62, 3, 64, 65])
+    ]
 
     parser._repair_position_sequence(members)
 
@@ -833,7 +835,10 @@ def test_repair_position_sequence_nulls_the_tail_when_no_offset_has_a_majority()
     readings, so the strictly-increasing prefix is kept and the rest is
     nulled rather than fabricated."""
     parser = ContributionRankingV1Parser()
-    members = [_donor(leaderboard_position=p) for p in [60, 61, 69, 2, 8, 7, 7, 4]]
+    members = [
+        _donor(leaderboard_position=p, row_index=i)
+        for i, p in enumerate([60, 61, 69, 2, 8, 7, 7, 4])
+    ]
 
     parser._repair_position_sequence(members)
 
@@ -852,7 +857,7 @@ def test_repair_position_sequence_nulls_the_tail_when_no_offset_has_a_majority()
 def test_repair_position_sequence_noop_when_already_sequential() -> None:
     """Nominal case: the offset that fits is a no-op rewrite (same values)."""
     parser = ContributionRankingV1Parser()
-    members = [_donor(leaderboard_position=p) for p in [10, 11, 12, 13]]
+    members = [_donor(leaderboard_position=p, row_index=i) for i, p in enumerate([10, 11, 12, 13])]
 
     parser._repair_position_sequence(members)
 
@@ -864,10 +869,10 @@ def test_repair_position_sequence_fills_gaps_when_offset_has_a_majority() -> Non
     a single offset explains the rest of the capture."""
     parser = ContributionRankingV1Parser()
     members = [
-        _donor(leaderboard_position=10),
-        _donor(leaderboard_position=None),
-        _donor(leaderboard_position=12),
-        _donor(leaderboard_position=13),
+        _donor(leaderboard_position=10, row_index=0),
+        _donor(leaderboard_position=None, row_index=1),
+        _donor(leaderboard_position=12, row_index=2),
+        _donor(leaderboard_position=13, row_index=3),
     ]
 
     parser._repair_position_sequence(members)
@@ -877,11 +882,40 @@ def test_repair_position_sequence_fills_gaps_when_offset_has_a_majority() -> Non
 
 def test_repair_position_sequence_noop_when_all_positions_are_none() -> None:
     parser = ContributionRankingV1Parser()
-    members = [_donor(leaderboard_position=None) for _ in range(3)]
+    members = [_donor(leaderboard_position=None, row_index=i) for i in range(3)]
 
     parser._repair_position_sequence(members)
 
     assert [m.leaderboard_position for m in members] == [None, None, None]
+
+
+def test_repair_position_sequence_uses_physical_row_index_not_list_index() -> None:
+    """Regression test for the exact bug this repair used to have: once an
+    earlier row is dropped (unreadable/failed validation), `members`' own
+    list index no longer matches each row's actual on-screen position.
+
+    12 physical rows with true positions 41-52; physical row 3 (true
+    position 44) was illegible and never made it into `members`, leaving 11
+    survivors whose PHYSICAL row_index is [0,1,2,4,5,6,7,8,9,10,11] (note the
+    gap at 3) but whose LIST index is the contiguous [0..10]. The old code
+    fit the offset against list index instead of row_index: offset=42
+    explains 8/11 readings (0.727 > the 0.5 support threshold) by
+    coincidence, so it used to rewrite the first 3 positions to 42,43,44
+    instead of leaving them at the correct 41,42,43 — the gap happened to
+    absorb the resulting shift for every row after it, masking the error
+    there. Using row_index, the fit is exact for all 11 and nothing shifts.
+    """
+    parser = ContributionRankingV1Parser()
+    true_positions = [41, 42, 43, 45, 46, 47, 48, 49, 50, 51, 52]  # 44 (row 3) is missing
+    physical_indices = [0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11]
+    members = [
+        _donor(leaderboard_position=p, row_index=i)
+        for p, i in zip(true_positions, physical_indices, strict=True)
+    ]
+
+    parser._repair_position_sequence(members)
+
+    assert [m.leaderboard_position for m in members] == true_positions
 
 
 # ── Dispatcher ──────────────────────────────────────────────────────────────────
