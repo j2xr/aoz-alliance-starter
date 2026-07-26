@@ -63,6 +63,14 @@ class DonationMember(BaseModel):
     # Voir MemberResult.row_y/row_h : bande réelle de la ligne pour le fallback LLM.
     row_y: int | None = Field(default=None, exclude=True)
     row_h: int | None = Field(default=None, exclude=True)
+    # Physical on-screen row slot (0.._MAX_ROWS-1) this member came from,
+    # BEFORE any rows were dropped for being unreadable or failing
+    # validation. _repair_position_sequence needs this: once any earlier row
+    # is dropped, `members`' own list index no longer matches the row's
+    # actual screen position, and computing the leaderboard_position offset
+    # from list index instead of this field silently mis-repairs every
+    # member after the gap (see _repair_position_sequence's docstring).
+    row_index: int | None = Field(default=None, exclude=True)
 
 
 class DonationParseResult(TruncationFlagMixin):

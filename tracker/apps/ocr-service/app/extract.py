@@ -342,4 +342,5 @@ def _rewrite_name(
         trace=member.trace,
         row_y=member.row_y,
         row_h=member.row_h,
+        row_index=member.row_index,
     )
