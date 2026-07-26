@@ -26,6 +26,7 @@ from app.parsers.contribution_ranking_v1 import (
     ContributionRankingV1Parser,
     _ocr_position_from_crop,
     _strip_alliance_tag,
+    tab_zone_stats,
 )
 from app.preprocess import preprocess_image
 from app.validators import validate_donation_member
@@ -675,6 +676,23 @@ def test_tab_fixture_set_covers_more_than_one_period() -> None:
     exactly that blind spot."""
     stems = {p.stem.split("_", 1)[0] for p in _FIXTURES_DIR.glob("*.jpg")}
     assert len(stems) >= 2, f"only one period type covered by fixtures: {stems}"
+
+
+def test_tab_zone_stats_returns_none_for_a_too_short_frame() -> None:
+    """_detect_selected_tab used to have this early-return inline; it now
+    delegates to tab_zone_stats (extracted so tools/measure_tab_delta.py
+    measures exactly what production decides). Pins that the extraction kept
+    the same early-return behavior."""
+    y0, _y1 = _TABS_Y
+    image = np.zeros((y0, 1080), dtype=np.uint8)  # shorter than the tab band itself
+    assert tab_zone_stats(image) is None
+    assert ContributionRankingV1Parser()._detect_selected_tab(image) == "unknown"
+
+
+def test_tab_zone_stats_returns_none_for_a_too_narrow_frame() -> None:
+    image = np.zeros((2400, 1), dtype=np.uint8)  # narrower than any tab zone
+    assert tab_zone_stats(image) is None
+    assert ContributionRankingV1Parser()._detect_selected_tab(image) == "unknown"
 
 
 def test_parser_strips_alliance_tag_in_member_output() -> None:
