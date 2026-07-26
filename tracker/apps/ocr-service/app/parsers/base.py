@@ -75,7 +75,7 @@ class DonationMember(BaseModel):
 
 class DonationParseResult(TruncationFlagMixin):
     kind: Literal["donation"] = "donation"
-    period_type: Literal["weekly", "daily", "history"]
+    period_type: Literal["weekly", "daily", "history", "unknown"]
     members: list[DonationMember] = []
 
 

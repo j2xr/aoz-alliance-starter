@@ -188,7 +188,10 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
     if (donationResult.status === 'unsupported_period_type') {
       return {
         outcome: 'failed',
-        line: `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
+        line:
+          donationResult.periodType === 'unknown'
+            ? sharedMessages.unreadableDonationTab(filename)
+            : sharedMessages.unsupportedPeriodType(filename, donationResult.periodType),
       };
     }
     if (donationResult.status === 'no_members') {
