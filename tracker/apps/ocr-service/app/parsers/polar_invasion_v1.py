@@ -373,7 +373,11 @@ class PolarInvasionV1Parser(BaseParser):
         zones = [
             (380 + start, 380 + end)
             for start, end in find_runs(
-                search_mask, min_len=5, max_len=30, drop_clipped_start=False, include_clipped_end=True
+                search_mask,
+                min_len=5,
+                max_len=30,
+                drop_clipped_start=False,
+                include_clipped_end=True,
             )
         ]
 
