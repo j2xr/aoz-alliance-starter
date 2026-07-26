@@ -73,6 +73,16 @@ export type OcrRouteOutcome = {
   rejectedRawTexts?: string[];
 };
 
+// Joins whichever warning strings are actually present with '\n', or
+// returns undefined if there are none — one idiom for what the donation and
+// event branches below used to build two different ways (a `push`
+// accumulator vs an inline conditional spread), which also meant the event
+// branch never got the possible_truncation check the donation branch had.
+function warningLine(...parts: (string | false | undefined)[]): string | undefined {
+  const present = parts.filter((p): p is string => Boolean(p));
+  return present.length > 0 ? present.join('\n') : undefined;
+}
+
 /**
  * Shared OCR-result → upsert routing, extracted from messageCreate.ts and
  * reprocess.ts (they duplicated this dispatch verbatim, error-handling and
@@ -181,24 +191,22 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
         line: `⚠️ **${filename}** — onglet \`${donationResult.periodType}\` non géré (V1 = Weekly uniquement).`,
       };
     }
+    if (donationResult.status === 'no_members') {
+      return { outcome: 'failed', line: sharedMessages.noDonationMembers(filename) };
+    }
 
     logger.info(
       { messageId: message.id, filename, periodId: donationResult.periodId },
       'Donation upsert successful',
     );
-    const donationWarnings: string[] = [];
-    if (typedOcr.possible_truncation) {
-      donationWarnings.push(sharedMessages.possibleTruncation(filename));
-    }
-    if (donationResult.reversedCorrectionsCount > 0) {
-      donationWarnings.push(
-        sharedMessages.correctionReverted(filename, donationResult.reversedCorrectionsCount),
-      );
-    }
     return {
       outcome: 'success',
       embed: buildDonationEmbed(filename, typedOcr, donationResult),
-      ...(donationWarnings.length > 0 && { line: donationWarnings.join('\n') }),
+      line: warningLine(
+        typedOcr.possible_truncation && sharedMessages.possibleTruncation(filename),
+        donationResult.reversedCorrectionsCount > 0 &&
+          sharedMessages.correctionReverted(filename, donationResult.reversedCorrectionsCount),
+      ),
     };
   }
 
@@ -238,9 +246,11 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
   return {
     outcome: 'success',
     embed: buildEventEmbed(filename, typedOcr, upsertResult),
-    ...(upsertResult.reversedCorrectionsCount > 0 && {
-      line: sharedMessages.correctionReverted(filename, upsertResult.reversedCorrectionsCount),
-    }),
+    line: warningLine(
+      typedOcr.possible_truncation && sharedMessages.possibleTruncation(filename),
+      upsertResult.reversedCorrectionsCount > 0 &&
+        sharedMessages.correctionReverted(filename, upsertResult.reversedCorrectionsCount),
+    ),
   };
 }
 

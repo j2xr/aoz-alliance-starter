@@ -46,6 +46,7 @@ from app.parsers.name_ocr import (
     words_from_data,
 )
 from app.parsers.polar_invasion_v1 import _detect_rank_from_crop
+from app.parsers.run_detection import find_runs
 from app.tess_engine import Output
 from app.validators import (
     parse_number,
@@ -569,9 +570,7 @@ class ContributionRankingV1Parser(BaseParser):
         above = row_score > threshold
 
         first_band_centre: int | None = None
-        for start, end in self._measurable_name_bands(above):
-            if end - start < _MIN_NAME_BAND_HEIGHT:
-                continue  # sub-floor fragment: noise, not a usable candidate
+        for start, end in find_runs(above, min_len=_MIN_NAME_BAND_HEIGHT):
             if not self._has_periodic_followup(above, start, row_h):
                 # A genuine name line repeats ~row_h below it; this one
                 # doesn't, so it isn't row 0 (most likely the column header).
@@ -601,29 +600,6 @@ class ContributionRankingV1Parser(BaseParser):
             result,
         )
         return int(result)
-
-    @staticmethod
-    def _measurable_name_bands(above: np.ndarray) -> list[tuple[int, int]]:
-        """Contiguous True-runs in `above`, excluding ones we can't measure.
-
-        A run touching either edge of the search window is clipped: its true
-        height is unknown, so any decision based on that height is
-        meaningless — e.g. a 44px header clipped to 32px by the window start
-        would slip under a ceiling and be mistaken for a name line. Drop
-        both:
-        - a run already "on" at index 0: the ink started above search_start;
-        - a run still "on" when the loop ends: it runs into search_end.
-        """
-        runs: list[tuple[int, int]] = []
-        run_start: int | None = None
-        for i, v in enumerate(above):
-            if v and run_start is None:
-                run_start = i
-            elif not v and run_start is not None:
-                if run_start > 0:
-                    runs.append((run_start, i))
-                run_start = None
-        return runs
 
     @staticmethod
     def _has_periodic_followup(above: np.ndarray, start: int, row_h: int) -> bool:

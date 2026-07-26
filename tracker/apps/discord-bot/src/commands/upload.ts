@@ -7,17 +7,28 @@ import {
 import type { Message, EmbedBuilder } from 'discord.js';
 import { isOcrError } from '@alliance-tracker/shared-types';
 import { requireAlliance } from '../lib/alliance.js';
-import { ensureKind, processImageAttachment } from '../lib/ingestion.js';
 import {
-  recordUploadError,
-  upsertDonationResult,
-  upsertEventResult,
-} from '../lib/upsert.js';
-import { buildDonationEmbed, buildEventEmbed } from '../lib/embed.js';
+  ensureKind,
+  processImageAttachment,
+  routeOcrResult,
+  type OcrRoutingMessages,
+} from '../lib/ingestion.js';
 import { supabase } from '../lib/supabase.js';
 import logger from '../logger.js';
 import { isImageAttachment } from '../lib/attachment.js';
 import { messages } from '../lib/messages.js';
+import { capDiscordContent } from '../lib/discord-limits.js';
+
+// Shared FR wording (B4), same object as messageCreate.ts's MESSAGES —
+// `databaseError`'s second param (the raw error) is deliberately ignored:
+// the detail goes to logger.error only, never back to Discord.
+const OCR_ROUTING_MESSAGES: OcrRoutingMessages = {
+  screenUnrecognized: messages.screenUnrecognized,
+  ocrError: messages.ocrError,
+  databaseError: (filename) => messages.databaseError(filename),
+  unknownEventType: messages.unknownEventType,
+  missingDatetime: messages.missingDatetime,
+};
 
 const MESSAGE_URL_RE =
   /https?:\/\/(?:ptb\.|canary\.)?discord\.com\/channels\/\d+\/(\d+)\/(\d+)/;
@@ -224,125 +235,42 @@ export async function execute(
 
     const { filename, fileHash, filePath, ocr: rawOcr } = result;
 
-    if (isOcrError(rawOcr)) {
-      const ocr = rawOcr;
-      try {
-        await recordUploadError({
-          messageId,
-          userId: originalMessage.author.id,
-          allianceId: alliance.id,
-          fileHash,
-          filePath,
-          status: 'failed',
-          errorMessage: ocr.error + (ocr.detail ? `: ${ocr.detail}` : ''),
-        });
-      } catch (err) {
-        logger.error({ err: String(err) }, 'Failed to record upload error');
-      }
-      lines.push(messages.ocrError(filename, ocr.error, ocr.detail));
-      continue;
-    }
-
-    // Normalise les résultats OCR legacy sans discriminant `kind`
-    // (même traitement que messageCreate/reprocess).
-    const ocr = ensureKind(rawOcr);
-
-    if (kind === 'donation') {
-      // The OCR override forces the donation parser; defensively re-check the
-      // shape rather than trusting a possibly stale OCR build.
-      if (ocr.kind !== 'donation') {
+    // The OCR override forces a specific parser; defensively re-check the
+    // shape rather than trusting a possibly stale OCR build. This has to
+    // happen before routeOcrResult, which just dispatches on whatever kind
+    // it's given — it has no notion of what kind THIS caller demanded.
+    if (!isOcrError(rawOcr)) {
+      const typedKind = ensureKind(rawOcr).kind;
+      if (typedKind !== kind) {
         lines.push(
-          `⚠️ **${filename}** — réponse OCR incohérente (kind=${(ocr as { kind?: string }).kind ?? '?'}). Service OCR à redéployer ?`,
+          `⚠️ **${filename}** — réponse OCR incohérente (kind=${typedKind}, attendu=${kind}). Service OCR à redéployer ?`,
         );
         continue;
       }
-
-      let donationResult;
-      try {
-        donationResult = await upsertDonationResult({
-          messageId,
-          userId: originalMessage.author.id,
-          allianceId: alliance.id,
-          fileHash,
-          filePath,
-          messageCreatedAt: originalMessage.createdAt,
-          ocr,
-        });
-      } catch (err) {
-        logger.error(
-          { messageId, filename, err: String(err) },
-          'Donation upsert failed',
-        );
-        lines.push(messages.databaseError(filename));
-        continue;
-      }
-
-      if (donationResult.status === 'duplicate') {
-        lines.push(messages.duplicate(filename));
-        continue;
-      }
-      if (donationResult.status === 'unsupported_period_type') {
-        lines.push(messages.unsupportedPeriodType(filename, donationResult.periodType));
-        continue;
-      }
-
-      embeds.push(buildDonationEmbed(filename, ocr, donationResult));
-      continue;
     }
 
-    // kind === 'event'
-    if (ocr.kind !== 'event') {
-      lines.push(
-        `⚠️ **${filename}** — réponse OCR de type \`${ocr.kind}\` alors que kind=event a été forcé. Vérifiez la capture.`,
-      );
-      continue;
-    }
+    const routed = await routeOcrResult({
+      message: { id: messageId, author: { id: originalMessage.author.id }, createdAt: originalMessage.createdAt },
+      allianceId: alliance.id,
+      fileHash,
+      filePath,
+      filename,
+      ocr: rawOcr,
+      messages: OCR_ROUTING_MESSAGES,
+    });
 
-    let upsertResult;
-    try {
-      upsertResult = await upsertEventResult({
-        messageId,
-        userId: originalMessage.author.id,
-        allianceId: alliance.id,
-        fileHash,
-        filePath,
-        ocr,
-      });
-    } catch (err) {
-      logger.error(
-        { messageId, filename, err: String(err) },
-        'Upsert failed',
-      );
-      lines.push(messages.databaseError(filename));
-      continue;
-    }
-
-    if (upsertResult.status === 'duplicate') {
-      lines.push(messages.duplicate(filename));
-      continue;
-    }
-
-    if (upsertResult.status === 'unknown_event') {
-      lines.push(messages.unknownEventType(filename, upsertResult.eventType));
-      continue;
-    }
-
-    if (upsertResult.status === 'missing_datetime') {
-      lines.push(messages.missingDatetime(filename));
-      continue;
-    }
-
-    embeds.push(buildEventEmbed(filename, ocr, upsertResult));
+    if (routed.line) lines.push(routed.line);
+    if (routed.embed) embeds.push(routed.embed);
   }
 
   if (embeds.length > 0) {
     await interaction.editReply({
-      ...(lines.length > 0 && { content: lines.join('\n') }),
+      ...(lines.length > 0 && { content: capDiscordContent(lines.join('\n')) }),
       embeds,
     });
   } else {
     await interaction.editReply(
-      lines.join('\n') || '✅ Retraitement terminé.',
+      lines.length > 0 ? capDiscordContent(lines.join('\n')) : '✅ Retraitement terminé.',
     );
   }
 }
