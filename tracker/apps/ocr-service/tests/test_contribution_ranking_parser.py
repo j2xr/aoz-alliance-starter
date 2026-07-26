@@ -13,8 +13,12 @@ from app.dispatcher import DONATION_CODE, UnknownEventError, detect_screen_kind
 from app.parsers.base import DonationMember, DonationParseResult
 from app.parsers.contribution_ranking_v1 import (
     _MAX_ROWS,
+    _MEMBER_LIST_TOP,
+    _MIN_NAME_BAND_HEIGHT,
+    _NAME_Y_OFF,
     _POSITION_PSMS,
     _POSITION_THRESHOLDS,
+    _ROW_HEIGHT,
     _TAB_X,
     _TABS_Y,
     CANONICAL_HEIGHT,
@@ -178,6 +182,7 @@ def test_parser_populates_leaderboard_position_best_effort() -> None:
         return ""
 
     with (
+        patch("app.parsers.contribution_ranking_v1._POSITION_OCR_ENABLED", True),
         patch(_OCR_DATA, side_effect=data_side_effect),
         patch(_OCR_STRING, side_effect=string_side_effect),
     ):
@@ -286,40 +291,54 @@ def _tall_image() -> np.ndarray:
     return np.zeros((CANONICAL_HEIGHT * 2, 1080), dtype=np.uint8)
 
 
-def test_possible_truncation_flagged_on_early_break() -> None:
-    """3 consecutive unreadable rows well before the last possible row: flag it."""
+def _canonical_image() -> np.ndarray:
+    """Exactly canonical height (scale=1), so row_h=175 and name_end_offset=130
+    match the raw canonical constants — makes rows_onscreen easy to reason
+    about by hand for the tests below."""
+    return np.zeros((CANONICAL_HEIGHT, 1080), dtype=np.uint8)
+
+
+def test_possible_truncation_flagged_when_rows_go_missing_within_reach() -> None:
+    """rows_onscreen subsumes the loss unconditionally: it doesn't matter
+    *why* a row within physical reach didn't make it into members (unreadable
+    OR rejected by validate_donation_member) — fewer members than rows that
+    fit onscreen is always flagged. list_top=700 leaves room for exactly 9
+    rows before the geometric cutoff (see test below); only 6 come back."""
     parser = ContributionRankingV1Parser()
-    row_returns = [_donor(alliance_honor=500), _donor(alliance_honor=400), None, None, None]
+    row_returns: list[DonationMember | None] = [
+        _donor(alliance_honor=1000 - i * 10) for i in range(6)
+    ] + [None, None, None]
+    assert len(row_returns) == 9
 
     with (
-        patch.object(parser, "_detect_list_top", return_value=0),
+        patch.object(parser, "_detect_list_top", return_value=700),
         patch.object(parser, "_parse_row", side_effect=row_returns),
     ):
-        result = parser.parse(_tall_image())
+        result = parser.parse(_canonical_image())
 
     assert result.possible_truncation is True
-    assert len(result.members) == 2
+    assert len(result.members) == 6
 
 
-def test_possible_truncation_not_flagged_at_natural_last_row() -> None:
-    """3 consecutive unreadable rows landing exactly on the capture's last
-    possible row (i == _MAX_ROWS - 1) is indistinguishable from a short,
-    legitimately-ending capture — must not be flagged."""
+def test_possible_truncation_not_flagged_when_capture_geometrically_ends_early() -> None:
+    """A capture where list_top leaves room for fewer than _MAX_ROWS rows (a
+    scroll position further down the page, or a shorter aspect ratio) is not
+    truncation — every row that physically fits was read. list_top=700 in a
+    canonical-height image leaves room for exactly 9 rows
+    ((2400-700-130)//175 + 1 == 9): reading exactly 9 must not be flagged."""
     parser = ContributionRankingV1Parser()
-    valid_count = _MAX_ROWS - 3
     row_returns: list[DonationMember | None] = [
-        _donor(alliance_honor=1000 - i * 10) for i in range(valid_count)
-    ] + [None, None, None]
-    assert len(row_returns) == _MAX_ROWS
+        _donor(alliance_honor=1000 - i * 10) for i in range(9)
+    ]
 
     with (
-        patch.object(parser, "_detect_list_top", return_value=0),
+        patch.object(parser, "_detect_list_top", return_value=700),
         patch.object(parser, "_parse_row", side_effect=row_returns),
     ):
-        result = parser.parse(_tall_image())
+        result = parser.parse(_canonical_image())
 
     assert result.possible_truncation is False
-    assert len(result.members) == valid_count
+    assert len(result.members) == 9
 
 
 def test_possible_truncation_false_when_every_row_reads() -> None:
@@ -335,6 +354,125 @@ def test_possible_truncation_false_when_every_row_reads() -> None:
 
     assert result.possible_truncation is False
     assert len(result.members) == _MAX_ROWS
+
+
+# ── list_top detection (synthetic bands) ──────────────────────────────────────
+#
+# _detect_list_top had no dedicated unit test: the only coverage was via
+# possible_truncation tests that patch it out entirely, and via full fixture
+# images where a bug in the underlying band logic is easy to miss (that's how
+# the regression below survived pytest and only showed up against a real
+# capture in bench-ocr). These use small synthetic frames — no OCR involved —
+# to pin the periodicity/height rules directly.
+
+
+def _list_top_image(
+    dark_bands: list[tuple[int, int]],
+    height: int = CANONICAL_HEIGHT,
+    bg: int = 230,
+    ink: int = 80,
+) -> np.ndarray:
+    """Canonical-height (scale=1.0) grayscale frame with `ink`-colored bands
+    painted into the name column (x=270:720) at the given absolute
+    (y_start, y_end) pixel ranges, on an otherwise flat `bg` background."""
+    image = np.full((height, 1080), bg, dtype=np.uint8)
+    for y0, y1 in dark_bands:
+        image[y0:y1, 270:720] = ink
+    return image
+
+
+def _expected_list_top(name_band: tuple[int, int]) -> int:
+    """Same centring arithmetic _detect_list_top applies to an accepted band."""
+    name_centre = (name_band[0] + name_band[1]) // 2
+    name_offset = (_NAME_Y_OFF[0] + _NAME_Y_OFF[1]) // 2
+    return name_centre - name_offset
+
+
+def test_detect_list_top_rejects_tall_header_lacking_periodic_followup() -> None:
+    """A 37px band (the column header's real measured height) with nothing
+    ~row_h below it is skipped even though it's tall enough and comes first;
+    the algorithm moves on to the real, periodic name band instead.
+
+    Regression test for a real bug: an earlier version of the periodicity
+    window was stretched by the candidate's own height, so this exact header
+    aliased onto the unrelated real row-1 band below and got wrongly accepted
+    as row 0 — measured on the weekly_010 fixture via bench-ocr, corrupting
+    every row's crop (name accuracy dropped from 11/12 to 2/12).
+    """
+    header = (354, 391)
+    name0 = (397, 426)
+    name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)  # confirms name0 is periodic
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(_list_top_image([header, name0, name1]), scale=1.0)
+
+    assert result == _expected_list_top(name0)
+
+
+def test_detect_list_top_accepts_periodic_name_band() -> None:
+    """The common case: a 29px name-height band whose only neighbor is its
+    own periodic followup is accepted directly as row 0."""
+    name0 = (400, 429)
+    name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(_list_top_image([name0, name1]), scale=1.0)
+
+    assert result == _expected_list_top(name0)
+
+
+def test_detect_list_top_skips_band_clipped_at_window_start() -> None:
+    """A band whose ink already started above search_start (330) has an
+    unknown true height/position, so it's excluded outright rather than
+    measured — the real row-0 band right after it is used instead."""
+    clipped = (300, 355)  # ink begins before the search window opens at 330
+    name0 = (410, 439)
+    name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(_list_top_image([clipped, name0, name1]), scale=1.0)
+
+    assert result == _expected_list_top(name0)
+
+
+def test_detect_list_top_falls_back_when_only_band_is_clipped_at_window_end() -> None:
+    """A band that never turns off before the search window's far edge is
+    likewise unmeasurable and excluded; with no other candidate, the
+    canonical fallback is used rather than guessing from a partial band."""
+    # Ink from y=600 through the bottom of the frame — still "on" past the
+    # extended lookahead window used for the periodicity check.
+    image = _list_top_image([(600, CANONICAL_HEIGHT)])
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(image, scale=1.0)
+
+    assert result == _MEMBER_LIST_TOP
+
+
+def test_detect_list_top_skips_sub_floor_fragment() -> None:
+    """A fragment shorter than _MIN_NAME_BAND_HEIGHT (e.g. the first line of
+    a wrapped two-line name, too faint/thin on its own) is noise, not a
+    candidate — the algorithm continues past it to the real name band."""
+    fragment = (400, 400 + _MIN_NAME_BAND_HEIGHT - 2)
+    name0 = (430, 459)
+    name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(_list_top_image([fragment, name0, name1]), scale=1.0)
+
+    assert result == _expected_list_top(name0)
+
+
+def test_detect_list_top_falls_back_on_low_contrast_window() -> None:
+    """When no row in the search window stands out from the background by at
+    least the minimum span, the whole window is treated as textless (e.g. a
+    faint/washed-out capture) and the canonical fallback is used."""
+    image = _list_top_image([(400, 429)], bg=225, ink=215)  # span ~10 < the 15.0 floor
+
+    parser = ContributionRankingV1Parser()
+    result = parser._detect_list_top(image, scale=1.0)
+
+    assert result == _MEMBER_LIST_TOP
 
 
 # ── Tab detection ─────────────────────────────────────────────────────────────

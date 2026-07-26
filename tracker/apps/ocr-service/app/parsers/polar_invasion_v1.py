@@ -271,7 +271,6 @@ class PolarInvasionV1Parser(BaseParser):
         list_top = self._detect_list_top(image)
 
         members: list[MemberResult] = []
-        consecutive_none = 0
         # Local across the whole image: the (threshold, psm) combo that
         # carried the most recent successful rank vote.  Lighting is
         # constant within a screenshot, so re-trying that combo first on
@@ -298,16 +297,32 @@ class PolarInvasionV1Parser(BaseParser):
                 rank_cache=rank_cache,
             )
             if member is None:
-                consecutive_none += 1
-                if consecutive_none >= 3:
-                    break
                 continue
-            consecutive_none = 0
             # Répare l'inversion power ↔ points à la source (ex-migration 0009) :
             # sans cela validate_member rejetait la ligne et le membre était perdu.
             member, _ = maybe_swap_power_points(member)
             if validate_member(member):
                 members.append(member)
+
+        # Same unified loss counter as ContributionRankingV1Parser.parse: it
+        # doesn't matter whether a row within physical reach went missing
+        # because it was unreadable or because validate_member rejected it —
+        # fewer members than rows that fit onscreen is always worth flagging.
+        # This parser backs polar_invasion, elite_wars, ironblood_battlefield,
+        # wasteland_showdown, battle_frenzy and void_war alike (see REGISTRY).
+        rows_onscreen = min(_MAX_ROWS, (usable_end - list_top) // row_h + 1)
+        possible_truncation = len(members) < rows_onscreen
+        if possible_truncation:
+            logger.warning(
+                "%s: parsed %d members but %d rows fit onscreen "
+                "(list_top=%d, row_h=%d, h=%d) — possible silent data loss",
+                event_code or "polar_invasion",
+                len(members),
+                rows_onscreen,
+                list_top,
+                row_h,
+                h,
+            )
 
         return ParseResult(
             event_type="polar_invasion",
@@ -316,6 +331,7 @@ class PolarInvasionV1Parser(BaseParser):
             total_battlers=battlers,
             total_points=total_points,
             members=members,
+            possible_truncation=possible_truncation,
         )
 
     # ── List top detection ────────────────────────────────────────────────────
