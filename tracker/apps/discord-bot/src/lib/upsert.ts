@@ -42,7 +42,8 @@ export type ProcessedDonationUpsertResult = {
 export type DonationUpsertResult =
   | ProcessedDonationUpsertResult
   | { status: 'duplicate' }
-  | { status: 'unsupported_period_type'; periodType: string };
+  | { status: 'unsupported_period_type'; periodType: string }
+  | { status: 'no_members' };
 
 interface UpsertParams {
   messageId: string;
@@ -696,6 +697,16 @@ export async function upsertDonationResult(
   if (ocr.period_type !== 'weekly') {
     logger.warn({ periodType: ocr.period_type }, 'Unsupported donation period type');
     return { status: 'unsupported_period_type', periodType: ocr.period_type };
+  }
+
+  // A capture that parsed to zero members is never legitimate data (unlike a
+  // short-but-nonzero roster) — see upsertPlayerStatsResult's equivalent
+  // check. Without this, `members: []` reaches the end of this function and
+  // returns 'processed' with memberCount: 0: a green embed listing nobody,
+  // successCount incremented, nothing to distinguish it from a real capture.
+  if (ocr.members.length === 0) {
+    logger.warn({ messageId }, 'Donation OCR returned no members');
+    return { status: 'no_members' };
   }
 
   // Insert upload record (pending)

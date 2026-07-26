@@ -15,6 +15,7 @@ from app.parsers.name_ocr import disambiguate_cyrillic, normalize_name
 from app.parsers.name_ocr import fix_name_substitutions as _fix_name_substitutions
 from app.parsers.name_ocr import mean_word_conf as _mean_word_conf
 from app.parsers.name_ocr import words_from_data as _words_from_data
+from app.parsers.run_detection import find_runs
 from app.tess_engine import Output
 from app.validators import maybe_swap_power_points, parse_number, validate_member
 
@@ -361,20 +362,20 @@ class PolarInvasionV1Parser(BaseParser):
         right_edge = gray[:, 970:1070].mean(axis=1)
 
         # Bright zones (brightness ≥ 226) of width 5–30 are row separators.
-        zones: list[tuple[int, int]] = []
-        in_zone = False
-        zs = 0
-        for y in range(380, h):
-            if right_edge[y] >= 226.0 and not in_zone:
-                in_zone = True
-                zs = y
-            elif right_edge[y] < 226.0 and in_zone:
-                in_zone = False
-                width = y - zs
-                if 5 <= width <= 30:
-                    zones.append((zs, y))
-        if in_zone and (h - zs) <= 30 and (h - zs) >= 5:
-            zones.append((zs, h))
+        # drop_clipped_start=False: this scan starts at a fixed offset (380),
+        # not the array origin, so a zone already bright there is a
+        # legitimate start, not an artifact of the window boundary (contrast
+        # ContributionRankingV1Parser._detect_list_top, which has no such
+        # fixed offset and so needs the opposite default). include_clipped_end
+        # keeps a zone still bright at y=h, provided it's already narrow
+        # enough to qualify.
+        search_mask = right_edge[380:h] >= 226.0
+        zones = [
+            (380 + start, 380 + end)
+            for start, end in find_runs(
+                search_mask, min_len=5, max_len=30, drop_clipped_start=False, include_clipped_end=True
+            )
+        ]
 
         for i in range(len(zones) - 1):
             z1 = zones[i]

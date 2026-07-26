@@ -65,6 +65,7 @@ const BASE_EVENT_PARAMS = {
       { name: 'Beta',  rank: 'R4', power:   800_000, points: 40_000, confidence: 0.90 },
       { name: 'Gamma', rank: 'R3', power:   600_000, points: 30_000, confidence: 0.85 },
     ],
+    possible_truncation: false,
   },
 };
 
@@ -81,6 +82,7 @@ const BASE_DONATION_PARAMS = {
     members: [
       { name: 'Alpha', alliance_tag: 'SOD', rank: 'R5', alliance_honor: 5_000, confidence: 0.95 },
     ],
+    possible_truncation: false,
   },
 };
 
