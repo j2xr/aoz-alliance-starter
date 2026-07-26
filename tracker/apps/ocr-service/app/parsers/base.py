@@ -34,6 +34,11 @@ class ParseResult(BaseModel):
     total_battlers: int | None = None
     total_points: int | None = None
     members: list[MemberResult] = []
+    # True when fewer members were parsed than the row slots that physically
+    # fit onscreen — a row went missing, whether unreadable or rejected by
+    # validate_member. Advisory only: a legitimately short capture (few real
+    # members) can also trip this. See PolarInvasionV1Parser.parse.
+    possible_truncation: bool = False
 
 
 class DonationMember(BaseModel):

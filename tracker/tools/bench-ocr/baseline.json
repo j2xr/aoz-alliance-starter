@@ -1,152 +1,570 @@
 {
   "battle_frenzy": {
-    "name": {
-      "correct": 20,
-      "total": 20
+    "20260503T0200_001": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     },
-    "name_exact": {
-      "correct": 18,
-      "total": 20
-    },
-    "points": {
-      "correct": 20,
-      "total": 20
-    },
-    "power": {
-      "correct": 20,
-      "total": 20
-    },
-    "rank": {
-      "correct": 20,
-      "total": 20
+    "20260503T0200_002": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     }
   },
   "contribution_ranking": {
-    "alliance_honor": {
-      "correct": 115,
-      "total": 120
+    "weekly_001": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 12,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
     },
-    "name": {
-      "correct": 114,
-      "total": 120
+    "weekly_002": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 9,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
     },
-    "name_exact": {
-      "correct": 101,
-      "total": 120
+    "weekly_003": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 12,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 9,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
     },
-    "rank": {
-      "correct": 119,
-      "total": 120
+    "weekly_004": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_005": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 12,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_006": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_007": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 12,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_008": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 10,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_009": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 12,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 12,
+        "total": 12
+      },
+      "rank": {
+        "correct": 11,
+        "total": 12
+      }
+    },
+    "weekly_010": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
     }
   },
   "elite_wars": {
-    "name": {
-      "correct": 21,
-      "total": 21
+    "20260517T1300_001": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 7,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     },
-    "name_exact": {
-      "correct": 17,
-      "total": 21
-    },
-    "points": {
-      "correct": 21,
-      "total": 21
-    },
-    "power": {
-      "correct": 21,
-      "total": 21
-    },
-    "rank": {
-      "correct": 21,
-      "total": 21
+    "20260517T1300_002": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     }
   },
   "ironblood_battlefield": {
-    "name": {
-      "correct": 22,
-      "total": 22
+    "20260416T0600_001": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     },
-    "name_exact": {
-      "correct": 20,
-      "total": 22
-    },
-    "points": {
-      "correct": 22,
-      "total": 22
-    },
-    "power": {
-      "correct": 22,
-      "total": 22
-    },
-    "rank": {
-      "correct": 22,
-      "total": 22
+    "20260416T0600_002": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     }
   },
   "polar_invasion": {
-    "name": {
-      "correct": 87,
-      "total": 88
+    "20260407T1500_001": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 9,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     },
-    "name_exact": {
-      "correct": 82,
-      "total": 88
+    "20260407T1500_002": {
+      "name": {
+        "correct": 10,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 9,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     },
-    "points": {
-      "correct": 88,
-      "total": 88
+    "20260407T1500_003": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     },
-    "power": {
-      "correct": 88,
-      "total": 88
+    "20260407T1500_004": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     },
-    "rank": {
-      "correct": 88,
-      "total": 88
+    "20260407T1500_005": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
+    },
+    "20260414T2300_001": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
+    },
+    "20260414T2300_002": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
+    },
+    "20260414T2300_003": {
+      "name": {
+        "correct": 11,
+        "total": 11
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 11
+      },
+      "points": {
+        "correct": 11,
+        "total": 11
+      },
+      "power": {
+        "correct": 11,
+        "total": 11
+      },
+      "rank": {
+        "correct": 11,
+        "total": 11
+      }
     }
   },
   "void_war": {
-    "name": {
-      "correct": 20,
-      "total": 20
+    "20260517T0200_001": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     },
-    "name_exact": {
-      "correct": 16,
-      "total": 20
-    },
-    "points": {
-      "correct": 20,
-      "total": 20
-    },
-    "power": {
-      "correct": 20,
-      "total": 20
-    },
-    "rank": {
-      "correct": 20,
-      "total": 20
+    "20260517T0200_002": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     }
   },
   "wasteland_showdown": {
-    "name": {
-      "correct": 10,
-      "total": 10
-    },
-    "name_exact": {
-      "correct": 8,
-      "total": 10
-    },
-    "points": {
-      "correct": 10,
-      "total": 10
-    },
-    "power": {
-      "correct": 10,
-      "total": 10
-    },
-    "rank": {
-      "correct": 10,
-      "total": 10
+    "20260508T1500_001": {
+      "name": {
+        "correct": 10,
+        "total": 10
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 10
+      },
+      "points": {
+        "correct": 10,
+        "total": 10
+      },
+      "power": {
+        "correct": 10,
+        "total": 10
+      },
+      "rank": {
+        "correct": 10,
+        "total": 10
+      }
     }
   }
 }
