@@ -7,6 +7,7 @@ import type { AllianceRow } from '../lib/alliance.js';
 import { isImageAttachment } from '../lib/attachment.js';
 import { safeProgressEdit } from '../lib/progress-reply.js';
 import { messages } from '../lib/messages.js';
+import { capDiscordContent } from '../lib/discord-limits.js';
 
 // Shared FR wording (B4) — see lib/messages.ts. `databaseError`'s second
 // param (the raw error) is deliberately ignored: the detail goes to
@@ -120,11 +121,11 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     await ackReply.edit('✅ Done.');
   } else if (embeds.length > 0) {
     await ackReply.edit({
-      content: lines.length > 0 ? lines.join('\n') : '',
+      content: lines.length > 0 ? capDiscordContent(lines.join('\n')) : '',
       embeds,
     });
   } else {
-    await ackReply.edit(lines.join('\n'));
+    await ackReply.edit(capDiscordContent(lines.join('\n')));
   }
 
   // Send raw texts of rejected members (unknown players skipped during stats upsert).

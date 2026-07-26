@@ -27,6 +27,9 @@ export const messages = {
   unsupportedPeriodType: (filename: string, periodType: string): string =>
     `⚠️ **${filename}** — onglet \`${periodType}\` non géré (V1 = Weekly uniquement).`,
 
+  noDonationMembers: (filename: string): string =>
+    `⚠️ **${filename}** — aucun membre extrait de la capture de dons.`,
+
   allianceResolutionError: (): string =>
     "⚠️ Erreur lors de la résolution de l'alliance. Veuillez réessayer plus tard.",
 
