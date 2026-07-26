@@ -33,6 +33,17 @@ _CONFIDENCE_THRESHOLD = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.75"))
 _CONFIDENCE_THRESHOLD_NAME = float(
     os.getenv("OCR_CONFIDENCE_THRESHOLD_NAME", str(_CONFIDENCE_THRESHOLD))
 )
+# Confidence assigned when a suspect alliance_honor (flagged by
+# _enforce_honor_monotonicity, which could not itself confirm a fix) is
+# replaced by an LLM score that fits the same monotonicity window. Distinct
+# from the -1.0 sentinel used for an accepted *name* correction: -1.0 means
+# an independently-produced, UNSUSPECTED number was exactly confirmed; here
+# the OCR honor is already known wrong and the corroboration is interval
+# membership, which _enforce_honor_monotonicity's own docstring calls a
+# plausibility check, not proof of correctness. 0.45 lands inside
+# needsReview()'s exclusive [0, 0.5) bound (apps/discord-bot/src/lib/
+# upsert.ts) on purpose: best estimate available, flagged for confirmation.
+_LLM_HONOR_REPLACED_CONFIDENCE = 0.45
 _LLM_FALLBACK_ENABLED = os.getenv("LLM_FALLBACK_ENABLED", "false").lower() == "true"
 # Stop calling the LLM after this many CONSECUTIVE failures within a single
 # image (the counter resets on any success). When Ollama is OOM or the model is
@@ -120,16 +131,30 @@ def _apply_llm_fallback(
     fallback_disabled = False
     members = cast(list[MemberResult | DonationMember], result.members)
     for i, member in enumerate(members):
-        skip_low_conf = not force_all and member.confidence >= _CONFIDENCE_THRESHOLD_NAME
+        # A suspect alliance_honor must reach the LLM even at high name
+        # confidence — coupling that decision to the name threshold is
+        # exactly the class of accident that let _MONOTONICITY_FIX_CONFIDENCE
+        # (0.5 before this fix) sit above _CONFIDENCE_THRESHOLD_NAME's 0.35
+        # default and never reach the LLM either.
+        honor_suspect = (
+            isinstance(member, DonationMember) and member.suspect_honor_window is not None
+        )
+        skip_low_conf = (
+            not force_all and member.confidence >= _CONFIDENCE_THRESHOLD_NAME and not honor_suspect
+        )
         if skip_low_conf or fallback_disabled:
             updated.append(member)
             continue
 
-        reason = (
-            "forced"
-            if force_all
-            else f"confidence {member.confidence:.2f} < threshold {_CONFIDENCE_THRESHOLD_NAME:.2f}"
-        )
+        if force_all:
+            reason = "forced"
+        elif honor_suspect:
+            window_repr = cast(DonationMember, member).suspect_honor_window
+            reason = f"suspect_honor_window={window_repr}"
+        else:
+            reason = (
+                f"confidence {member.confidence:.2f} < threshold {_CONFIDENCE_THRESHOLD_NAME:.2f}"
+            )
         logger.info("LLM fallback triggered for %r (row %d): %s", member.name, i, reason)
 
         # Bande réellement découpée par le parser : l'index dans `members` ne
@@ -144,47 +169,111 @@ def _apply_llm_fallback(
         row_crop: np.ndarray = image[y : y + crop_h, :]
         try:
             if isinstance(member, DonationMember):
-                # Self-consistency gate: trust the corrected name only when the
-                # model also reads a score matching the OCR'd Alliance Honor —
-                # proof it read *this* row and not a notification banner
-                # overlaid on it (observed: a "X helped you …" toast was
-                # transcribed as a confident, wrong player name). A rejected
-                # correction is no worse than no fallback: we keep the (flagged,
-                # low-confidence) OCR name rather than a confident hallucination.
                 llm_name, llm_score = llm_fallback_donation(row_crop)
                 consecutive_failures = 0
-                if not llm_name:
-                    logger.info("LLM confirmed name for %r (no correction)", member.name)
-                    updated.append(member)
-                elif llm_score != member.alliance_honor:
-                    logger.warning(
-                        "LLM correction rejected for %r → %r (row %d): read score %r "
-                        "≠ OCR honor %d — likely a misaligned/overlaid read, keeping OCR",
-                        member.name,
-                        llm_name,
-                        i,
-                        llm_score,
-                        member.alliance_honor,
-                    )
-                    # Flag the rejection itself: the original OCR confidence gave
-                    # no signal that a correction was attempted and failed, so a
-                    # row could look merely "low-confidence" when it's actually
-                    # one we know is suspect. 0.0 forces needs_review downstream
-                    # (see discord-bot upsert.ts) without touching the sentinel
-                    # -1.0 used for an *accepted* LLM correction.
-                    updated.append(member.model_copy(update={"confidence": 0.0}))
-                else:
-                    new_name = str(llm_name)
-                    if new_name != member.name:
-                        logger.info(
-                            "LLM corrected name for %r → %r (score %d confirms row)",
+                window = member.suspect_honor_window
+
+                if window is None:
+                    # Self-consistency gate: trust the corrected name only when
+                    # the model also reads a score matching the OCR'd Alliance
+                    # Honor — proof it read *this* row and not a notification
+                    # banner overlaid on it (observed: a "X helped you …" toast
+                    # was transcribed as a confident, wrong player name). A
+                    # rejected correction is no worse than no fallback: we keep
+                    # the (flagged, low-confidence) OCR name rather than a
+                    # confident hallucination. Only reachable when the honor
+                    # was never flagged suspect — see the window-is-set branch
+                    # below for the case _enforce_honor_monotonicity already
+                    # knows this value is wrong.
+                    if not llm_name:
+                        logger.info("LLM confirmed name for %r (no correction)", member.name)
+                        updated.append(member)
+                    elif llm_score != member.alliance_honor:
+                        logger.warning(
+                            "LLM correction rejected for %r → %r (row %d): read score %r "
+                            "≠ OCR honor %d — likely a misaligned/overlaid read, keeping OCR",
                             member.name,
-                            new_name,
+                            llm_name,
+                            i,
+                            llm_score,
                             member.alliance_honor,
                         )
+                        # Flag the rejection itself: the original OCR confidence gave
+                        # no signal that a correction was attempted and failed, so a
+                        # row could look merely "low-confidence" when it's actually
+                        # one we know is suspect. 0.0 forces needs_review downstream
+                        # (see discord-bot upsert.ts) without touching the sentinel
+                        # -1.0 used for an *accepted* LLM correction.
+                        updated.append(member.model_copy(update={"confidence": 0.0}))
                     else:
-                        logger.info("LLM confirmed name for %r (no correction)", member.name)
-                    updated.append(_rewrite_name(member, new_name))
+                        new_name = str(llm_name)
+                        if new_name != member.name:
+                            logger.info(
+                                "LLM corrected name for %r → %r (score %d confirms row)",
+                                member.name,
+                                new_name,
+                                member.alliance_honor,
+                            )
+                        else:
+                            logger.info("LLM confirmed name for %r (no correction)", member.name)
+                        updated.append(_rewrite_name(member, new_name))
+                    continue
+
+                # Honor already known suspect: _enforce_honor_monotonicity's own
+                # re-OCR gate already failed to prove — or actively disproved —
+                # this value. Demanding exact equality against it (as the
+                # window-is-None branch above does) can therefore never help;
+                # judge the LLM's score against the SAME [lower, upper] window
+                # the re-OCR gate used instead. Deliberately NOT requiring the
+                # score also appear among the re-OCR candidates: the entire
+                # point is that re-OCR never produced the true value.
+                lower, upper = window
+                if llm_score is None or not (lower <= llm_score <= upper):
+                    logger.warning(
+                        "LLM correction rejected for suspect-honor row %d (%r): score %r "
+                        "not in monotonicity window [%d, %d] — keeping OCR honor %d, still flagged",
+                        i,
+                        member.name,
+                        llm_score,
+                        lower,
+                        upper,
+                        member.alliance_honor,
+                    )
+                    updated.append(member.model_copy(update={"confidence": 0.0}))
+                    continue
+
+                # Accept: even when the LLM returns no name, a usable score
+                # must not be discarded — that short-circuit is what made this
+                # gate circular in the first place.
+                new_name = str(llm_name) if llm_name else member.name
+                if llm_score != member.alliance_honor:
+                    logger.warning(
+                        "donation row %d: alliance_honor replaced %d → %d via LLM (fits "
+                        "suspect window [%d, %d]; disagrees with the monotonicity re-OCR's "
+                        "value — tracked here to observe the disagreement rate)",
+                        i,
+                        member.alliance_honor,
+                        llm_score,
+                        lower,
+                        upper,
+                    )
+                else:
+                    logger.info(
+                        "donation row %d: LLM score %d confirms the suspect honor's current "
+                        "value (window [%d, %d])",
+                        i,
+                        llm_score,
+                        lower,
+                        upper,
+                    )
+                corrected = _rewrite_name(
+                    member, new_name, confidence=_LLM_HONOR_REPLACED_CONFIDENCE
+                )
+                updated.append(
+                    corrected.model_copy(
+                        update={"alliance_honor": llm_score, "suspect_honor_window": None}
+                    )
+                )
                 continue
 
             llm_name = llm_fallback(row_crop)
@@ -213,7 +302,25 @@ def _apply_llm_fallback(
                     consecutive_failures,
                 )
 
-    return result.model_copy(update={"members": updated})
+    updated_result = result.model_copy(update={"members": updated})
+
+    if isinstance(updated_result, DonationParseResult):
+        # Observability only, not a fix: two adjacent suspect rows can each
+        # satisfy a window computed against the other's PRE-replacement
+        # value, so global monotonicity isn't guaranteed after this pass.
+        donation_members = updated_result.members
+        for i in range(1, len(donation_members)):
+            prev_honor = donation_members[i - 1].alliance_honor
+            if donation_members[i].alliance_honor > prev_honor:
+                logger.warning(
+                    "donation row %d: alliance_honor=%d still breaks monotonicity after "
+                    "LLM fallback (previous row=%d)",
+                    i,
+                    donation_members[i].alliance_honor,
+                    prev_honor,
+                )
+
+    return updated_result
 
 
 def _apply_llm_fallback_player_stats(
@@ -306,9 +413,15 @@ def _apply_llm_fallback_player_stats(
 
 
 def _rewrite_name(
-    member: MemberResult | DonationMember, new_name: str
+    member: MemberResult | DonationMember, new_name: str, confidence: float = -1.0
 ) -> MemberResult | DonationMember:
-    """Return a copy of `member` with `name` replaced and confidence flagged as LLM-corrected."""
+    """Return a copy of `member` with `name` replaced and confidence flagged as LLM-corrected.
+
+    `confidence` defaults to the -1.0 sentinel (independently-produced value,
+    exactly confirmed) but the suspect-honor-replacement path in
+    `_apply_llm_fallback` passes `_LLM_HONOR_REPLACED_CONFIDENCE` instead —
+    see that constant's comment for why the two cases are not treated alike.
+    """
     new_name = normalize_name(new_name)
     if isinstance(member, MemberResult):
         return MemberResult(
@@ -316,7 +429,7 @@ def _rewrite_name(
             rank=member.rank,
             power=member.power,
             points=member.points,
-            confidence=-1.0,
+            confidence=confidence,
             trace=member.trace,
             row_y=member.row_y,
             row_h=member.row_h,
@@ -337,10 +450,17 @@ def _rewrite_name(
         alliance_tag=tag if tag is not None else member.alliance_tag,
         rank=member.rank,
         alliance_honor=member.alliance_honor,
-        confidence=-1.0,
+        confidence=confidence,
         leaderboard_position=member.leaderboard_position,
         trace=member.trace,
         row_y=member.row_y,
         row_h=member.row_h,
         row_index=member.row_index,
+        # Manually-copies-every-field hazard: without this, a field this
+        # constructor doesn't know about is silently dropped. The caller
+        # (suspect-honor replacement branch of _apply_llm_fallback) applies
+        # its own override for this field via model_copy afterward; the
+        # window-is-None path's default confidence=-1.0 call never sets a
+        # suspect window in the first place, so it's None either way.
+        suspect_honor_window=member.suspect_honor_window,
     )

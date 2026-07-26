@@ -370,11 +370,12 @@ class ContributionRankingV1Parser(BaseParser):
     # fixture, a misread "3135" produced candidates {32135, 2135} and never
     # the true value, so the picked "2135" is still wrong, just no longer
     # order-breaking. Every row that trips this guard is therefore left at
-    # reduced confidence, corrected or not, for downstream visibility. Note
-    # this does NOT route through the LLM fallback — extract.py only ever
-    # lets the LLM correct `name` — so an unresolved case still needs a human
-    # or a reprocess to fix.
-    _MONOTONICITY_FIX_CONFIDENCE = 0.5  # capped, not trusted outright — see above
+    # reduced confidence, corrected or not, for downstream visibility, and
+    # its (lower, upper) window is recorded on suspect_honor_window — fixed
+    # or not — so extract.py's LLM fallback can judge an independently
+    # produced score against the same standard instead of demanding it
+    # exactly match a value this very check just proved suspect.
+    _MONOTONICITY_FIX_CONFIDENCE = 0.40  # < 0.5: must trip needsReview() (upsert.ts, exclusive)
     _MONOTONICITY_NO_FIX_CONFIDENCE = 0.0
 
     def _enforce_honor_monotonicity(
@@ -394,6 +395,7 @@ class ContributionRankingV1Parser(BaseParser):
                 member.alliance_honor,
                 upper,
             )
+            member.suspect_honor_window = (lower, upper)
             if member.row_y is None:
                 continue  # can't re-crop without the row's y-origin
 
