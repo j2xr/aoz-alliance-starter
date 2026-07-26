@@ -207,6 +207,9 @@ describe('upsertEventResult', () => {
       { id: 'p1', name: 'Alpha' },
       { id: 'p2', name: 'Beta' },
       { id: 'p3', name: 'Gamma' },
+      { id: 'p4', name: 'Delta' },
+      { id: 'p5', name: 'Epsilon' },
+      { id: 'p6', name: 'Zeta' },
     ]);
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
@@ -227,6 +230,17 @@ describe('upsertEventResult', () => {
           { name: 'Beta', rank: 'R4', power: 800_000, points: 40_000, confidence: 0.9 },
           // -1 sentinel: an LLM correction that was accepted — never needs_review.
           { name: 'Gamma', rank: 'R3', power: 600_000, points: 30_000, confidence: -1 },
+          // 0.45 / 0.40: the two donation-side "suspect honor" confidence
+          // values (_LLM_HONOR_REPLACED_CONFIDENCE / _MONOTONICITY_FIX_CONFIDENCE)
+          // must land inside needsReview()'s exclusive [0, 0.5) bound — pinned
+          // here too since needsReview() applies identically to events.
+          { name: 'Delta', rank: 'R2', power: 400_000, points: 20_000, confidence: 0.45 },
+          { name: 'Epsilon', rank: 'R1', power: 200_000, points: 10_000, confidence: 0.4 },
+          // 0.5 is the exclusive upper bound: NOT flagged, by design (see
+          // needsReview's comment) — this was the secondary P1 bug, where
+          // _MONOTONICITY_FIX_CONFIDENCE sat exactly here and was silently
+          // never reviewed.
+          { name: 'Zeta', rank: 'R6', power: 100_000, points: 5_000, confidence: 0.5 },
         ],
       },
     };
@@ -242,6 +256,9 @@ describe('upsertEventResult', () => {
     expect(payload.find((r) => r.player_id === 'p1')?.needs_review).toBe(true);
     expect(payload.find((r) => r.player_id === 'p2')?.needs_review).toBe(false);
     expect(payload.find((r) => r.player_id === 'p3')?.needs_review).toBe(false);
+    expect(payload.find((r) => r.player_id === 'p4')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p5')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p6')?.needs_review).toBe(false);
   });
 
   it('merges aliased members into the single at_players upsert with canonical names', async () => {
@@ -593,6 +610,9 @@ describe('upsertDonationResult', () => {
       { id: 'p1', name: 'Alpha' },
       { id: 'p2', name: 'Beta' },
       { id: 'p3', name: 'Gamma' },
+      { id: 'p4', name: 'Delta' },
+      { id: 'p5', name: 'Epsilon' },
+      { id: 'p6', name: 'Zeta' },
     ]); // at_players upsert
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
@@ -613,6 +633,17 @@ describe('upsertDonationResult', () => {
           { name: 'Beta', alliance_tag: 'SOD', rank: 'R4', alliance_honor: 4_000, confidence: 0.9 },
           // -1 sentinel: an LLM correction that was accepted — never needs_review.
           { name: 'Gamma', alliance_tag: 'SOD', rank: 'R3', alliance_honor: 3_000, confidence: -1 },
+          // _LLM_HONOR_REPLACED_CONFIDENCE (0.45): a suspect honor replaced by
+          // an in-window LLM score — must still be flagged for confirmation.
+          { name: 'Delta', alliance_tag: 'SOD', rank: 'R2', alliance_honor: 2_000, confidence: 0.45 },
+          // _MONOTONICITY_FIX_CONFIDENCE (0.40): a suspect honor "fixed" by
+          // re-OCR alone — also must be flagged.
+          { name: 'Epsilon', alliance_tag: 'SOD', rank: 'R1', alliance_honor: 1_000, confidence: 0.4 },
+          // 0.5 is needsReview's exclusive upper bound: NOT flagged, by
+          // design. This was the secondary P1 bug — the old
+          // _MONOTONICITY_FIX_CONFIDENCE (0.5) sat exactly here and a
+          // monotonicity-corrected donation row was silently never reviewed.
+          { name: 'Zeta', alliance_tag: 'SOD', rank: 'R6', alliance_honor: 500, confidence: 0.5 },
         ],
       },
     };
@@ -628,6 +659,9 @@ describe('upsertDonationResult', () => {
     expect(payload.find((r) => r.player_id === 'p1')?.needs_review).toBe(true);
     expect(payload.find((r) => r.player_id === 'p2')?.needs_review).toBe(false);
     expect(payload.find((r) => r.player_id === 'p3')?.needs_review).toBe(false);
+    expect(payload.find((r) => r.player_id === 'p4')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p5')?.needs_review).toBe(true);
+    expect(payload.find((r) => r.player_id === 'p6')?.needs_review).toBe(false);
   });
 
   it('logs a warning when leaderboard_position is not strictly increasing within a capture', async () => {
