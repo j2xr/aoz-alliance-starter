@@ -424,6 +424,21 @@ describe('upsertDonationResult', () => {
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
   });
 
+  it('returns unsupported_period_type for unknown periods (unreadable tab band, no DB writes)', async () => {
+    // Same guard as 'daily' above: the != 'weekly' check rejects 'unknown' too,
+    // before insertUploadRecord and before the period upsert — no upload row,
+    // no cleanup needed if the user re-uploads the right tab.
+    queueFrom(null); // dedup: clear (period_type check happens after dedup)
+
+    const result = await upsertDonationResult({
+      ...BASE_DONATION_PARAMS,
+      ocr: { ...BASE_DONATION_PARAMS.ocr, period_type: 'unknown' as const },
+    });
+
+    expect(result).toEqual({ status: 'unsupported_period_type', periodType: 'unknown' });
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+  });
+
   it('returns processed result on happy path', async () => {
     queueFrom(null);               // at_screenshot_uploads dedup: clear
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert

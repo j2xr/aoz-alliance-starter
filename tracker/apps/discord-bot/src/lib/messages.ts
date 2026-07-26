@@ -27,6 +27,15 @@ export const messages = {
   unsupportedPeriodType: (filename: string, periodType: string): string =>
     `⚠️ **${filename}** — onglet \`${periodType}\` non géré (V1 = Weekly uniquement).`,
 
+  // Distinct from unsupportedPeriodType: 'unknown' means the tab band
+  // (Daily/Weekly/History) couldn't be read at all, not that a real,
+  // recognized tab (Daily/History) was rejected. Telling the user which
+  // failure mode they hit points them at a different fix (re-crop vs.
+  // switch to the Weekly tab in-game).
+  unreadableDonationTab: (filename: string): string =>
+    `⚠️ **${filename}** — onglet (Daily/Weekly/History) illisible sur cette capture. ` +
+    "Vérifiez que la bande d'onglets est visible et bien cadrée, puis renvoyez la capture.",
+
   noDonationMembers: (filename: string): string =>
     `⚠️ **${filename}** — aucun membre extrait de la capture de dons.`,
 
