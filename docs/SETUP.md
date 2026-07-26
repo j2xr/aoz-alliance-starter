@@ -239,7 +239,7 @@ below).
 | `OCR_NAME_ASCII_FAST_PATH_ENABLED` | `true` | Try a fast ASCII-only OCR pass before the full multilingual one. |
 | `OCR_NAME_ASCII_FAST_PATH_MIN_CONF` | `0.60` | Confidence floor to accept the fast-path result. |
 | `OCR_FUZZY_TITLE_THRESHOLD` | `0.82` | Similarity floor for matching a screenshot's title to a known event type. |
-| `OCR_TAB_DETECT_MIN_DELTA` | `4.0` | Contribution-ranking parser: minimum pixel delta to detect a tab boundary. |
+| `OCR_TAB_DETECT_MIN_DELTA` | `15.0` | Contribution-ranking parser: how far (in 0-255 gray levels) the selected Daily/Weekly/History tab pill's mean intensity must deviate from the median of the three tab zones. Below this the tab is reported `unknown` and the capture is rejected rather than assumed to be weekly. |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Only used when `LLM_FALLBACK_ENABLED=true`. |
 | `OLLAMA_API_KEY` | *(empty)* | Leave empty for a loopback Ollama with no auth. |
 | `OLLAMA_MODEL` | `moondream` | Vision model name. |

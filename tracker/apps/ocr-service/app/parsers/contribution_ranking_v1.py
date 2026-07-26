@@ -1,12 +1,20 @@
 """Parser for the Alliance Honor "Contribution Ranking" screen (donation tracking).
 
-Layout (canonical 1080×2400 Android portrait, after preprocess to grayscale):
+Layout (canonical 1080×2400 Android portrait, after preprocess to grayscale).
+Measured directly from ink-density runs over the full width, cross-checked on
+both a Daily and a Weekly real capture (2026-07-26) — the y-map below replaces
+an unmeasured one that was off by roughly one UI slot throughout (see
+_detect_selected_tab's own history: it sampled y=200..320 for the tab pills,
+which is actually the column-header row, and so returned "weekly" for every
+real capture ever processed until this correction):
 
-    y=0..200    Header (back arrow + title "Contribution Ranking")
-    y=200..320  Tab band (Daily / Weekly / History) — selected pill detected by
+    y=46..68    Title ink ("Contribution Ranking")
+    y=105..198  Tab pills (Daily / Weekly / History) — selected pill detected by
                 gray-level outlier among the three tab zones (_detect_selected_tab)
-    y=320..395  Column headers (Rank / Commander Name / Alliance Honor)
-    y=395..     12 member rows of ~175 px each
+    y=199..216  Bright divider under the tab row
+    y=259..276  Column headers ink (Rank / Commander Name / Alliance Honor)
+    y=374..     12 member rows, pitch ~179px (row 0 name ink starts ~374-422
+                depending on capture; _detect_list_top locates it dynamically)
 
 Each row contains:
     x=0..170     Rank column (digit OR gold/silver/bronze trophy for top 3)
@@ -58,8 +66,18 @@ logger = logging.getLogger(__name__)
 # ── Layout constants at TARGET_WIDTH=1080 px, canonical height 2400 px ───────
 CANONICAL_HEIGHT = 2400
 
-_HEADER_Y = (0, 200)
-_TABS_Y = (200, 320)
+# Tab pill band. NOT scaled by image height — see _detect_selected_tab, which
+# takes the already width-normalized image and no longer accepts a `scale`
+# argument at all, specifically so this can't regress back to being scaled.
+# Measured 2026-07-26 against 56 images (46 real captures pulled from every
+# Contribution Ranking screenshot on file, 38 Weekly + 8 Daily, plus the 10
+# shipped fixtures): the pill itself spans y=105..198; this band sits well
+# inside it (15px clearance above, 3px below) and clears the bright divider
+# at y=199..216 by 4px. It was also the most jitter-tolerant of the bands
+# tried under a ±10px synthetic vertical offset sweep (worst-case deviation
+# 24.5, vs 23.2 for (130,200) and 21.6 for (150,200) — both of which touch
+# the divider and lose margin under drift).
+_TABS_Y = (120, 195)
 
 # Centre x-ranges of the three tab buttons, in canonical selection order.
 _TAB_X = {
@@ -70,16 +88,31 @@ _TAB_X = {
 _TABS_ORDER: tuple[str, ...] = ("daily", "weekly", "history")
 
 # Tab detection fires only when the selected pill's mean gray level deviates
-# from the median of the three tab zones by at least this many levels. On the
-# real (dark-theme, inverted) weekly fixtures the selected pill sits ~9 levels
-# off the two unselected tabs, which cluster within <1 level of each other; a
-# threshold of 4 cleanly separates that signal from noise while a flat/blank
-# band (deviation ≈ 0) falls back to the safe default below.
-_TAB_DETECT_MIN_DELTA: float = float(os.getenv("OCR_TAB_DETECT_MIN_DELTA", "4.0"))
-# Weekly is the safe default: every shipped capture is a Weekly leaderboard and
-# the bot only ingests weekly (upsert.ts rejects other period types), so an
-# undetectable band degrades to the historically-correct value.
-_DEFAULT_PERIOD_TYPE: Literal["weekly"] = "weekly"
+# from the median of the three tab zones by at least this many levels.
+# Calibrated against the same 56-image corpus above: a correctly-aimed band
+# separates a real selected pill (deviation 25.1-29.9) from a flat/blank band
+# (deviation ≈ 0) with wide margin, so this floor mostly guards against noise.
+# It is also defence-in-depth against a future mis-aimed band: the *previous*
+# (wrong) band's mis-detection wasn't just imprecise, it was confidently wrong
+# — deviation 8.0-10.1, comfortably above the old threshold of 4.0 — because
+# "Commander Name" (the longest column-header string) sits in the same x-zone
+# as the "weekly" tab and reads as a permanent ink outlier there regardless of
+# which tab is actually selected. 15.0 sits close to the midpoint of the two
+# observed ranges (10.1 confidently-wrong ceiling, 25.1 real-signal floor), so
+# a future mis-aimed band of similar magnitude degrades to "ambiguous" (see
+# _AMBIGUOUS_PERIOD_TYPE) instead of answering confidently wrong again.
+_TAB_DETECT_MIN_DELTA: float = float(os.getenv("OCR_TAB_DETECT_MIN_DELTA", "15.0"))
+# An ambiguous/undetectable tab band must NOT default to "weekly": the parser
+# previously assumed "every shipped capture is a Weekly leaderboard", but real
+# Daily-tab captures exist and at least one silently corrupted a live weekly
+# donation period this way (12 rows landed in a weekly period at daily-reset
+# honor values, unflagged, because the OCR itself read them "correctly" — see
+# docs/maintenance/2026-07-26-reprocess-channel-sod-data-quality-report.md,
+# finding 1). Returning a distinct value here lets the *existing*
+# upsertDonationResult guard (`ocr.period_type !== 'weekly'`) reject the
+# capture instead — no DB write happens either way, so a false rejection here
+# costs one Discord message and a free retry, not corrupted data.
+_AMBIGUOUS_PERIOD_TYPE: Literal["unknown"] = "unknown"
 
 _MEMBER_LIST_TOP = 395  # y-start of first row (canonical)
 _ROW_HEIGHT = 175  # 12 rows fit in ~2100 px after the tabs/headers band
@@ -267,7 +300,7 @@ class ContributionRankingV1Parser(BaseParser):
         row_h = max(1, int(_ROW_HEIGHT * scale))
         list_top = self._detect_list_top(image, scale)
 
-        period_type = self._detect_selected_tab(image, scale)
+        period_type = self._detect_selected_tab(image)
 
         members: list[DonationMember] = []
         name_end_offset = int(_NAME_Y_OFF[1] * scale)
@@ -473,22 +506,33 @@ class ContributionRankingV1Parser(BaseParser):
     # pill carries a solid highlight fill while the two unselected ones share the
     # same flat background, so after preprocess (grayscale, inverted for the
     # game's dark theme) the selected zone's mean gray level is the clear outlier
-    # of the three — measured at ~9 levels off a <1-level cluster on all nine
-    # weekly fixtures. We pick the zone whose mean deviates most from the median
-    # of the three; direction (lighter vs darker) is not assumed, so the rule
-    # holds whether or not preprocess inverted the frame. Sampling the "red"
-    # density the original UI uses is not possible here — parse() only ever sees
-    # the preprocessed grayscale image — but the intensity outlier carries the
-    # same information.
+    # of the three. We pick the zone whose mean deviates most from the median of
+    # the three; direction (lighter vs darker) is not assumed, so the rule holds
+    # whether or not preprocess inverted the frame. Sampling the "red" density
+    # the original UI uses is not possible here — parse() only ever sees the
+    # preprocessed grayscale image — but the intensity outlier carries the same
+    # information.
+    #
+    # No `scale` parameter, by design: preprocess() only normalizes width, not
+    # height (see CANONICAL_HEIGHT usage at the parse() call site), so this
+    # top-anchored UI chrome sits at the same absolute pixel y regardless of the
+    # source screenshot's aspect ratio — the same physical model already used by
+    # _MIN_NAME_BAND_HEIGHT above. Scaling this band by height was tried and
+    # measured worse: on real captures shorter than canonical (1080×2269,
+    # 1080×2257) the unscaled band still lands cleanly on the pill (deviation
+    # 26.9, same as full-height captures), while a height-scaled equivalent
+    # decays with height (simulated on bottom-cropped weekly_001: 25.0 → 23.1 →
+    # 18.6 → 13.9 at h=2269/2160/1920/1600) and would eventually fall below
+    # _TAB_DETECT_MIN_DELTA. Dropping the parameter entirely (rather than just
+    # not using it) makes the height-scaling mistake unrepresentable here.
 
     def _detect_selected_tab(
-        self, image: np.ndarray, scale: float
-    ) -> Literal["daily", "weekly", "history"]:
+        self, image: np.ndarray
+    ) -> Literal["daily", "weekly", "history", "unknown"]:
         h, w = image.shape[:2]
-        y0 = int(_TABS_Y[0] * scale)
-        y1 = int(_TABS_Y[1] * scale)
+        y0, y1 = _TABS_Y
         if y1 <= y0 or y1 > h:
-            return _DEFAULT_PERIOD_TYPE
+            return _AMBIGUOUS_PERIOD_TYPE
 
         means: list[float] = []
         for name in _TABS_ORDER:
@@ -496,7 +540,7 @@ class ContributionRankingV1Parser(BaseParser):
             xa = min(xa, w)
             xb = min(xb, w)
             if xb - xa < 2:
-                return _DEFAULT_PERIOD_TYPE
+                return _AMBIGUOUS_PERIOD_TYPE
             band = image[y0:y1, xa:xb]
             if band.ndim == 3:
                 band = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
@@ -506,14 +550,15 @@ class ContributionRankingV1Parser(BaseParser):
         deviations = [abs(m - median) for m in means]
         idx = max(range(len(_TABS_ORDER)), key=lambda i: deviations[i])
         if deviations[idx] < _TAB_DETECT_MIN_DELTA:
-            logger.debug(
-                "donation tab: no pill stands out (means=%s, delta=%.1f < %.1f) → default %s",
+            logger.warning(
+                "donation tab: no pill stands out (means=%s, delta=%.1f < %.1f) → %s "
+                "(capture will be rejected, not silently treated as weekly)",
                 [round(m, 1) for m in means],
                 deviations[idx],
                 _TAB_DETECT_MIN_DELTA,
-                _DEFAULT_PERIOD_TYPE,
+                _AMBIGUOUS_PERIOD_TYPE,
             )
-            return _DEFAULT_PERIOD_TYPE
+            return _AMBIGUOUS_PERIOD_TYPE
 
         selected = _TABS_ORDER[idx]
         logger.debug(
