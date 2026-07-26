@@ -695,7 +695,17 @@ export async function upsertDonationResult(
 
   // 2. V1: only weekly supported
   if (ocr.period_type !== 'weekly') {
-    logger.warn({ periodType: ocr.period_type }, 'Unsupported donation period type');
+    // This is currently the ONLY persistent trace of a rejected donation
+    // capture: the guard below returns before insertUploadRecord, so no
+    // at_screenshot_uploads row is written (see the comment there), and
+    // Docker's json-file logs are lost on container recreate. The line must
+    // therefore be self-sufficient — enough to identify which capture was
+    // rejected — rather than requiring correlation with ingestion.ts's
+    // separate 'OCR job result received' INFO line.
+    logger.warn(
+      { periodType: ocr.period_type, messageId, allianceId, fileHash, filePath },
+      'Unsupported donation period type',
+    );
     return { status: 'unsupported_period_type', periodType: ocr.period_type };
   }
 
@@ -705,7 +715,9 @@ export async function upsertDonationResult(
   // returns 'processed' with memberCount: 0: a green embed listing nobody,
   // successCount incremented, nothing to distinguish it from a real capture.
   if (ocr.members.length === 0) {
-    logger.warn({ messageId }, 'Donation OCR returned no members');
+    // Same silent-rejection class as the period_type guard above — enriched
+    // for the same reason.
+    logger.warn({ messageId, allianceId, filePath }, 'Donation OCR returned no members');
     return { status: 'no_members' };
   }
 
