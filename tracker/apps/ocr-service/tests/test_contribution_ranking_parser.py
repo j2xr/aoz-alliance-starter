@@ -19,6 +19,7 @@ from app.parsers.contribution_ranking_v1 import (
     _POSITION_PSMS,
     _POSITION_THRESHOLDS,
     _ROW_HEIGHT,
+    _TAB_DETECT_MIN_DELTA,
     _TAB_X,
     _TABS_Y,
     CANONICAL_HEIGHT,
@@ -268,6 +269,9 @@ def test_empty_rank_accepted_for_viewer_row() -> None:
 
 
 def test_parser_returns_donation_result_kind() -> None:
+    """All-zero image: the tab band has no ink at all, so the tab is
+    ambiguous ("unknown"), never guessed as "weekly" — this pins the
+    ambiguous-input contract, not a specific detected period."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
 
@@ -276,7 +280,7 @@ def test_parser_returns_donation_result_kind() -> None:
 
     assert isinstance(result, DonationParseResult)
     assert result.kind == "donation"
-    assert result.period_type == "weekly"
+    assert result.period_type == "unknown"
     assert result.members == []
 
 
@@ -464,21 +468,62 @@ def test_detect_list_top_falls_back_on_low_contrast_window() -> None:
 
 
 # ── Tab detection ─────────────────────────────────────────────────────────────
+#
+# _detect_selected_tab has a documented history of silent failure: the band it
+# used to sample, (200, 320), actually hit the column-header row ("Rank /
+# Commander Name / Alliance Honor"), not the Daily/Weekly/History tab pills —
+# see _TABS_Y's own comment for the measured evidence. Because "Commander
+# Name" (the longest header string) sits in the same x-zone as the "weekly"
+# tab, that band read as a confident "weekly" for every real capture ever
+# processed, including real Daily-tab captures. The tests below are built
+# specifically to make that class of bug fail loudly if reintroduced, rather
+# than just re-testing the current (now correct) band in isolation — the
+# original tests here were vacuous in three independent ways (see each test's
+# docstring) and none of them caught it.
+
+# Measured 2026-07-26 by ink-density runs over the full width, on both a real
+# Daily and a real Weekly capture (docs/maintenance/2026-07-26-*.md).
+_MEASURED_PILL_Y = (105, 198)  # tab pill fill
+_MEASURED_TAB_DIVIDER_Y = (199, 216)  # bright divider directly under the tab row
+_MEASURED_COLUMN_HEADER_Y = (259, 276)  # "Rank / Commander Name / Alliance Honor" ink
+
+
+def test_tabs_y_lies_inside_the_measured_pill_and_clears_the_column_header() -> None:
+    """Pins _TABS_Y against independently-measured real-capture geometry,
+    rather than a synthetic image the constant itself could define. Against
+    the old (wrong) band, (200, 320), both assertions fail instantly, with no
+    image and no OCR involved — the cheapest possible regression guard."""
+    assert _MEASURED_PILL_Y[0] <= _TABS_Y[0] < _TABS_Y[1] <= _MEASURED_PILL_Y[1]
+    assert _TABS_Y[1] <= _MEASURED_TAB_DIVIDER_Y[0]
 
 
 def _tab_band_image(selected: str | None, *, brighter: bool = False) -> np.ndarray:
-    """Synthetic canonical-height frame with one tab pill standing out.
+    """Synthetic canonical-height frame with one tab pill standing out, plus a
+    decoy that mimics the real "Commander Name" column-header ink.
 
-    The base tab band is flat gray; the `selected` pill zone is offset by a
-    contrast the detector treats as the outlier. `brighter=True` exercises the
-    non-inverted direction (selected pill lighter than the rest) to prove the
-    median-deviation rule does not assume a fixed polarity.
+    The pill is painted at the independently-measured `_MEASURED_PILL_Y`, NOT
+    at `_TABS_Y` — deliberately, so this fixture stays adversarial even if
+    `_TABS_Y` regresses. (The original version of this helper painted its
+    pill using `_TABS_Y` itself, so it moved in lockstep with the constant
+    and could never catch a mis-aimed band — that's one of the three ways
+    this suite was vacuous.) The decoy sits at `_MEASURED_COLUMN_HEADER_Y` in
+    the "weekly" x-zone, entirely outside the correct pill band, so it has no
+    effect on the current (correct) implementation — see
+    test_decoy_header_ink_would_confidently_win_the_old_mis_aimed_band for
+    proof it would confidently mislead a regressed one.
+
+    `brighter=True` exercises the non-inverted direction (selected pill
+    lighter than the rest) to prove the median-deviation rule does not
+    assume a fixed polarity.
     """
     image = np.full((2400, 1080), 200, dtype=np.uint8)
+    hy0, hy1 = _MEASURED_COLUMN_HEADER_Y
+    hxa, hxb = _TAB_X["weekly"]
+    image[hy0:hy1, hxa:hxb] = 30  # decoy: dense header ink, always present
     if selected is not None:
-        y0, y1 = _TABS_Y  # scale == 1.0 at canonical height
+        py0, py1 = _MEASURED_PILL_Y
         xa, xb = _TAB_X[selected]
-        image[y0:y1, xa:xb] = 230 if brighter else 170
+        image[py0:py1, xa:xb] = 230 if brighter else 170
     return image
 
 
@@ -486,7 +531,7 @@ def _tab_band_image(selected: str | None, *, brighter: bool = False) -> np.ndarr
 def test_detect_selected_tab_darker_pill(selected: str) -> None:
     """The selected pill reads darker than the two unselected tabs (inverted UI)."""
     parser = ContributionRankingV1Parser()
-    result = parser._detect_selected_tab(_tab_band_image(selected), scale=1.0)
+    result = parser._detect_selected_tab(_tab_band_image(selected))
     assert result == selected
 
 
@@ -494,49 +539,142 @@ def test_detect_selected_tab_darker_pill(selected: str) -> None:
 def test_detect_selected_tab_brighter_pill(selected: str) -> None:
     """Direction-agnostic: a lighter selected pill is detected just the same."""
     parser = ContributionRankingV1Parser()
-    result = parser._detect_selected_tab(_tab_band_image(selected, brighter=True), scale=1.0)
+    result = parser._detect_selected_tab(_tab_band_image(selected, brighter=True))
     assert result == selected
 
 
-def test_detect_selected_tab_flat_band_defaults_to_weekly() -> None:
-    """No pill stands out (uniform band) → safe default, never a spurious tab."""
+def test_decoy_header_ink_would_confidently_win_the_old_mis_aimed_band() -> None:
+    """Proves the decoy in `_tab_band_image` is not a no-op: sampled with the
+    old, mis-aimed band, it must confidently select "weekly" — the exact
+    failure mode that shipped undetected — rather than looking ambiguous. If
+    this test goes red, the decoy has been weakened and the suite has gone
+    vacuous again."""
     parser = ContributionRankingV1Parser()
-    result = parser._detect_selected_tab(_tab_band_image(None), scale=1.0)
+    with patch("app.parsers.contribution_ranking_v1._TABS_Y", (200, 320)):
+        result = parser._detect_selected_tab(_tab_band_image("daily"))
     assert result == "weekly"
 
 
-def test_detect_selected_tab_below_threshold_defaults_to_weekly() -> None:
-    """A sub-threshold deviation (2 levels < 4.0 default) is treated as noise."""
-    image = np.full((2400, 1080), 200, dtype=np.uint8)
-    y0, y1 = _TABS_Y
-    xa, xb = _TAB_X["history"]
-    image[y0:y1, xa:xb] = 198  # only 2 levels off → below _TAB_DETECT_MIN_DELTA
+def test_detect_selected_tab_flat_band_returns_unknown() -> None:
+    """No pill stands out (uniform band) → ambiguous. Renamed from
+    '..._defaults_to_weekly': an undetectable tab must never be silently
+    treated as weekly (see _AMBIGUOUS_PERIOD_TYPE's rationale) — that
+    assumption is what let a real Daily capture corrupt a live weekly
+    donation period."""
     parser = ContributionRankingV1Parser()
-    assert parser._detect_selected_tab(image, scale=1.0) == "weekly"
+    result = parser._detect_selected_tab(_tab_band_image(None))
+    assert result == "unknown"
+
+
+def test_detect_selected_tab_below_threshold_returns_unknown() -> None:
+    """A sub-threshold deviation is treated as noise, not a detected tab."""
+    image = np.full((2400, 1080), 200, dtype=np.uint8)
+    y0, y1 = _MEASURED_PILL_Y
+    xa, xb = _TAB_X["history"]
+    image[y0:y1, xa:xb] = 195  # 5 levels off, well under _TAB_DETECT_MIN_DELTA
+    parser = ContributionRankingV1Parser()
+    assert parser._detect_selected_tab(image) == "unknown"
+
+
+def test_detect_selected_tab_rejects_a_deviation_as_weak_as_a_mis_aimed_band() -> None:
+    """A deviation of exactly 10.0 matches the ceiling measured for the old,
+    mis-aimed band across 46 real captures (8.0-10.1) — must not be mistaken
+    for a real signal."""
+    image = np.full((2400, 1080), 200, dtype=np.uint8)
+    y0, y1 = _MEASURED_PILL_Y
+    xa, xb = _TAB_X["daily"]
+    image[y0:y1, xa:xb] = 190  # 200 - 190 = 10.0 deviation
+    parser = ContributionRankingV1Parser()
+    assert parser._detect_selected_tab(image) == "unknown"
+
+
+def test_detect_selected_tab_accepts_the_weakest_real_signal_observed() -> None:
+    """A deviation of 25.0 sits just under the real-signal floor measured
+    across 46 real captures (25.1-29.9) — must still be trusted."""
+    image = np.full((2400, 1080), 200, dtype=np.uint8)
+    y0, y1 = _MEASURED_PILL_Y
+    xa, xb = _TAB_X["daily"]
+    image[y0:y1, xa:xb] = 175  # 200 - 175 = 25.0 deviation
+    parser = ContributionRankingV1Parser()
+    assert parser._detect_selected_tab(image) == "daily"
+
+
+def test_tab_detect_min_delta_default_separates_measured_noise_from_measured_signal() -> None:
+    """Pin the effective threshold (env-overridable, hence asserted at
+    runtime rather than as a hardcoded literal) strictly between the two
+    ranges measured across the 56-image corpus (10 fixtures + 46 real
+    captures): mis-aimed-band ceiling 10.1, real-signal floor 25.1."""
+    assert 10.1 < _TAB_DETECT_MIN_DELTA < 25.1
+
+
+def test_detect_selected_tab_is_not_scaled_by_image_height() -> None:
+    """A 1080x1200 frame with the pill painted at its TRUE canonical y (not
+    rescaled) must still be detected correctly. A height-scaled band would
+    sample y=(120,195)*1200/2400=(60,97) here — entirely flat background —
+    so this fails specifically if _TABS_Y is ever multiplied by a
+    height-derived scale again. The extreme ratio (h=1200, half of
+    canonical) is deliberate: a milder crop (e.g. h=2160) does not
+    discriminate, since a height-scaled band would still overlap the real
+    pill there — see the companion real-capture test below for that case."""
+    image = np.full((1200, 1080), 200, dtype=np.uint8)
+    y0, y1 = _MEASURED_PILL_Y
+    xa, xb = _TAB_X["daily"]
+    image[y0:y1, xa:xb] = 170
+    parser = ContributionRankingV1Parser()
+    assert parser._detect_selected_tab(image) == "daily"
+
+
+@pytest.mark.parametrize("new_height", [2160, 1920])
+def test_detect_selected_tab_survives_a_bottom_cropped_real_capture(new_height: int) -> None:
+    """A real capture cropped shorter (simulating a phone with a shorter
+    aspect ratio) must still detect correctly — top-anchored UI chrome
+    doesn't move with crop height. Guards the short-frame fallback clause,
+    not the scaling bug specifically (the previous test isolates that)."""
+    image = preprocess_image(str(_FIXTURES_DIR / "weekly_001.jpg"))
+    parser = ContributionRankingV1Parser()
+    assert parser._detect_selected_tab(image[:new_height]) == "weekly"
 
 
 @pytest.mark.parametrize(
-    "fixture_path",
-    sorted(_FIXTURES_DIR.glob("*.json")),
+    "image_path",
+    sorted(_FIXTURES_DIR.glob("*.jpg")),
     ids=lambda p: p.stem,
 )
-def test_detect_selected_tab_matches_fixture_ground_truth(fixture_path: Path) -> None:
-    """Every shipped capture's detected tab matches its ground-truth period_type.
+def test_detect_selected_tab_matches_real_capture_ground_truth(image_path: Path) -> None:
+    """Every shipped capture's detected tab matches its ground truth, derived
+    from the filename prefix (weekly_<NNN> / daily_<NNN> / history_<NNN>, per
+    the fixtures README's naming convention) rather than restricted to
+    fixtures with a paired .json — daily_001.jpg ships without one on purpose
+    (see the README), and this test is exactly what needs to see it. Where a
+    .json ground truth also exists, additionally cross-check it agrees with
+    the filename prefix, so the two sources of truth can't silently drift.
 
     Runs the real detector on the preprocessed fixture image (no Tesseract
-    needed — the tab band is pure pixel intensity), guarding against a
-    regression that would silently mislabel a leaderboard's period.
+    needed — the tab band is pure pixel intensity).
     """
-    image_path = fixture_path.with_suffix(".jpg")
-    if not image_path.exists():
-        pytest.skip(f"Image not found: {image_path}")
-    with fixture_path.open(encoding="utf-8") as fh:
-        expected = json.load(fh)
+    expected = image_path.stem.split("_", 1)[0]
+    assert expected in ("weekly", "daily", "history")
+
+    json_path = image_path.with_suffix(".json")
+    if json_path.exists():
+        with json_path.open(encoding="utf-8") as fh:
+            ground_truth = json.load(fh)
+        assert ground_truth["period_type"] == expected
 
     image = preprocess_image(str(image_path))
-    scale = image.shape[0] / 2400
     parser = ContributionRankingV1Parser()
-    assert parser._detect_selected_tab(image, scale) == expected["period_type"]
+    assert parser._detect_selected_tab(image) == expected
+
+
+def test_tab_fixture_set_covers_more_than_one_period() -> None:
+    """Anti-vacuity guard. The original fixture-ground-truth test was
+    parametrized over 10 fixtures that were all "weekly", against a detector
+    that always returned "weekly" — it could never fail. If daily_001.jpg is
+    ever deleted (or every fixture quietly became one period again), this
+    test goes red instead of the suite silently degenerating back into
+    exactly that blind spot."""
+    stems = {p.stem.split("_", 1)[0] for p in _FIXTURES_DIR.glob("*.jpg")}
+    assert len(stems) >= 2, f"only one period type covered by fixtures: {stems}"
 
 
 def test_parser_strips_alliance_tag_in_member_output() -> None:

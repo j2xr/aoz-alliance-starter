@@ -283,6 +283,25 @@ describe('routeOcrResult — donation', () => {
     });
   });
 
+  it('unsupported_period_type: unknown tab uses the distinct unreadable-tab message', async () => {
+    // Distinct from a recognized-but-unsupported tab (daily/history, above): 'unknown'
+    // means the tab band itself couldn't be read, so the user needs a different fix
+    // (re-crop) rather than switching tabs in-game.
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'unsupported_period_type',
+      periodType: 'unknown',
+    });
+
+    const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      line:
+        "⚠️ **shot.png** — onglet (Daily/Weekly/History) illisible sur cette capture. " +
+        "Vérifiez que la bande d'onglets est visible et bien cadrée, puis renvoyez la capture.",
+    });
+  });
+
   it('no_members', async () => {
     vi.mocked(upsertDonationResult).mockResolvedValue({ status: 'no_members' });
 

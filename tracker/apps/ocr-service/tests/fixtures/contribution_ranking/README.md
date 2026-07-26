@@ -9,6 +9,7 @@ initiale du suivi des dons.
 ```
 weekly_<NNN>.jpg    capture brute (Android, ~1080×2400 portrait)
 weekly_<NNN>.json   sortie attendue du parser (DonationParseResult)
+daily_<NNN>.jpg     capture brute, onglet Daily — voir §5, PAS de .json associé
 ```
 
 Le numéro `<NNN>` reflète l'ordre de scroll : `weekly_001` montre le top de la
@@ -55,13 +56,34 @@ réglages Tesseract). Il est ignoré par le bench tant que la valeur dépasse 0.
    `ばななヨーグルト`, `中本`, `幸恵丸ボーター`), vietnamien (`TôiyêuViệtNam`),
    ASCII art (`ÐÃŘĶ§ĮĐĒ•築`). Le bench compare la similarité ≥ 0.7.
 5. **Onglet Daily / Weekly / History** : le champ `period_type` est la vérité
-   terrain de la détection d'onglet (`_detect_selected_tab`). Toutes les
-   captures livrées sont `weekly` ; `test_detect_selected_tab_matches_fixture_ground_truth`
-   vérifie que le détecteur les classe toutes en `weekly`. La détection repose
-   sur l'intensité (la pilule sélectionnée ressort en niveaux de gris) et non
-   sur la couleur, donc pas besoin de l'image d'origine. Déposer une capture
-   `daily_<NNN>` / `history_<NNN>` avec le bon `period_type` étendrait la
-   couverture au cas positif inverse (aucune capture de ce type à ce jour).
+   terrain de la détection d'onglet (`_detect_selected_tab`). La détection
+   repose sur l'intensité (la pilule sélectionnée ressort en niveaux de gris)
+   et non sur la couleur, donc pas besoin de l'image d'origine en couleur.
+
+   `daily_001.jpg` (capture réelle, onglet Daily confirmé visuellement — voir
+   `docs/maintenance/2026-07-26-reprocess-channel-sod-data-quality-report.md`,
+   finding 1, qui documente comment une capture Daily non détectée a corrompu
+   une période weekly en production) couvre le cas positif inverse. **Ce
+   fixture n'a délibérément PAS de `.json` associé** :
+   - `tools/bench-ocr/bench.py` énumère les fixtures via `glob("*.json")` —
+     un `.jpg` sans `.json` lui est invisible (aucune entrée de baseline,
+     aucune latence ajoutée au budget CI). C'est déjà le fonctionnement pour
+     `sprites/`, un dossier de fixtures ignoré du bench faute d'event_type
+     enregistré.
+   - **Piège** : `bench.py` déduit `is_donation` du **premier** `.json` par
+     ordre alphabétique (`fixtures[0]`). Un `daily_001.json` serait trié
+     *avant* `weekly_001.json` — s'il lui manquait un jour `"kind": "donation"`,
+     toute la scène serait notée avec les critères d'un event (`power`/`points`)
+     au lieu de ceux d'une donation. Ne jamais ajouter de `.json` `daily_*`
+     ou `history_*` sans avoir vérifié ce risque.
+
+   La vérité terrain vient donc du **préfixe du nom de fichier** (`daily_`
+   vs `weekly_`), déjà la convention documentée ci-dessus — pas d'un fichier
+   séparé. `tests/test_contribution_ranking_parser.py` dérive l'attendu ainsi
+   pour chaque `.jpg` du dossier et vérifie qu'au moins deux valeurs de
+   `period_type` distinctes sont couvertes (sans quoi la suppression accidentelle
+   de `daily_001.jpg` passerait inaperçue). Aucune capture `history_<NNN>`
+   n'est disponible à ce jour.
 
 ## Cibles de qualité (à atteindre avant merge en production)
 

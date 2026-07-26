@@ -49,7 +49,10 @@ export type OcrDonationMember = {
 
 export type OcrDonationResult = {
   kind: 'donation';
-  period_type: 'weekly' | 'daily' | 'history';
+  // 'unknown' = the tab band (Daily/Weekly/History) couldn't be read with
+  // confidence — routeOcrResult rejects it the same way it rejects 'daily'
+  // or 'history' (V1 only ingests weekly), rather than assuming weekly.
+  period_type: 'weekly' | 'daily' | 'history' | 'unknown';
   members: OcrDonationMember[];
 } & PossibleTruncationFlag;
 
