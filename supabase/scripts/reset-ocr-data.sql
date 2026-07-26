@@ -30,10 +30,20 @@
 --                              exporter la table avant d'exécuter ce script.
 --   - at_donation_periods, at_donations
 --   - at_player_stats
+--   - at_corrections         : historique d'audit de /correct (migration 0022,
+--                              postérieure à la première version de ce
+--                              script). Référence at_players (FK on delete
+--                              cascade) — doit être vidée dans la même
+--                              commande, sinon Postgres refuse le TRUNCATE
+--                              de at_players (0A000: cannot truncate a table
+--                              referenced in a foreign key constraint).
 --
 -- Toutes les tables référencées par FK depuis les tables ci-dessous sont
 -- incluses dans la même commande TRUNCATE (requis par Postgres, sinon
--- l'opération est rejetée). Aucun CASCADE nécessaire : la liste est complète.
+-- l'opération est rejetée). Aucun CASCADE nécessaire : la liste est complète
+-- — mais elle doit être mise à jour à chaque nouvelle table qui référence
+-- l'une de celles-ci (voir at_corrections ci-dessus, oubliée lors de son
+-- ajout en migration 0022).
 
 TRUNCATE TABLE
   at_screenshot_uploads,
@@ -43,5 +53,6 @@ TRUNCATE TABLE
   at_donations,
   at_donation_periods,
   at_player_stats,
+  at_corrections,
   at_events,
   at_players;
