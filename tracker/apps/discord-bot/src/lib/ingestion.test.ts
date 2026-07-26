@@ -174,7 +174,12 @@ describe('routeOcrResult — player_stats', () => {
 });
 
 describe('routeOcrResult — donation', () => {
-  const OCR = { kind: 'donation' as const, period_type: 'weekly' as const, members: [] };
+  const OCR = {
+    kind: 'donation' as const,
+    period_type: 'weekly' as const,
+    members: [],
+    possible_truncation: false,
+  };
 
   it('success', async () => {
     const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
@@ -278,6 +283,17 @@ describe('routeOcrResult — donation', () => {
     });
   });
 
+  it('no_members', async () => {
+    vi.mocked(upsertDonationResult).mockResolvedValue({ status: 'no_members' });
+
+    const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
+
+    expect(result).toEqual({
+      outcome: 'failed',
+      line: '⚠️ **shot.png** — aucun membre extrait de la capture de dons.',
+    });
+  });
+
   it('upsert throws: uses caller-supplied databaseError wording', async () => {
     vi.mocked(upsertDonationResult).mockRejectedValue(new Error('constraint violation'));
 
@@ -296,6 +312,7 @@ describe('routeOcrResult — event', () => {
     total_battlers: 30,
     total_points: 150_000,
     members: [],
+    possible_truncation: false,
   };
 
   it('success', async () => {
@@ -313,6 +330,31 @@ describe('routeOcrResult — event', () => {
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
     expect(result).toEqual({ outcome: 'success', embed: fakeEmbed });
+  });
+
+  it('success with possible_truncation: embed and warning line both come through', async () => {
+    // Event parsers gained this field the same way donation parsers did
+    // (ocr-service base.py's shared ParseResult) — this pins that the event
+    // branch actually reads it, not just the donation branch.
+    const fakeEmbed = { data: {} } as unknown as EmbedBuilder;
+    vi.mocked(buildEventEmbed).mockReturnValue(fakeEmbed);
+    vi.mocked(upsertEventResult).mockResolvedValue({
+      status: 'processed',
+      eventId: 'event-1',
+      eventTypeDisplayName: 'Polar Invasion',
+      memberCount: 1,
+      newMemberCount: 1,
+      reversedCorrectionsCount: 0,
+    });
+
+    const result = await routeOcrResult({
+      ...BASE_PARAMS,
+      ocr: { ...OCR, possible_truncation: true },
+    });
+
+    expect(result.embed).toBe(fakeEmbed);
+    expect(result.line).toContain('shot.png');
+    expect(result.line).toContain('interrompue');
   });
 
   it('duplicate', async () => {

@@ -26,7 +26,18 @@ class MemberResult(BaseModel):
     row_h: int | None = Field(default=None, exclude=True)
 
 
-class ParseResult(BaseModel):
+class TruncationFlagMixin(BaseModel):
+    # True when fewer members were parsed than the row slots that physically
+    # fit onscreen — a row went missing, whether unreadable or rejected by
+    # validation. Advisory only: a legitimately short capture (few real
+    # members) can also trip this. Shared by ParseResult and
+    # DonationParseResult (see PolarInvasionV1Parser.parse and
+    # ContributionRankingV1Parser.parse) so the field and its rationale are
+    # defined once instead of drifting across copies.
+    possible_truncation: bool = False
+
+
+class ParseResult(TruncationFlagMixin):
     kind: Literal["event"] = "event"
     event_type: str
     event_datetime: str | None = None
@@ -34,11 +45,6 @@ class ParseResult(BaseModel):
     total_battlers: int | None = None
     total_points: int | None = None
     members: list[MemberResult] = []
-    # True when fewer members were parsed than the row slots that physically
-    # fit onscreen — a row went missing, whether unreadable or rejected by
-    # validate_member. Advisory only: a legitimately short capture (few real
-    # members) can also trip this. See PolarInvasionV1Parser.parse.
-    possible_truncation: bool = False
 
 
 class DonationMember(BaseModel):
@@ -59,17 +65,10 @@ class DonationMember(BaseModel):
     row_h: int | None = Field(default=None, exclude=True)
 
 
-class DonationParseResult(BaseModel):
+class DonationParseResult(TruncationFlagMixin):
     kind: Literal["donation"] = "donation"
     period_type: Literal["weekly", "daily", "history"]
     members: list[DonationMember] = []
-    # True when the row loop broke on 3 consecutive unreadable rows before
-    # reaching the last possible row of the capture — rows that should still
-    # have been onscreen may have been silently dropped. Advisory only: a
-    # legitimately short capture (few real members) can also trip this, so a
-    # human should double-check rather than treat it as a hard failure. See
-    # ContributionRankingV1Parser.parse.
-    possible_truncation: bool = False
 
 
 class PlayerStatsMember(BaseModel):

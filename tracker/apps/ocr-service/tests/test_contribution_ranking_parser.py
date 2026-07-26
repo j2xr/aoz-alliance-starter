@@ -283,14 +283,6 @@ def test_parser_returns_donation_result_kind() -> None:
 # ── Silent-truncation flag ────────────────────────────────────────────────────
 
 
-def _tall_image() -> np.ndarray:
-    """Twice the canonical height with list_top pinned to 0 (see callers):
-    every one of _MAX_ROWS rows fits comfortably, so the parse loop's exit is
-    governed purely by consecutive_none, not by running out of vertical
-    space — isolates the possible_truncation logic under test."""
-    return np.zeros((CANONICAL_HEIGHT * 2, 1080), dtype=np.uint8)
-
-
 def _canonical_image() -> np.ndarray:
     """Exactly canonical height (scale=1), so row_h=175 and name_end_offset=130
     match the raw canonical constants — makes rows_onscreen easy to reason
@@ -298,62 +290,58 @@ def _canonical_image() -> np.ndarray:
     return np.zeros((CANONICAL_HEIGHT, 1080), dtype=np.uint8)
 
 
-def test_possible_truncation_flagged_when_rows_go_missing_within_reach() -> None:
-    """rows_onscreen subsumes the loss unconditionally: it doesn't matter
-    *why* a row within physical reach didn't make it into members (unreadable
-    OR rejected by validate_donation_member) — fewer members than rows that
-    fit onscreen is always flagged. list_top=700 leaves room for exactly 9
-    rows before the geometric cutoff (see test below); only 6 come back."""
+@pytest.mark.parametrize(
+    "list_top, row_returns, expected_member_count, expected_flag",
+    [
+        pytest.param(
+            700,
+            [_donor(alliance_honor=1000 - i * 10) for i in range(6)] + [None, None, None],
+            6,
+            True,
+            id="rows_missing_within_reach_are_flagged",
+        ),
+        pytest.param(
+            700,
+            [_donor(alliance_honor=1000 - i * 10) for i in range(9)],
+            9,
+            False,
+            id="geometric_cutoff_not_flagged",
+        ),
+        pytest.param(
+            0,
+            [_donor(alliance_honor=1000 - i * 10) for i in range(_MAX_ROWS)],
+            _MAX_ROWS,
+            False,
+            id="every_row_reads_not_flagged",
+        ),
+    ],
+)
+def test_possible_truncation(
+    list_top: int,
+    row_returns: list[DonationMember | None],
+    expected_member_count: int,
+    expected_flag: bool,
+) -> None:
+    """rows_onscreen subsumes every way a row can go missing: it doesn't
+    matter *why* a row within physical reach didn't make it into members
+    (unreadable or rejected by validate_donation_member) — fewer members
+    than the rows that fit onscreen is always flagged (case 1). A capture
+    where list_top leaves room for fewer than _MAX_ROWS rows (a scroll
+    position further down the page, or a shorter aspect ratio) is not
+    truncation as long as every row that physically fit was read — list_top
+    =700 in a canonical-height image leaves room for exactly 9 rows
+    ((2400-700-130)//175 + 1 == 9, case 2); list_top=0 leaves room for all
+    _MAX_ROWS (case 3)."""
     parser = ContributionRankingV1Parser()
-    row_returns: list[DonationMember | None] = [
-        _donor(alliance_honor=1000 - i * 10) for i in range(6)
-    ] + [None, None, None]
-    assert len(row_returns) == 9
 
     with (
-        patch.object(parser, "_detect_list_top", return_value=700),
+        patch.object(parser, "_detect_list_top", return_value=list_top),
         patch.object(parser, "_parse_row", side_effect=row_returns),
     ):
         result = parser.parse(_canonical_image())
 
-    assert result.possible_truncation is True
-    assert len(result.members) == 6
-
-
-def test_possible_truncation_not_flagged_when_capture_geometrically_ends_early() -> None:
-    """A capture where list_top leaves room for fewer than _MAX_ROWS rows (a
-    scroll position further down the page, or a shorter aspect ratio) is not
-    truncation — every row that physically fits was read. list_top=700 in a
-    canonical-height image leaves room for exactly 9 rows
-    ((2400-700-130)//175 + 1 == 9): reading exactly 9 must not be flagged."""
-    parser = ContributionRankingV1Parser()
-    row_returns: list[DonationMember | None] = [
-        _donor(alliance_honor=1000 - i * 10) for i in range(9)
-    ]
-
-    with (
-        patch.object(parser, "_detect_list_top", return_value=700),
-        patch.object(parser, "_parse_row", side_effect=row_returns),
-    ):
-        result = parser.parse(_canonical_image())
-
-    assert result.possible_truncation is False
-    assert len(result.members) == 9
-
-
-def test_possible_truncation_false_when_every_row_reads() -> None:
-    """The loop runs every row without a 3-in-a-row failure: no flag."""
-    parser = ContributionRankingV1Parser()
-    row_returns = [_donor(alliance_honor=1000 - i * 10) for i in range(_MAX_ROWS)]
-
-    with (
-        patch.object(parser, "_detect_list_top", return_value=0),
-        patch.object(parser, "_parse_row", side_effect=row_returns),
-    ):
-        result = parser.parse(_tall_image())
-
-    assert result.possible_truncation is False
-    assert len(result.members) == _MAX_ROWS
+    assert result.possible_truncation is expected_flag
+    assert len(result.members) == expected_member_count
 
 
 # ── list_top detection (synthetic bands) ──────────────────────────────────────

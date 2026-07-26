@@ -8,6 +8,17 @@ export type OcrMember = {
   confidence: number;
 };
 
+// True when fewer members were parsed than the row slots that physically fit
+// onscreen — a row went missing, whether unreadable or rejected by
+// validation. Advisory only: a legitimately short capture (few real members)
+// can also trip this. Shared by both result kinds (every ocr-service parser's
+// Pydantic model carries a `possible_truncation: bool = False` field — see
+// ocr-service's base.py) so this is factored out once instead of repeated:
+// NOT optional, since the field is always serialized, never omitted.
+export type PossibleTruncationFlag = {
+  possible_truncation: boolean;
+};
+
 export type OcrEventResult = {
   kind: 'event';
   event_type: string;
@@ -17,7 +28,7 @@ export type OcrEventResult = {
   total_battlers: number;
   total_points: number;
   members: OcrMember[];
-};
+} & PossibleTruncationFlag;
 
 // ── Donation domain (Alliance Honor / Contribution Ranking) ──────────────────
 
@@ -40,14 +51,7 @@ export type OcrDonationResult = {
   kind: 'donation';
   period_type: 'weekly' | 'daily' | 'history';
   members: OcrDonationMember[];
-  // True when the parser broke off the row loop early (3 consecutive
-  // unreadable rows before the capture's last possible row) — rows that
-  // should still have been onscreen may have been silently dropped.
-  // Advisory only, not a hard failure. Optional so existing fixtures/tests
-  // that predate this field don't need updating (same rationale as
-  // leaderboard_position above).
-  possible_truncation?: boolean;
-};
+} & PossibleTruncationFlag;
 
 // ── Player stats chat domain ─────────────────────────────────────────────────
 

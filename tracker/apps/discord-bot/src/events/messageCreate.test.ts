@@ -174,6 +174,7 @@ describe('handleMessageCreate', () => {
       members: [
         { name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.95 },
       ],
+      possible_truncation: false,
     };
     vi.mocked(resolveAlliance).mockResolvedValue(ALLIANCE);
     vi.mocked(processImageAttachment).mockResolvedValue({
@@ -230,6 +231,7 @@ describe('handleMessageCreate', () => {
             members: [
               { name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.95 },
             ],
+            possible_truncation: false,
           },
         };
       }
