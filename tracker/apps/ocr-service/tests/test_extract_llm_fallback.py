@@ -5,14 +5,16 @@ rows are sent to the LLM, how corrections are merged back, and the consecutive-
 failure circuit breaker that stops calling a wedged Ollama mid-image.
 """
 
+import logging
 import unicodedata
 from typing import Any
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import app.extract as extract
-from app.extract import _apply_llm_fallback, _apply_llm_fallback_player_stats
+from app.extract import _apply_llm_fallback, _apply_llm_fallback_player_stats, _rewrite_name
 from app.parsers.base import (
     DonationMember,
     DonationParseResult,
@@ -107,10 +109,14 @@ def test_donation_member_shape_only_name_rewritten() -> None:
 
 def test_donation_correction_rejected_when_score_mismatches_honor() -> None:
     """The overlay/hallucination guard: a corrected name whose LLM-read score
-    does not match the OCR honor is rejected, keeping the OCR name."""
+    does not match the OCR honor is rejected, keeping the OCR name. Only applies
+    when the honor was never flagged suspect — see
+    test_suspect_honor_replaced_by_llm_score_inside_window_real_production_cases
+    for the suspect-honor case, where exact equality is no longer the standard."""
     donor = DonationMember(
         name="고", alliance_tag=None, rank="R1", alliance_honor=1946, confidence=0.2
     )
+    assert donor.suspect_honor_window is None  # precondition for this exact-match gate
     result = DonationParseResult(period_type="weekly", members=[donor])
     # Model read a name off an overlaid toast and a score (52) that is not the
     # row's honor (1946) — reject the correction.
@@ -163,6 +169,181 @@ def test_donation_none_name_keeps_ocr_result() -> None:
         out = _apply_llm_fallback(_IMG, result, _StubParser())
 
     assert out.members[0].name == "Keeper"
+
+
+# ── _apply_llm_fallback: suspect_honor_window (P1 — the circular gate) ─────────
+#
+# When suspect_honor_window is set, _enforce_honor_monotonicity has already
+# proven the OCR'd alliance_honor suspect (its own re-OCR either fixed it or
+# gave up). Demanding the LLM's score exactly match that already-suspect value
+# — the pre-fix behaviour, still exercised above for the window-is-None case —
+# can therefore never help. These tests hold the LLM to the SAME [lower,upper]
+# window the monotonicity re-OCR used instead.
+
+
+def _suspect_donor(
+    *, alliance_honor: int, window: tuple[int, int], confidence: float = 0.0
+) -> DonationMember:
+    return DonationMember(
+        name="OcrName",
+        alliance_tag="SOD",
+        rank="R1",
+        alliance_honor=alliance_honor,
+        confidence=confidence,
+        suspect_honor_window=window,
+    )
+
+
+@pytest.mark.parametrize(
+    ("stored_honor", "window", "llm_score"),
+    [
+        # The four real production rows from the 2026-07-26 SOD audit: the LLM
+        # read the correct score on the very first pass, every time, and the
+        # old exact-equality gate rejected every one of them.
+        (92256, (0, 2458), 2385),  # Somethin_kool
+        (9044, (0, 3102), 2944),  # StoKaizer
+        (970, (0, 275), 270),  # ran (SOD)
+        (955, (0, 255), 255),  # Somethin_kool (SOD)
+    ],
+)
+def test_suspect_honor_replaced_by_llm_score_inside_window_real_production_cases(
+    stored_honor: int, window: tuple[int, int], llm_score: int
+) -> None:
+    donor = _suspect_donor(alliance_honor=stored_honor, window=window)
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("OcrName", llm_score)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert isinstance(m, DonationMember)
+    assert m.alliance_honor == llm_score
+    assert m.suspect_honor_window is None  # resolved: no longer suspect
+    assert m.confidence == extract._LLM_HONOR_REPLACED_CONFIDENCE
+
+
+def test_suspect_honor_rejected_when_llm_score_outside_window() -> None:
+    """A score outside the monotonicity window is no more trustworthy than the
+    OCR value it would replace — reject, keep BOTH the OCR name and honor,
+    and stay flagged (the window is not cleared: still suspect, just
+    unresolved by this attempt)."""
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102))
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("SomeoneElse", 5000)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert m.alliance_honor == 9044
+    assert m.name == "OcrName"
+    assert m.confidence == 0.0
+    assert m.suspect_honor_window == (0, 3102)
+
+
+def test_suspect_honor_rejected_when_llm_score_missing() -> None:
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102))
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("SomeName", None)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert m.alliance_honor == 9044
+    assert m.confidence == 0.0
+    assert m.suspect_honor_window == (0, 3102)
+
+
+def test_suspect_honor_replaced_even_when_llm_returns_no_name() -> None:
+    """The short-circuit that made this gate circular discarded a usable score
+    whenever the returned name was empty — the exact defect this PR fixes. A
+    usable, in-window score must be applied regardless of whether a name came
+    back with it."""
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102))
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=(None, 2944)):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    m = out.members[0]
+    assert m.alliance_honor == 2944
+    assert m.name == "OcrName"  # no name to apply — name unchanged, honor still fixed
+    assert m.confidence == extract._LLM_HONOR_REPLACED_CONFIDENCE
+    assert m.suspect_honor_window is None
+
+
+def test_suspect_honor_row_reaches_llm_even_at_high_name_confidence() -> None:
+    """The predicate fix: _MONOTONICITY_FIX_CONFIDENCE (0.40) sits above
+    OCR_CONFIDENCE_THRESHOLD_NAME's 0.35 default, so a suspect row with a
+    "fixed" (re-OCR corrected) honor would never reach the LLM without an
+    explicit honor_suspect override — exactly the secondary P1 bug."""
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102), confidence=0.99)
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch(
+        "app.llm_fallback.llm_fallback_donation", return_value=("OcrName", 2944)
+    ) as mock_llm:
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    mock_llm.assert_called_once()
+    assert out.members[0].alliance_honor == 2944
+
+
+def test_confident_non_suspect_donation_row_is_skipped() -> None:
+    """A donation row with neither a low name confidence nor a suspect honor
+    never reaches the LLM at all — the honor_suspect override must not widen
+    the gate beyond suspect rows."""
+    donor = DonationMember(
+        name="Confident", alliance_tag="SOD", rank="R1", alliance_honor=500, confidence=0.99
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation") as mock_llm:
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    mock_llm.assert_not_called()
+    assert out.members[0].name == "Confident"
+
+
+def test_rewrite_name_preserves_suspect_honor_window() -> None:
+    """The manually-copies-every-field hazard: without an explicit pass-through,
+    a DonationMember field _rewrite_name doesn't know about is silently
+    dropped on every LLM-corrected row, not just suspect-honor ones."""
+    donor = DonationMember(
+        name="Old",
+        alliance_tag=None,
+        rank="R1",
+        alliance_honor=100,
+        confidence=0.2,
+        suspect_honor_window=(50, 150),
+    )
+    rewritten = _rewrite_name(donor, "New")
+    assert isinstance(rewritten, DonationMember)
+    assert rewritten.suspect_honor_window == (50, 150)
+
+
+def test_llm_honor_replaced_confidence_trips_needs_review() -> None:
+    """Mirrors test_monotonicity_fix_confidence_trips_needs_review in
+    test_contribution_ranking_parser.py: _LLM_HONOR_REPLACED_CONFIDENCE must
+    also land inside needsReview()'s exclusive [0, 0.5) bound
+    (apps/discord-bot/src/lib/upsert.ts)."""
+    assert 0.0 <= extract._LLM_HONOR_REPLACED_CONFIDENCE < 0.5
+
+
+def test_logs_warning_when_still_non_monotone_after_llm_replacement(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Observability only, not a fix: two adjacent suspect rows can each satisfy
+    a window computed against the OTHER's pre-replacement value. Row 0's window
+    was computed while row 1 still held its own (also-suspect) original value,
+    so row 0's replacement can end up lower than row 1's — non-monotone again."""
+    row0 = _suspect_donor(alliance_honor=1000, window=(500, 2000))
+    row1 = _suspect_donor(alliance_honor=1500, window=(0, 1000))
+    result = DonationParseResult(period_type="weekly", members=[row0, row1])
+    with patch(
+        "app.llm_fallback.llm_fallback_donation",
+        side_effect=[("OcrName", 600), ("OcrName", 900)],
+    ):
+        with caplog.at_level(logging.WARNING):
+            out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert out.members[0].alliance_honor == 600
+    assert out.members[1].alliance_honor == 900
+    assert out.members[1].alliance_honor > out.members[0].alliance_honor  # still broken
+    assert any("still breaks monotonicity after LLM fallback" in r.message for r in caplog.records)
 
 
 # ── _apply_llm_fallback: circuit breaker ───────────────────────────────────────
