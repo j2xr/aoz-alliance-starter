@@ -83,9 +83,19 @@ _DEFAULT_PERIOD_TYPE: Literal["weekly"] = "weekly"
 _MEMBER_LIST_TOP = 395  # y-start of first row (canonical)
 _ROW_HEIGHT = 175  # 12 rows fit in ~2100 px after the tabs/headers band
 _MAX_ROWS = 12
-# Upper bound on a "first name line" text-density band in _detect_list_top
-# (see there for why the column header needs excluding this way).
-_MAX_NAME_BAND_HEIGHT = 32
+# Floor beneath which a text-density run in _detect_list_top is noise, not a
+# real name line (see there). NOT scaled by image height: preprocess only
+# normalizes width (see CANONICAL_HEIGHT usage at the call site), so glyph
+# heights stay constant in pixels regardless of the source screenshot's
+# aspect ratio — scaling this threshold made it drift below real name-band
+# heights on non-2400px-tall captures (1080×2160 / 1080×1920), rendering 0
+# members. There is deliberately no matching ceiling: a real name line's
+# height varies with font metrics (diacritics, descenders) enough that one
+# shipped fixture's genuine row-0 band exceeds what any fixed ceiling could
+# safely allow without also excluding it — see _has_periodic_followup, which
+# discriminates a real row from the column header far more reliably than
+# height ever could.
+_MIN_NAME_BAND_HEIGHT = 8
 
 # Badge crop for R1..R5 detection. Same x as polar invasion (identical avatar
 # widget), but a taller y window: the donation screen packs 12 rows, so the
@@ -212,7 +222,7 @@ def _strip_alliance_tag(raw: str) -> tuple[str | None, str]:
 # subprocess fallback). Since this field is purely informational, it can be
 # switched off with zero code change if it ever shows up in a latency budget.
 _POSITION_OCR_ENABLED: bool = (
-    os.getenv("OCR_LEADERBOARD_POSITION_ENABLED", "true").lower() == "true"
+    os.getenv("OCR_LEADERBOARD_POSITION_ENABLED", "false").lower() == "true"
 )
 _POSITION_THRESHOLDS: tuple[int | None, ...] = (None, 80, 110, 140, 170)  # None = no binarization
 _POSITION_PSMS: tuple[int, ...] = (7, 8, 10, 13)
@@ -259,8 +269,6 @@ class ContributionRankingV1Parser(BaseParser):
         period_type = self._detect_selected_tab(image, scale)
 
         members: list[DonationMember] = []
-        consecutive_none = 0
-        possible_truncation = False
         name_end_offset = int(_NAME_Y_OFF[1] * scale)
         # Per-image cache of the (threshold, psm) combo that won the last
         # rank vote; mirrors PolarInvasionV1Parser.parse.
@@ -280,33 +288,34 @@ class ContributionRankingV1Parser(BaseParser):
                 rank_cache=rank_cache,
             )
             if member is None:
-                consecutive_none += 1
-                if consecutive_none >= 3:
-                    # Reaching this on the last possible row (i == _MAX_ROWS - 1)
-                    # is indistinguishable from a legitimate short capture (fewer
-                    # than _MAX_ROWS real members onscreen) — don't flag that
-                    # case. Breaking any earlier means rows that should still be
-                    # readable within this capture went dark; a real batch once
-                    # lost 8 rows (ranks 42-49) exactly this way, silently.
-                    if i < _MAX_ROWS - 1:
-                        possible_truncation = True
-                        logger.warning(
-                            "contribution_ranking: stopped after %d consecutive "
-                            "unreadable rows at row index %d/%d (%d members parsed "
-                            "so far) — possible silent truncation",
-                            consecutive_none,
-                            i,
-                            _MAX_ROWS - 1,
-                            len(members),
-                        )
-                    break
                 continue
-            consecutive_none = 0
             if validate_donation_member(member):
                 members.append(member)
 
         self._enforce_honor_monotonicity(image, members, scale)
         self._repair_position_sequence(members)
+
+        # A single counter that subsumes every way a row can go missing: ran
+        # off the bottom of the image, came back unreadable, or got rejected
+        # by validate_donation_member. rows_onscreen is how many row slots
+        # physically fit between list_top and the image bottom (capped at
+        # _MAX_ROWS); if fewer members made it through than that, something
+        # was lost — whether silently (a real batch once lost ranks 42-49
+        # this way) or legitimately (a capture cropped shorter than a full
+        # page, which this same formula also correctly does NOT flag, since
+        # rows_onscreen shrinks with it).
+        rows_onscreen = min(_MAX_ROWS, (h - list_top - name_end_offset) // row_h + 1)
+        possible_truncation = len(members) < rows_onscreen
+        if possible_truncation:
+            logger.warning(
+                "contribution_ranking: parsed %d members but %d rows fit onscreen "
+                "(list_top=%d, row_h=%d, h=%d) — possible silent data loss",
+                len(members),
+                rows_onscreen,
+                list_top,
+                row_h,
+                h,
+            )
 
         return DonationParseResult(
             period_type=period_type, members=members, possible_truncation=possible_truncation
@@ -509,20 +518,38 @@ class ContributionRankingV1Parser(BaseParser):
 
         After preprocess the image is grayscale on a light background with dark
         text. We scan the column where Commander Names live (x=270..720) for
-        text-density bands sized like a single name line (see
-        _MAX_NAME_BAND_HEIGHT — this excludes the bolder/taller column header
-        text); the first such band marks the first row's name line. We then
-        back-compute row_top so the name crop _NAME_Y_OFF=(45, 130) is centred
-        on it.
+        text-density bands and validate each candidate the same way
+        PolarInvasionV1Parser._detect_list_top validates its separator-gap
+        zones (see there): not by the candidate's own height, but by checking
+        that another band exists ~row_h further down — a real name line
+        repeats at the row pitch, the column header does not. A position-
+        based cutoff can't separate the two either: a legitimate row-0 band
+        can itself land anywhere from ~365 to ~411 (measured across
+        fixtures), fully overlapping where the header can sit. Height is used
+        only as a cheap prefilter (_MIN_NAME_BAND_HEIGHT) to skip pure noise
+        before paying for the periodicity check — unlike a ceiling, a floor
+        can't reject a genuine, unusually tall name band.
+
+        We then back-compute row_top so the name crop _NAME_Y_OFF=(45, 130)
+        is centred on the accepted band.
         """
         canonical_top = int(_MEMBER_LIST_TOP * scale)
         h = image.shape[0]
+        row_h = max(1, int(_ROW_HEIGHT * scale))
         search_start = max(0, int(330 * scale))
         search_end = min(h, canonical_top + int(180 * scale))
         if search_end - search_start < 40:
             return canonical_top
 
-        strip = image[search_start:search_end, 270:720]
+        # Extend the strip far enough to see a second row below any row-0
+        # candidate near the top of the window, so periodicity can be
+        # checked in the same pass. This extra margin is used ONLY for that
+        # check: baseline/peak/threshold below are computed from the
+        # original (unextended) window so the accept/reject boundary for the
+        # primary candidate doesn't shift with how far down we happen to
+        # look for its follow-up band.
+        extended_end = min(h, search_end + row_h)
+        strip = image[search_start:extended_end, 270:720]
         if strip.ndim == 3:
             gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
         else:
@@ -530,9 +557,10 @@ class ContributionRankingV1Parser(BaseParser):
 
         text_signal = 255.0 - gray.astype(np.float32)
         row_score = text_signal.mean(axis=1)
+        primary_len = search_end - search_start
 
-        baseline = float(np.percentile(row_score, 20))
-        peak = float(row_score.max())
+        baseline = float(np.percentile(row_score[:primary_len], 20))
+        peak = float(row_score[:primary_len].max())
         span = peak - baseline
         if span < 15.0:
             return canonical_top
@@ -540,33 +568,23 @@ class ContributionRankingV1Parser(BaseParser):
         threshold = baseline + span * 0.25
         above = row_score > threshold
 
-        # First sustained band (8-32 rows) is the first member name. The
-        # upper bound excludes the column header ("Commander Name"): across
-        # every shipped fixture a genuine single-line name band is 22-29px
-        # tall, but the header text renders bolder/taller — one real capture
-        # measured it at 37px, sustained enough to otherwise win the race as
-        # "first" band and shift every row's crop ~110px too high, corrupting
-        # the entire read. A position-based cutoff can't separate the two:
-        # a legitimate row-0 band can itself land anywhere from ~365 to
-        # ~411 (measured across fixtures), a range that fully overlaps where
-        # a header band can sit — only the height reliably tells them apart.
-        max_band_height = int(_MAX_NAME_BAND_HEIGHT * scale)
-        run_start: int | None = None
         first_band_centre: int | None = None
-        for i, v in enumerate(above):
-            if v and run_start is None:
-                run_start = i
-            elif not v and run_start is not None:
-                if 8 <= i - run_start <= max_band_height:
-                    first_band_centre = (run_start + i) // 2
-                    break
-                run_start = None
-        if (
-            first_band_centre is None
-            and run_start is not None
-            and 8 <= len(above) - run_start <= max_band_height
-        ):
-            first_band_centre = (run_start + len(above)) // 2
+        for start, end in self._measurable_name_bands(above):
+            if end - start < _MIN_NAME_BAND_HEIGHT:
+                continue  # sub-floor fragment: noise, not a usable candidate
+            if not self._has_periodic_followup(above, start, row_h):
+                # A genuine name line repeats ~row_h below it; this one
+                # doesn't, so it isn't row 0 (most likely the column header).
+                # Try the next candidate rather than falling back straight to
+                # canonical_top: that next candidate only gets accepted if it
+                # *itself* independently passes the same periodicity check,
+                # so this can't reproduce the original bug (blindly anchoring
+                # on whatever band happened to come next, unvalidated) — see
+                # weekly_010, where the column header renders as its own
+                # measurable band ahead of the real row-0 name line.
+                continue
+            first_band_centre = (start + end) // 2
+            break
 
         if first_band_centre is None:
             return canonical_top
@@ -583,6 +601,55 @@ class ContributionRankingV1Parser(BaseParser):
             result,
         )
         return int(result)
+
+    @staticmethod
+    def _measurable_name_bands(above: np.ndarray) -> list[tuple[int, int]]:
+        """Contiguous True-runs in `above`, excluding ones we can't measure.
+
+        A run touching either edge of the search window is clipped: its true
+        height is unknown, so any decision based on that height is
+        meaningless — e.g. a 44px header clipped to 32px by the window start
+        would slip under a ceiling and be mistaken for a name line. Drop
+        both:
+        - a run already "on" at index 0: the ink started above search_start;
+        - a run still "on" when the loop ends: it runs into search_end.
+        """
+        runs: list[tuple[int, int]] = []
+        run_start: int | None = None
+        for i, v in enumerate(above):
+            if v and run_start is None:
+                run_start = i
+            elif not v and run_start is not None:
+                if run_start > 0:
+                    runs.append((run_start, i))
+                run_start = None
+        return runs
+
+    @staticmethod
+    def _has_periodic_followup(above: np.ndarray, start: int, row_h: int) -> bool:
+        """Is there another text band starting ~row_h below this candidate?
+
+        Real member rows repeat at the row pitch; the column header has
+        nothing above it at that spacing. The window is anchored on `start`
+        alone with a small fixed tolerance — NOT stretched by the candidate's
+        own height (e.g. by using `end` for the far edge). A height-stretched
+        window widens exactly for the candidates most likely to be the
+        header (which renders taller than a name line), making it more
+        likely to alias onto an unrelated real row band that merely happens
+        to fall within the stretched range. Measured on weekly_010: the
+        header's 37px height stretched its lookahead window enough to
+        overlap the real row-1 band by coincidence, so the header wrongly
+        measured as periodic and got used as row 0, corrupting every row.
+        The tolerance itself absorbs the few-pixel jitter between a row's
+        nominal start and where its text actually begins (ascenders/
+        descenders, sub-pixel rendering).
+        """
+        tol = max(10, row_h // 10)
+        lo = max(0, start + row_h - tol)
+        hi = min(len(above), start + row_h + tol)
+        if lo >= hi:
+            return False
+        return bool(np.any(above[lo:hi]))
 
     # ── Row parsing ──────────────────────────────────────────────────────────
 

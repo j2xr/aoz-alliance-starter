@@ -125,6 +125,12 @@ class BenchResult:
     anomalies: list[Anomaly]
     correct: dict[str, int]
     totals: dict[str, int]
+    # Per-fixture breakdown of the same correct/total counts, keyed by fixture
+    # stem. Baseline comparisons key off these instead of the event-type
+    # aggregates above so that adding one fixture can never mask a regression
+    # on the other fixtures sharing its event type (see _check_baseline).
+    by_fixture_correct: dict[str, dict[str, int]]
+    by_fixture_total: dict[str, int]
     latencies: list[float]
     # Advisory scenes are benched and reported but never gate CI: their accuracy
     # misses don't fail the run and they're kept out of the baseline. Used while
@@ -349,6 +355,8 @@ def _bench_event_type(
         anomalies=[],
         correct={},
         totals={},
+        by_fixture_correct={},
+        by_fixture_total={},
         latencies=[],
     )
 
@@ -382,6 +390,8 @@ def _bench_event_type(
     skipped = 0
     anomalies: list[Anomaly] = []
     rowcount_notes: list[str] = []
+    by_fixture_correct: dict[str, dict[str, int]] = {}
+    by_fixture_total: dict[str, int] = {}
 
     emit_trace = dump_crops_dir is not None
 
@@ -484,6 +494,9 @@ def _bench_event_type(
         for field_name in tracked:
             totals[field_name] += len(exp_members)
 
+        by_fixture_correct[fixture_path.stem] = dict(fx)
+        by_fixture_total[fixture_path.stem] = len(exp_members)
+
         cells = [fixture_path.stem, str(len(exp_members)), str(len(got_members))]
         cells += [f"{fx[f]}/{paired}" for f in fields]
         cells.append(f"{latency:.1f}s")
@@ -556,6 +569,8 @@ def _bench_event_type(
         anomalies=anomalies,
         correct=correct,
         totals=totals,
+        by_fixture_correct=by_fixture_correct,
+        by_fixture_total=by_fixture_total,
         latencies=latencies,
         advisory=advisory,
     )
@@ -574,11 +589,14 @@ def _write_baseline(results_by_event: dict[str, BenchResult]) -> None:
         if result.fixtures_processed == 0 or result.advisory:
             continue
         baseline[event_type] = {
-            field_name: {
-                "correct": result.correct[field_name],
-                "total": result.totals[field_name],
+            fixture: {
+                field_name: {
+                    "correct": result.by_fixture_correct[fixture][field_name],
+                    "total": result.by_fixture_total[fixture],
+                }
+                for field_name in sorted(result.by_fixture_correct[fixture])
             }
-            for field_name in sorted(result.correct)
+            for fixture in sorted(result.by_fixture_total)
         }
     with BASELINE_PATH.open("w", encoding="utf-8") as fh:
         json.dump(baseline, fh, indent=2)
@@ -590,12 +608,22 @@ def _check_baseline(
     results_by_event: dict[str, BenchResult],
     baseline: dict,
 ) -> tuple[bool, list[str], list[str], int]:
-    """Check current results against baseline.
+    """Check current results against baseline, fixture by fixture.
+
+    Comparing per fixture (rather than the event-type aggregate) means a new
+    fixture — or a hand-edited ground truth changing one fixture's row count —
+    can only ever produce a WARN on *that* fixture. It can no longer push every
+    field's total off the baseline total and silently exempt the other
+    fixtures sharing that event type from comparison (see contribution_ranking
+    finding #13: adding weekly_010 bumped total 108→120 and every field went to
+    WARN instead of being compared against the 9 fixtures already regression-
+    checked).
 
     Returns (ok, regression_messages, warning_messages, improvement_points).
-    Regressions: correct decreased with same total → fail.
-    Warnings: total increased (new fixtures added) → warn, don't fail.
-    improvement_points: sum of extra correct across fields that improved.
+    Regressions: an existing fixture's correct count dropped at the same
+    total → fail. Warnings: a new or removed fixture, or a total change on an
+    existing one → warn, don't fail. improvement_points: sum of extra correct
+    across fixture/fields that improved.
     """
     regressions: list[str] = []
     warnings: list[str] = []
@@ -605,26 +633,43 @@ def _check_baseline(
         result = results_by_event.get(event_type)
         if result is None or result.fixtures_processed == 0 or result.advisory:
             continue
-        for field_name, bl in event_bl.items():
-            bl_correct: int = bl["correct"]
-            bl_total: int = bl["total"]
-            run_correct = result.correct.get(field_name, 0)
-            run_total = result.totals.get(field_name, 0)
 
-            if run_total > bl_total:
+        remaining_fixtures = set(result.by_fixture_total)
+        for fixture, fixture_bl in event_bl.items():
+            if fixture not in remaining_fixtures:
                 warnings.append(
-                    f"  WARN  {event_type}.{field_name}:"
-                    f" total {bl_total}→{run_total} (new fixtures?)"
-                    " — run --write-baseline to refresh"
+                    f"  WARN  {event_type}.{fixture}: fixture missing from this run"
+                    " (removed or renamed?) — run --write-baseline to refresh"
                 )
-            elif run_total == bl_total:
-                if run_correct < bl_correct:
+                continue
+            remaining_fixtures.discard(fixture)
+            run_total = result.by_fixture_total.get(fixture, 0)
+            run_correct_by_field = result.by_fixture_correct.get(fixture, {})
+
+            for field_name, bl in fixture_bl.items():
+                bl_correct: int = bl["correct"]
+                bl_total: int = bl["total"]
+                run_correct = run_correct_by_field.get(field_name, 0)
+
+                if run_total != bl_total:
+                    warnings.append(
+                        f"  WARN  {event_type}.{fixture}.{field_name}:"
+                        f" total {bl_total}→{run_total} (fixture changed?)"
+                        " — run --write-baseline to refresh"
+                    )
+                elif run_correct < bl_correct:
                     regressions.append(
-                        f"  REGRESSION  {event_type}.{field_name}:"
+                        f"  REGRESSION  {event_type}.{fixture}.{field_name}:"
                         f" correct {bl_correct}→{run_correct} / {run_total}"
                     )
                 elif run_correct > bl_correct:
                     improvement += run_correct - bl_correct
+
+        for fixture in remaining_fixtures:
+            warnings.append(
+                f"  WARN  {event_type}.{fixture}: new fixture, not yet baselined"
+                " — run --write-baseline to refresh"
+            )
 
     return len(regressions) == 0, regressions, warnings, improvement
 
