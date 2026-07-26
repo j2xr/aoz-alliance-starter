@@ -848,7 +848,9 @@ def test_ocr_honor_skips_fallback_when_primary_already_succeeds() -> None:
 
 
 def test_enforce_honor_monotonicity_noop_when_already_descending() -> None:
-    """Nominal case (including a legitimate tie): nothing re-OCR'd, nothing changed."""
+    """Nominal case (including a legitimate tie): nothing re-OCR'd, nothing changed,
+    and no row is flagged suspect — extract.py's LLM fallback must not see a window
+    for a value that was never in question."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     members = [
@@ -863,6 +865,7 @@ def test_enforce_honor_monotonicity_noop_when_already_descending() -> None:
 
     mock_candidates.assert_not_called()
     assert [m.alliance_honor for m in members] == [3173, 2925, 1785, 1785]
+    assert all(m.suspect_honor_window is None for m in members)
 
 
 def test_enforce_honor_monotonicity_corrects_when_candidate_fits() -> None:
@@ -871,6 +874,9 @@ def test_enforce_honor_monotonicity_corrects_when_candidate_fits() -> None:
     Fitting the window is a plausibility check, not proof of correctness (a
     real fixture showed a fitting-but-still-wrong candidate winning — see the
     method's docstring), so confidence is capped even on a successful fix.
+    The window is recorded on this fix branch too — not just the no-fix
+    branch — so extract.py's LLM fallback can hold an independently-produced
+    score to the same standard even when re-OCR already changed the value.
     """
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
@@ -885,6 +891,7 @@ def test_enforce_honor_monotonicity_corrects_when_candidate_fits() -> None:
 
     assert members[1].alliance_honor == 2925
     assert members[1].confidence == ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE
+    assert members[1].suspect_honor_window == (2878, 3173)
 
 
 def test_enforce_honor_monotonicity_fix_never_raises_an_already_lower_confidence() -> None:
@@ -905,7 +912,11 @@ def test_enforce_honor_monotonicity_fix_never_raises_an_already_lower_confidence
 
 def test_enforce_honor_monotonicity_keeps_original_when_no_candidate_fits() -> None:
     """No re-OCR candidate fits the window: keep the raw value, don't fabricate,
-    but flag it by zeroing confidence for downstream visibility."""
+    but flag it by zeroing confidence for downstream visibility. This is exactly
+    the production case (Somethin_kool, stored 92256, LLM correctly read 2385)
+    that used to be undebugged: the window recorded here — window[0] <= 2385 <=
+    window[1] — is what lets extract.py trust the LLM instead of demanding it
+    reproduce the already-known-wrong 92256."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     members = [
@@ -919,10 +930,16 @@ def test_enforce_honor_monotonicity_keeps_original_when_no_candidate_fits() -> N
 
     assert members[1].alliance_honor == 92256  # unchanged: never fabricate a number
     assert members[1].confidence == 0.0  # flagged low-confidence instead
+    assert members[1].suspect_honor_window == (2051, 2458)
+    assert members[1].suspect_honor_window[0] <= 2385 <= members[1].suspect_honor_window[1]
 
 
 def test_enforce_honor_monotonicity_last_row_uses_zero_as_lower_bound() -> None:
-    """The last row has no successor: the fitting window is [0, previous]."""
+    """The last row has no successor: the fitting window is [0, previous].
+
+    All four real production cases this guard exists for were last rows, so
+    this window shape is not a corner case — it's the common one.
+    """
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     members = [
@@ -934,10 +951,14 @@ def test_enforce_honor_monotonicity_last_row_uses_zero_as_lower_bound() -> None:
         parser._enforce_honor_monotonicity(image, members, scale=1.0)
 
     assert members[1].alliance_honor == 0
+    assert members[1].suspect_honor_window == (0, 350)
 
 
 def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
-    """Defensive: a member missing row_y (shouldn't happen in practice) is left as-is."""
+    """Defensive: a member missing row_y (shouldn't happen in practice) is left as-is,
+    but is still flagged suspect — the window is computed and recorded before the
+    row_y check, since the value already broke order regardless of whether a
+    re-crop is possible."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     members = [
@@ -950,6 +971,26 @@ def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
 
     mock_candidates.assert_not_called()
     assert members[1].alliance_honor == 9044
+    assert members[1].suspect_honor_window == (0, 3173)
+
+
+def test_donation_member_suspect_honor_window_excluded_from_wire_payload() -> None:
+    """suspect_honor_window is debug/orchestration-only (like row_y/row_h/row_index
+    above it) and must never leak into the wire payload — mirrors the trace-exclusion
+    tests in test_row_trace.py."""
+    member = _donor(suspect_honor_window=(100, 200))
+    assert "suspect_honor_window" not in member.model_dump()
+    assert "suspect_honor_window" not in json.loads(member.model_dump_json())
+
+
+def test_monotonicity_fix_confidence_trips_needs_review() -> None:
+    """_MONOTONICITY_FIX_CONFIDENCE must land inside needsReview()'s exclusive
+    [0, 0.5) bound (apps/discord-bot/src/lib/upsert.ts) — a monotonicity-corrected
+    row is "unverified... left at reduced confidence for downstream visibility"
+    (see the method's docstring) and must always be flagged, never silently
+    treated as fine. This was the secondary P1 bug: the old value, 0.5, sat
+    exactly ON the exclusive bound and was therefore never flagged."""
+    assert 0.0 <= ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE < 0.5
 
 
 # ── Leaderboard position repair ──────────────────────────────────────────────────

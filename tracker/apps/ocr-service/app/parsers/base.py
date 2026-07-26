@@ -71,6 +71,15 @@ class DonationMember(BaseModel):
     # from list index instead of this field silently mis-repairs every
     # member after the gap (see _repair_position_sequence's docstring).
     row_index: int | None = Field(default=None, exclude=True)
+    # (lower, upper) bound the honor-monotonicity re-OCR gate held this row's
+    # value to, set whenever alliance_honor broke monotonicity — regardless
+    # of whether the re-OCR found a fix. One field, not a bool + two ints:
+    # "suspect" ⇔ not None, so the flag and the constraint used to judge a
+    # correction can never desync. Consumed by extract.py's LLM fallback,
+    # which uses the same window to judge an independently-produced score
+    # instead of demanding it exactly match a value already known suspect.
+    # Excluded from the wire payload like the other row-geometry fields above.
+    suspect_honor_window: tuple[int, int] | None = Field(default=None, exclude=True)
 
 
 class DonationParseResult(TruncationFlagMixin):
