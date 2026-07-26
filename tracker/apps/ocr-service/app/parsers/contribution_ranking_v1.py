@@ -399,6 +399,17 @@ class ContributionRankingV1Parser(BaseParser):
     # candidate offset either exactly or when the expected value ends with
     # the digits actually read.
     #
+    # row_index must be the PHYSICAL on-screen row slot, not `members`' own
+    # list position: any earlier row already dropped for being unreadable or
+    # failing validation shifts every later member's list index away from its
+    # true screen position by one. Using list index there used to silently
+    # mis-repair every member after the first gap — measured: a 12-row
+    # capture with row 3 illegible produced list indices [0,1,2,3,4,...] for
+    # the 11 survivors where physical indices were actually [0,1,2,4,5,...],
+    # and the wrong offset (fit against list index) rewrote the first 3
+    # positions one too low while the rest coincidentally landed right (the
+    # gap happened to absorb the shift). See DonationMember.row_index.
+    #
     # A single offset explaining most of the readings lets us reconstruct
     # the *entire* sequence (including rows where OCR returned no reading at
     # all). When no offset clears a majority, we don't guess: real degenerate
@@ -410,30 +421,31 @@ class ContributionRankingV1Parser(BaseParser):
 
     def _repair_position_sequence(self, members: list[DonationMember]) -> None:
         readings = [
-            (i, m.leaderboard_position)
+            (i, m.leaderboard_position, m.row_index)
             for i, m in enumerate(members)
-            if m.leaderboard_position is not None
+            if m.leaderboard_position is not None and m.row_index is not None
         ]
         if not readings:
             return
 
         def support(offset: int) -> int:
             count = 0
-            for index, position in readings:
-                expected = offset + index
+            for _, position, row_index in readings:
+                expected = offset + row_index
                 if expected == position:
                     count += 1
                 elif expected >= 0 and str(expected).endswith(str(position)):
                     count += 1
             return count
 
-        candidate_offsets = sorted({position - index for index, position in readings})
+        candidate_offsets = sorted({position - row_index for _, position, row_index in readings})
         best_offset = max(candidate_offsets, key=support)
         best_support = support(best_offset)
 
         if best_support / len(readings) >= self._POSITION_REPAIR_MIN_SUPPORT_RATIO:
-            for i, member in enumerate(members):
-                member.leaderboard_position = best_offset + i
+            for member in members:
+                if member.row_index is not None:
+                    member.leaderboard_position = best_offset + member.row_index
             logger.info(
                 "donation positions repaired via offset=%d (support %d/%d)",
                 best_offset,
@@ -449,7 +461,7 @@ class ContributionRankingV1Parser(BaseParser):
             best_support,
         )
         last_valid: int | None = None
-        for index, position in readings:
+        for index, position, _ in readings:
             if last_valid is not None and position <= last_valid:
                 members[index].leaderboard_position = None
             else:
@@ -690,6 +702,7 @@ class ContributionRankingV1Parser(BaseParser):
             trace=trace,
             row_y=y,
             row_h=row_h,
+            row_index=row_index,
         )
 
     # ── R-badge detection (R1..R5) ───────────────────────────────────────────
