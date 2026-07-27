@@ -308,24 +308,44 @@ function needsReview(confidence: number): boolean {
   return confidence >= 0 && confidence < 0.5;
 }
 
-/** True si une capture (file_hash, alliance_id) a déjà été enregistrée. */
-async function findExistingUpload(fileHash: string, allianceId: string): Promise<boolean> {
+// The only processing_status meaning "genuine data already written for this
+// (file_hash, alliance_id), do not touch again". Every other value —
+// 'pending' (crashed mid-processing, e.g. a container OOM-kill), 'failed',
+// 'unknown_event', or the unused 'duplicate' — represents an attempt that
+// never produced data, so a retry (via /reprocess, /reprocess-channel, or a
+// natural re-post) must be allowed to proceed rather than being permanently
+// blocked by the row's mere existence.
+const UPLOAD_ALREADY_PROCESSED = 'processed';
+
+type ExistingUpload = { id: string; processingStatus: string };
+
+/** Ligne at_screenshot_uploads existante pour (file_hash, alliance_id), le cas échéant. */
+async function findExistingUpload(
+  fileHash: string,
+  allianceId: string,
+): Promise<ExistingUpload | null> {
   const { data } = await supabase
     .from('at_screenshot_uploads')
-    .select('id')
+    .select('id, processing_status')
     .eq('file_hash', fileHash)
     .eq('alliance_id', allianceId)
     .maybeSingle();
-  return data != null;
+  if (data == null) return null;
+  const row = data as { id: string; processing_status: string };
+  return { id: row.id, processingStatus: row.processing_status };
 }
 
 type InsertUploadOutcome = { status: 'inserted'; uploadId: string } | { status: 'duplicate' };
 
 /**
- * Insère la ligne at_screenshot_uploads. Une violation de la contrainte
- * unique (file_hash, alliance_id) — insertion concurrente entre le check et
- * l'insert — est traduite en { status: 'duplicate' } au lieu d'une erreur
- * brute (Postgres 23505).
+ * Écrit la ligne at_screenshot_uploads. Si `existingId` est fourni (un essai
+ * précédent non terminal — voir UPLOAD_ALREADY_PROCESSED — pour ce même
+ * (file_hash, alliance_id)), la ligne existante est réinitialisée en place
+ * via UPDATE plutôt qu'un second INSERT, qui violerait la contrainte unique.
+ * Sans `existingId`, une violation de cette contrainte (insertion concurrente
+ * entre le check et l'insert — deux captures identiques traitées en même
+ * temps) est traduite en { status: 'duplicate' } au lieu d'une erreur brute
+ * (Postgres 23505).
  */
 async function insertUploadRecord(params: {
   messageId: string;
@@ -336,7 +356,24 @@ async function insertUploadRecord(params: {
   processingStatus?: string;
   errorMessage?: string;
   processedAt?: string;
+  existingId?: string;
 }): Promise<InsertUploadOutcome> {
+  if (params.existingId !== undefined) {
+    const { error } = await supabase
+      .from('at_screenshot_uploads')
+      .update({
+        discord_message_id: params.messageId,
+        discord_user_id: params.userId,
+        file_path: params.filePath,
+        processing_status: params.processingStatus ?? 'pending',
+        error_message: params.errorMessage ?? null,
+        processed_at: params.processedAt ?? null,
+      })
+      .eq('id', params.existingId);
+    if (error) throw new Error(`Failed to reset screenshot upload: ${error.message}`);
+    return { status: 'inserted', uploadId: params.existingId };
+  }
+
   const { data: upload, error: uploadError } = await supabase
     .from('at_screenshot_uploads')
     .insert({
@@ -378,14 +415,24 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
     return { status: 'missing_datetime' };
   }
 
-  // 1. Dedup check: (file_hash, alliance_id) unique constraint
-  if (await findExistingUpload(fileHash, allianceId)) {
+  // 1. Dedup check: (file_hash, alliance_id) unique constraint. Only a
+  // genuinely processed upload blocks a retry — see UPLOAD_ALREADY_PROCESSED.
+  const existingUpload = await findExistingUpload(fileHash, allianceId);
+  if (existingUpload?.processingStatus === UPLOAD_ALREADY_PROCESSED) {
     logger.info({ fileHash, allianceId }, 'Duplicate upload, skipping');
     return { status: 'duplicate' };
   }
 
-  // Insert screenshot_uploads record (pending, updated at the end)
-  const inserted = await insertUploadRecord({ messageId, userId, allianceId, filePath, fileHash });
+  // Insert screenshot_uploads record (pending, updated at the end), reusing
+  // a previous non-terminal attempt's row (if any) instead of a fresh insert.
+  const inserted = await insertUploadRecord({
+    messageId,
+    userId,
+    allianceId,
+    filePath,
+    fileHash,
+    existingId: existingUpload?.id,
+  });
   if (inserted.status === 'duplicate') return { status: 'duplicate' };
   const uploadId = inserted.uploadId;
 
@@ -652,7 +699,10 @@ export async function recordUploadError(params: {
 }): Promise<void> {
   const { messageId, userId, allianceId, fileHash, filePath, status, errorMessage } = params;
 
-  if (await findExistingUpload(fileHash, allianceId)) return;
+  // Never clobber a genuinely processed upload; do refresh a stale
+  // pending/failed/unknown_event row instead of silently no-op'ing forever.
+  const existingUpload = await findExistingUpload(fileHash, allianceId);
+  if (existingUpload?.processingStatus === UPLOAD_ALREADY_PROCESSED) return;
 
   try {
     await insertUploadRecord({
@@ -664,6 +714,7 @@ export async function recordUploadError(params: {
       processingStatus: status,
       errorMessage,
       processedAt: new Date().toISOString(),
+      existingId: existingUpload?.id,
     });
   } catch (err) {
     // Best-effort : l'enregistrement de l'échec ne doit pas masquer l'erreur
@@ -687,8 +738,9 @@ export async function upsertDonationResult(
 ): Promise<DonationUpsertResult> {
   const { messageId, userId, allianceId, fileHash, filePath, messageCreatedAt, ocr } = params;
 
-  // 1. Dedup check
-  if (await findExistingUpload(fileHash, allianceId)) {
+  // 1. Dedup check — only a genuinely processed upload blocks a retry.
+  const existingUpload = await findExistingUpload(fileHash, allianceId);
+  if (existingUpload?.processingStatus === UPLOAD_ALREADY_PROCESSED) {
     logger.info({ fileHash, allianceId }, 'Duplicate donation upload, skipping');
     return { status: 'duplicate' };
   }
@@ -721,8 +773,16 @@ export async function upsertDonationResult(
     return { status: 'no_members' };
   }
 
-  // Insert upload record (pending)
-  const inserted = await insertUploadRecord({ messageId, userId, allianceId, filePath, fileHash });
+  // Insert upload record (pending), reusing a previous non-terminal
+  // attempt's row (if any) instead of a fresh insert.
+  const inserted = await insertUploadRecord({
+    messageId,
+    userId,
+    allianceId,
+    filePath,
+    fileHash,
+    existingId: existingUpload?.id,
+  });
   if (inserted.status === 'duplicate') return { status: 'duplicate' };
   const uploadId = inserted.uploadId;
 
@@ -953,8 +1013,10 @@ export async function upsertPlayerStatsResult(
 ): Promise<PlayerStatsUpsertResult> {
   const { messageId, userId, allianceId, fileHash, filePath, messageCreatedAt, ocr } = params;
 
-  // 1. Dedup check: (file_hash, alliance_id) unique constraint
-  if (await findExistingUpload(fileHash, allianceId)) {
+  // 1. Dedup check: (file_hash, alliance_id) unique constraint. Only a
+  // genuinely processed upload blocks a retry.
+  const existingUpload = await findExistingUpload(fileHash, allianceId);
+  if (existingUpload?.processingStatus === UPLOAD_ALREADY_PROCESSED) {
     logger.info({ fileHash, allianceId }, 'Duplicate player stats upload, skipping');
     return { status: 'duplicate' };
   }
@@ -964,8 +1026,16 @@ export async function upsertPlayerStatsResult(
     return { status: 'no_members' };
   }
 
-  // Insert upload record (pending)
-  const inserted = await insertUploadRecord({ messageId, userId, allianceId, filePath, fileHash });
+  // Insert upload record (pending), reusing a previous non-terminal attempt's
+  // row (if any) instead of a fresh insert.
+  const inserted = await insertUploadRecord({
+    messageId,
+    userId,
+    allianceId,
+    filePath,
+    fileHash,
+    existingId: existingUpload?.id,
+  });
   if (inserted.status === 'duplicate') return { status: 'duplicate' };
   const uploadId = inserted.uploadId;
 
