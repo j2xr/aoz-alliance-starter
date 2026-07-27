@@ -53,6 +53,14 @@ export const messages = {
     '(plusieurs lignes illisibles à la suite). Des joueurs pourraient manquer : ' +
     'vérifiez le classement complet.',
 
+  // Distinct from possibleTruncation above: that one is advisory (a warning
+  // next to an otherwise-successful embed); this one is a hard rejection —
+  // too little of the capture was read to trust as real data (e.g. 1 of 12
+  // visible members), so nothing was written to the database at all.
+  possibleTruncationRejected: (filename: string, memberCount: number, expectedRows: number): string =>
+    `❌ **${filename}** — lecture trop incomplète (${memberCount}/${expectedRows} lignes lues) : ` +
+    'capture rejetée, rien enregistré. Recadrez la capture (liste complète visible) et renvoyez-la.',
+
   correctionReverted: (filename: string, count: number): string =>
     `⚠️ **${filename}** — ${count} correction${count > 1 ? 's' : ''} manuelle${count > 1 ? 's' : ''} ` +
     `(\`/correct\`) écrasée${count > 1 ? 's' : ''} par cette capture. Historique conservé dans ` +

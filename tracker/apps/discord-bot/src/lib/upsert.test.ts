@@ -182,6 +182,29 @@ describe('upsertEventResult', () => {
     expect(result).toEqual({ status: 'unknown_event', eventType: 'polar_invasion' });
   });
 
+  it('rejects a severely truncated capture instead of writing partial data (event)', async () => {
+    // Same guard as upsertDonationResult's — see the audit case: 1 of 12
+    // visible members read, possible_truncation=true, well under 50%.
+    queueFrom(null); // at_screenshot_uploads dedup: clear
+
+    const result = await upsertEventResult({
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        possible_truncation: true,
+        expected_rows: 12,
+        members: [{ name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.95 }],
+      },
+    });
+
+    expect(result).toEqual({
+      status: 'possible_truncation_rejected',
+      memberCount: 1,
+      expectedRows: 12,
+    });
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+  });
+
   it('returns processed result and calls at_participations upsert on happy path', async () => {
     queueFrom(null);               // at_screenshot_uploads dedup: clear
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
@@ -667,6 +690,72 @@ describe('upsertDonationResult', () => {
       }),
       'Donation OCR returned no members',
     );
+  });
+
+  it('rejects a severely truncated capture instead of writing partial data (donation)', async () => {
+    // Audit case: 1 of 12 visible members read — possible_truncation=true and
+    // well under the 50% ratio threshold. Must reject like no_members/
+    // unsupported_period_type above (no DB writes), not silently insert a
+    // partial "success".
+    queueFrom(null); // dedup: clear (this check happens after dedup)
+
+    const result = await upsertDonationResult({
+      ...BASE_DONATION_PARAMS,
+      ocr: {
+        ...BASE_DONATION_PARAMS.ocr,
+        possible_truncation: true,
+        expected_rows: 12,
+        members: [
+          { name: 'Alpha', alliance_tag: 'SOD', rank: 'R5', alliance_honor: 5_000, confidence: 0.95 },
+        ],
+      },
+    });
+
+    expect(result).toEqual({
+      status: 'possible_truncation_rejected',
+      memberCount: 1,
+      expectedRows: 12,
+    });
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ memberCount: 1, expectedRows: 12 }),
+      'Truncated capture rejected: read ratio below threshold',
+    );
+  });
+
+  it('does not reject a capture at/above the truncation ratio threshold', async () => {
+    // 9 of 12 rows read (0.75) — possible_truncation=true but not severe
+    // enough to reject; falls through to the normal upsert path unaffected.
+    const nineMembers = Array.from({ length: 9 }, (_, i) => ({
+      name: `Member${i}`,
+      alliance_tag: null,
+      rank: 'R5',
+      alliance_honor: 5_000 - i * 10,
+      confidence: 0.95,
+    }));
+    queueFrom(null);               // at_screenshot_uploads dedup: clear
+    queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]);                 // at_player_aliases: no aliases
+    queueFrom([]);                 // roster fetch for fuzzy name resolution: empty
+    queueFrom(nineMembers.map((m, i) => ({ id: `p${i}`, name: m.name }))); // at_players upsert
+    queueFrom([]);  // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
+    queueFrom(null); // at_donations upsert
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const result = await upsertDonationResult({
+      ...BASE_DONATION_PARAMS,
+      ocr: {
+        ...BASE_DONATION_PARAMS.ocr,
+        possible_truncation: true,
+        expected_rows: 12,
+        members: nineMembers,
+      },
+    });
+
+    expect(result).toMatchObject({ status: 'processed', periodId: 'period-1' });
   });
 
   it('returns processed result on happy path', async () => {
