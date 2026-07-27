@@ -1,11 +1,13 @@
+import time
 from unittest.mock import patch
 
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
 
+import app.main as main_module
 from app.dispatcher import UnknownEventError
-from app.main import app
+from app.main import _set_job, _sweep_stale_pending_jobs, app
 from app.parsers.base import MemberResult, ParseResult
 
 
@@ -137,6 +139,43 @@ def test_extract_internal_error_surfaces_via_job() -> None:
     assert body["status"] == "error"
     assert body["error"] == "internal_error"
     assert "boom" in body["detail"]
+
+
+def test_watchdog_errors_out_stale_pending_job() -> None:
+    """A job stuck in 'pending' forever (worker thread hung, never calls
+    _set_job) must not leave the bot polling indefinitely: once
+    JOB_TIMEOUT_SECONDS has elapsed, the watchdog sweep force-errors it so
+    the next poll sees an explicit failure instead of an eternal pending
+    state (the bug this regression-tests: a job that never completed after
+    6+ minutes of polling)."""
+    with TestClient(app) as client:
+        assert client.portal is not None
+        with patch.object(main_module, "_JOB_TIMEOUT_SECONDS", 0.01):
+            client.portal.call(_set_job, "stale-job", "pending")
+            time.sleep(0.05)
+            client.portal.call(_sweep_stale_pending_jobs)
+
+        poll = client.get("/jobs/stale-job")
+
+    assert poll.status_code == 200
+    body = poll.json()
+    assert body["status"] == "error"
+    assert body["error"] == "timeout"
+
+
+def test_watchdog_leaves_fresh_pending_job_alone() -> None:
+    """A job still within its JOB_TIMEOUT_SECONDS budget must not be
+    force-errored by the sweep — only genuinely stale jobs are affected."""
+    with TestClient(app) as client:
+        assert client.portal is not None
+        with patch.object(main_module, "_JOB_TIMEOUT_SECONDS", 3600.0):
+            client.portal.call(_set_job, "fresh-job", "pending")
+            client.portal.call(_sweep_stale_pending_jobs)
+
+        poll = client.get("/jobs/fresh-job")
+
+    assert poll.status_code == 200
+    assert poll.json()["status"] == "pending"
 
 
 def test_get_job_terminal_state_survives_repeat_reads() -> None:

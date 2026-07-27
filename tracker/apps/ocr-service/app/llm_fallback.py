@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import threading
 import time
 from typing import Any
 
@@ -12,6 +13,17 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "http://localhost:11434"
+# Ollama has only one active vision-inference slot by default; under
+# reprocess-channel's concurrent jobs, multiple worker threads can call
+# _call_ollama at once. Gating them here — around the HTTP call only, not the
+# whole retry loop — means a request's httpx timeout clock starts once it
+# actually begins executing, not while it's queued behind this semaphore. That
+# fixes the failure mode where queued time ate into the timeout budget and
+# every concurrent request expired before Ollama got to it. Raise via
+# OLLAMA_MAX_CONCURRENT_REQUESTS only alongside a matching increase of
+# OLLAMA_NUM_PARALLEL on the Ollama server itself (outside this repo).
+_OLLAMA_MAX_CONCURRENT_REQUESTS = int(os.getenv("OLLAMA_MAX_CONCURRENT_REQUESTS", "1"))
+_ollama_semaphore = threading.Semaphore(_OLLAMA_MAX_CONCURRENT_REQUESTS)
 _DEFAULT_MODEL = "moondream"
 # CPU-only Ollama hosts running a small vision model can take well over a minute
 # per row. Default to 5 minutes; override via OLLAMA_TIMEOUT_SECONDS.
@@ -203,14 +215,15 @@ def _call_ollama(
         len(encoded_image),
     )
 
-    t0 = time.monotonic()
-    response = httpx.post(
-        f"{base_url}/api/generate",
-        json=payload,
-        headers=headers,
-        timeout=timeout_seconds,
-    )
-    elapsed = time.monotonic() - t0
+    with _ollama_semaphore:
+        t0 = time.monotonic()
+        response = httpx.post(
+            f"{base_url}/api/generate",
+            json=payload,
+            headers=headers,
+            timeout=timeout_seconds,
+        )
+        elapsed = time.monotonic() - t0
     response.raise_for_status()
 
     body: dict[str, Any] = response.json()
