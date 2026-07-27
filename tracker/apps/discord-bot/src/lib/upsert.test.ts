@@ -439,6 +439,18 @@ describe('upsertDonationResult', () => {
 
     expect(result).toEqual({ status: 'unsupported_period_type', periodType: 'daily' });
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+    // This warn line is currently the ONLY persistent trace of a rejected
+    // donation capture (no at_screenshot_uploads row is written) — it must
+    // carry enough context to identify which capture was rejected on its own.
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        periodType: 'daily',
+        allianceId: BASE_DONATION_PARAMS.allianceId,
+        fileHash: BASE_DONATION_PARAMS.fileHash,
+        filePath: BASE_DONATION_PARAMS.filePath,
+      }),
+      'Unsupported donation period type',
+    );
   });
 
   it('returns unsupported_period_type for unknown periods (unreadable tab band, no DB writes)', async () => {
@@ -454,6 +466,37 @@ describe('upsertDonationResult', () => {
 
     expect(result).toEqual({ status: 'unsupported_period_type', periodType: 'unknown' });
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        periodType: 'unknown',
+        fileHash: BASE_DONATION_PARAMS.fileHash,
+        filePath: BASE_DONATION_PARAMS.filePath,
+      }),
+      'Unsupported donation period type',
+    );
+  });
+
+  it('returns no_members when the capture parsed to zero members (no DB writes)', async () => {
+    // Same silent-rejection class as unsupported_period_type above — the
+    // guard also fires before insertUploadRecord, so this warn line is the
+    // only trace and must carry enough context to identify the capture.
+    queueFrom(null); // dedup: clear (this check happens after dedup)
+
+    const result = await upsertDonationResult({
+      ...BASE_DONATION_PARAMS,
+      ocr: { ...BASE_DONATION_PARAMS.ocr, members: [] },
+    });
+
+    expect(result).toEqual({ status: 'no_members' });
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: BASE_DONATION_PARAMS.messageId,
+        allianceId: BASE_DONATION_PARAMS.allianceId,
+        filePath: BASE_DONATION_PARAMS.filePath,
+      }),
+      'Donation OCR returned no members',
+    );
   });
 
   it('returns processed result on happy path', async () => {
