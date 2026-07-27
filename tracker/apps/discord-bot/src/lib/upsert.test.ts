@@ -479,6 +479,81 @@ describe('upsertEventResult', () => {
     const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
     expect(aliasCalls).toHaveLength(1); // le seul appel est le lookup exact, pas un insert
   });
+
+  it('warns (but still creates the player) when findFuzzyMatch misses a homoglyph near-duplicate', async () => {
+    // findFuzzyMatch is raw Levenshtein with no confusable fold, so a
+    // Cyrillic/Latin homoglyph pair (real confirmed duplicate, see
+    // duplicate-scan.test.ts's validation table) scores 'none' there — this
+    // reuses compareNames (duplicate-scan.ts, the same signal /find-duplicates
+    // surfaces) to still flag it for a human, without ever auto-redirecting.
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
+    queueFrom({ id: 'event-1' });
+    queueFrom([]); // at_player_aliases: no exact alias
+    queueFrom([{ id: 'p-existing', name: 'ZAIBYXMARKHOR' }]); // roster fetch
+    queueFrom([{ id: 'p-new', name: 'ГАШВУХMARKHOR' }]); // at_players upsert: still a genuinely new player
+    queueFrom([]);   // at_alliance_memberships select
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch (correction-reversal check): none
+    queueFrom(null); // at_participations upsert
+    queueFrom(null); // at_screenshot_uploads update
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: 'ГАШВУХMARKHOR', rank: 'R2', power: 700_000, points: 10_000, confidence: 0.6 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ rawName: 'ГАШВУХMARKHOR', existingName: 'ZAIBYXMARKHOR' }),
+      expect.stringContaining('/find-duplicates'),
+    );
+
+    // No alias created — this is a warning only, never an automatic redirect.
+    const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
+    expect(aliasCalls).toHaveLength(1); // the only call is the exact-alias lookup, not an insert
+  });
+
+  it('does not warn when no roster entry resembles the new name', async () => {
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
+    queueFrom({ id: 'event-1' });
+    queueFrom([]); // at_player_aliases: no exact alias
+    queueFrom([{ id: 'p-existing', name: 'CompletelyUnrelated' }]); // roster fetch
+    queueFrom([{ id: 'p-new', name: 'Zephyrion' }]); // at_players upsert: genuinely new player
+    queueFrom([]);
+    queueFrom(null);
+    queueFrom([]);
+    queueFrom(null);
+    queueFrom(null);
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: 'Zephyrion', rank: 'R2', power: 700_000, points: 10_000, confidence: 0.6 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('/find-duplicates'),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

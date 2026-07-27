@@ -7,6 +7,7 @@ import type {
 import { supabase } from './supabase.js';
 import { isoWeekStartParis } from './period.js';
 import { findFuzzyMatch, type RosterPlayer } from './name-resolve.js';
+import { compareNames, type NameComparison } from './duplicate-scan.js';
 import logger from '../logger.js';
 
 export type ProcessedUpsertResult = {
@@ -81,6 +82,33 @@ async function fetchCorrectedFieldKeys(
   return new Set(
     ((data ?? []) as { target_id: string; field: string }[]).map((r) => `${r.target_id}:${r.field}`),
   );
+}
+
+// findFuzzyMatch (name-resolve.ts) is deliberately tight (raw Levenshtein
+// distance <= 1, no homoglyph fold) because it acts automatically. When it
+// finds nothing, this reuses compareNames — the same broader, human-reviewed
+// -only signal /find-duplicates surfaces — to catch what the tight gate
+// misses (e.g. Cyrillic/Latin homoglyphs) and log a warning instead of
+// silently creating a new at_players row. Never redirects anything itself.
+const NEAR_DUPLICATE_PROXIMITIES: ReadonlySet<NameComparison['proximity']> = new Set([
+  'exact-key',
+  'strong',
+  'weak',
+]);
+
+function findNearDuplicateInRoster(
+  rawName: string,
+  roster: RosterPlayer[],
+): { player: RosterPlayer; comparison: NameComparison } | null {
+  let best: { player: RosterPlayer; comparison: NameComparison } | null = null;
+  for (const player of roster) {
+    const comparison = compareNames(rawName, player.name);
+    if (!NEAR_DUPLICATE_PROXIMITIES.has(comparison.proximity)) continue;
+    if (!best || comparison.similarity > best.comparison.similarity) {
+      best = { player, comparison };
+    }
+  }
+  return best;
 }
 
 /**
@@ -184,6 +212,19 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
           { rawName: m.name, candidates: match.candidates.map((c) => c.name) },
           'Ambiguous OCR name match against existing roster, creating a new player instead of guessing',
         );
+      } else {
+        const near = findNearDuplicateInRoster(m.name, roster);
+        if (near) {
+          logger.warn(
+            {
+              rawName: m.name,
+              existingName: near.player.name,
+              similarity: Number(near.comparison.similarity.toFixed(2)),
+              reason: near.comparison.reason,
+            },
+            'New player name resembles an existing roster entry — check /find-duplicates before trusting this as a genuinely new player',
+          );
+        }
       }
     }
 
