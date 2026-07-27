@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { upsertEventResult, upsertDonationResult, recordUploadError } from './upsert.js';
+import {
+  upsertEventResult,
+  upsertDonationResult,
+  upsertPlayerStatsResult,
+  recordUploadError,
+} from './upsert.js';
 import { supabase } from './supabase.js';
 import logger from '../logger.js';
 
@@ -86,6 +91,29 @@ const BASE_DONATION_PARAMS = {
   },
 };
 
+const BASE_PLAYER_STATS_PARAMS = {
+  messageId: 'msg-3',
+  userId: 'user-1',
+  allianceId: 'alliance-1',
+  fileHash: 'hash-ghi',
+  filePath: '/data/inbox/msg-3/stats.png',
+  messageCreatedAt: new Date('2026-05-21T10:00:00Z'),
+  ocr: {
+    kind: 'player_stats' as const,
+    members: [
+      {
+        name: 'Alpha',
+        attack_pct: 95,
+        attack_kind: 'lra' as const,
+        hp_pct: 90,
+        defense_pct: 80,
+        confidence: 1,
+        raw_lines: 'Alpha 95% 90% 80%',
+      },
+    ],
+  },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -95,15 +123,53 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('upsertEventResult', () => {
-  it('returns duplicate when the file hash already exists', async () => {
-    // dedup check finds an existing upload → early return
-    queueFrom({ id: 'existing-upload' });
+  it('returns duplicate when the file hash was already fully processed', async () => {
+    // dedup check finds an existing, fully processed upload → early return
+    queueFrom({ id: 'existing-upload', processing_status: 'processed' });
 
     const result = await upsertEventResult(BASE_EVENT_PARAMS);
 
     expect(result).toEqual({ status: 'duplicate' });
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['pending', 'failed', 'unknown_event'] as const)(
+    // A row that never reached 'processed' (crashed mid-run, a prior OCR
+    // error, ...) must not permanently block retrying the exact same file —
+    // this reuses the row via UPDATE instead of reporting 'duplicate'.
+    'retries in place instead of reporting duplicate when the existing upload is %s',
+    async (processingStatus) => {
+      queueFrom({ id: 'existing-upload', processing_status: processingStatus }); // dedup: non-terminal
+      const updateChain = mkChain(null);
+      vi.mocked(supabase.from).mockReturnValueOnce(
+        updateChain as unknown as ReturnType<SupabaseFrom>,
+      );
+      queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
+      queueFrom({ id: 'event-1' }); // at_events upsert
+      queueFrom([]); // at_player_aliases: no aliases
+      queueFrom([]); // roster fetch for fuzzy name resolution: empty
+      queueFrom([
+        { id: 'p1', name: 'Alpha' },
+        { id: 'p2', name: 'Beta' },
+        { id: 'p3', name: 'Gamma' },
+      ]); // at_players upsert
+      queueFrom([]); // at_alliance_memberships select: none existing
+      queueFrom(null); // at_alliance_memberships upsert
+      queueFrom([]); // existing at_participations fetch (correction-reversal check): none
+      queueFrom(null); // at_participations upsert
+      queueFrom(null); // at_screenshot_uploads update → processed
+
+      const result = await upsertEventResult(BASE_EVENT_PARAMS);
+
+      expect(result).toMatchObject({ status: 'processed', eventId: 'event-1' });
+      // Reused the existing row via UPDATE, never a second INSERT.
+      expect(updateChain['update']).toHaveBeenCalledWith(
+        expect.objectContaining({ processing_status: 'pending', error_message: null }),
+      );
+      expect(updateChain['eq']).toHaveBeenCalledWith('id', 'existing-upload');
+      expect(updateChain['insert']).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns unknown_event when OCR event type is not in at_event_types', async () => {
     queueFrom(null);               // at_screenshot_uploads dedup: not found
@@ -420,13 +486,42 @@ describe('upsertEventResult', () => {
 // ---------------------------------------------------------------------------
 
 describe('upsertDonationResult', () => {
-  it('returns duplicate when the file hash already exists', async () => {
-    queueFrom({ id: 'existing-upload' });
+  it('returns duplicate when the file hash was already fully processed', async () => {
+    queueFrom({ id: 'existing-upload', processing_status: 'processed' });
 
     const result = await upsertDonationResult(BASE_DONATION_PARAMS);
 
     expect(result).toEqual({ status: 'duplicate' });
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries in place instead of reporting duplicate when a previous attempt never finished', async () => {
+    // e.g. a prior 'unsupported_period_type'/'no_members' rejection never
+    // wrote a row at all, but a genuine mid-processing crash could leave
+    // 'pending' — must not permanently block a retry of the same file.
+    queueFrom({ id: 'existing-upload', processing_status: 'pending' }); // dedup: non-terminal
+    const updateChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      updateChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom({ id: 'period-1' }); // at_donation_periods upsert
+    queueFrom([]); // at_player_aliases: no aliases
+    queueFrom([]); // roster fetch for fuzzy name resolution: empty
+    queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
+    queueFrom([]); // at_alliance_memberships select: none existing
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_donations fetch (correction-reversal check): none
+    queueFrom(null); // at_donations upsert
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const result = await upsertDonationResult(BASE_DONATION_PARAMS);
+
+    expect(result).toMatchObject({ status: 'processed', periodId: 'period-1' });
+    expect(updateChain['update']).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'pending', error_message: null }),
+    );
+    expect(updateChain['eq']).toHaveBeenCalledWith('id', 'existing-upload');
+    expect(updateChain['insert']).not.toHaveBeenCalled();
   });
 
   it('returns unsupported_period_type for daily periods (only weekly is supported in V1)', async () => {
@@ -744,6 +839,45 @@ describe('upsertDonationResult', () => {
 });
 
 // ---------------------------------------------------------------------------
+// upsertPlayerStatsResult — dedup gate only (see upsertEventResult /
+// upsertDonationResult above for the same fix; this function shares the
+// exact same findExistingUpload/insertUploadRecord call pattern).
+// ---------------------------------------------------------------------------
+
+describe('upsertPlayerStatsResult', () => {
+  it('returns duplicate when the file hash was already fully processed', async () => {
+    queueFrom({ id: 'existing-upload', processing_status: 'processed' });
+
+    const result = await upsertPlayerStatsResult(BASE_PLAYER_STATS_PARAMS);
+
+    expect(result).toEqual({ status: 'duplicate' });
+    expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries in place instead of reporting duplicate when a previous attempt never finished', async () => {
+    queueFrom({ id: 'existing-upload', processing_status: 'pending' }); // dedup: non-terminal
+    const updateChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      updateChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom([]); // at_player_aliases: no aliases
+    queueFrom([]); // roster fetch for fuzzy name resolution: empty
+    queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players lookup
+    queueFrom(null); // at_player_stats upsert
+    queueFrom(null); // at_screenshot_uploads update → processed
+
+    const result = await upsertPlayerStatsResult(BASE_PLAYER_STATS_PARAMS);
+
+    expect(result).toMatchObject({ status: 'processed', memberCount: 1 });
+    expect(updateChain['update']).toHaveBeenCalledWith(
+      expect.objectContaining({ processing_status: 'pending', error_message: null }),
+    );
+    expect(updateChain['eq']).toHaveBeenCalledWith('id', 'existing-upload');
+    expect(updateChain['insert']).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // recordUploadError
 // ---------------------------------------------------------------------------
 
@@ -758,8 +892,8 @@ describe('recordUploadError', () => {
     errorMessage: 'OCR parse error',
   };
 
-  it('does nothing when an upload record already exists for this hash', async () => {
-    queueFrom({ id: 'existing-upload' }); // maybeSingle finds existing
+  it('does nothing when the existing upload was already fully processed', async () => {
+    queueFrom({ id: 'existing-upload', processing_status: 'processed' }); // maybeSingle finds existing
 
     await recordUploadError(BASE_ERROR_PARAMS);
 
@@ -776,4 +910,29 @@ describe('recordUploadError', () => {
     // Second call must be to the uploads table for the insert
     expect(vi.mocked(supabase.from).mock.calls[1]?.[0]).toBe('at_screenshot_uploads');
   });
+
+  it.each(['pending', 'failed', 'unknown_event'] as const)(
+    // A previous non-terminal attempt must be refreshed in place (new
+    // error_message/status), not silently ignored forever — otherwise a
+    // repeated failure becomes invisible after the first occurrence.
+    'refreshes an existing %s upload in place instead of doing nothing',
+    async (processingStatus) => {
+      queueFrom({ id: 'existing-upload', processing_status: processingStatus }); // maybeSingle finds existing, non-terminal
+      const updateChain = mkChain(null);
+      vi.mocked(supabase.from).mockReturnValueOnce(
+        updateChain as unknown as ReturnType<SupabaseFrom>,
+      );
+
+      await recordUploadError(BASE_ERROR_PARAMS);
+
+      expect(updateChain['update']).toHaveBeenCalledWith(
+        expect.objectContaining({
+          processing_status: 'failed',
+          error_message: 'OCR parse error',
+        }),
+      );
+      expect(updateChain['eq']).toHaveBeenCalledWith('id', 'existing-upload');
+      expect(updateChain['insert']).not.toHaveBeenCalled();
+    },
+  );
 });
