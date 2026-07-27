@@ -14,7 +14,12 @@ import numpy as np
 import pytest
 
 import app.extract as extract
-from app.extract import _apply_llm_fallback, _apply_llm_fallback_player_stats, _rewrite_name
+from app.extract import (
+    _apply_llm_fallback,
+    _apply_llm_fallback_player_stats,
+    _physical_row,
+    _rewrite_name,
+)
 from app.parsers.base import (
     DonationMember,
     DonationParseResult,
@@ -182,7 +187,11 @@ def test_donation_none_name_keeps_ocr_result() -> None:
 
 
 def _suspect_donor(
-    *, alliance_honor: int, window: tuple[int, int], confidence: float = 0.0
+    *,
+    alliance_honor: int,
+    window: tuple[int, int],
+    confidence: float = 0.0,
+    row_index: int | None = None,
 ) -> DonationMember:
     return DonationMember(
         name="OcrName",
@@ -191,6 +200,7 @@ def _suspect_donor(
         alliance_honor=alliance_honor,
         confidence=confidence,
         suspect_honor_window=window,
+        row_index=row_index,
     )
 
 
@@ -344,6 +354,82 @@ def test_logs_warning_when_still_non_monotone_after_llm_replacement(
     assert out.members[1].alliance_honor == 900
     assert out.members[1].alliance_honor > out.members[0].alliance_honor  # still broken
     assert any("still breaks monotonicity after LLM fallback" in r.message for r in caplog.records)
+
+
+# ── _physical_row: log messages report the true on-screen slot ─────────────────
+#
+# `i` (the member's index in `members`) drifts away from the row a human sees
+# in the screenshot as soon as an earlier row is dropped for being unreadable
+# or failing validation — the same class of bug _repair_position_sequence
+# already guards against for leaderboard_position (see its docstring).
+# _physical_row prefers DonationMember.row_index (the true physical slot,
+# assigned by the parser before any row is dropped) and only falls back to
+# the list index `i` when that isn't available (MemberResult/event rows,
+# which have no row_index concept at all).
+
+
+def test_physical_row_prefers_row_index_when_present() -> None:
+    donor = _suspect_donor(alliance_honor=100, window=(0, 200), row_index=7)
+    assert _physical_row(donor, i=2) == 7
+
+
+def test_physical_row_falls_back_to_list_index_when_row_index_is_none() -> None:
+    donor = _suspect_donor(alliance_honor=100, window=(0, 200), row_index=None)
+    assert _physical_row(donor, i=2) == 2
+
+
+def test_physical_row_uses_list_index_for_an_event_member() -> None:
+    """MemberResult (event rows) has no row_index field at all — untouched
+    by this change, exactly as before."""
+    member = _member("Alpha", conf=0.9)
+    assert _physical_row(member, i=3) == 3
+
+
+def test_llm_triggered_log_reports_the_physical_row(caplog: pytest.LogCaptureFixture) -> None:
+    """A suspect row dropped from an earlier position (row_index=5, but it's
+    the first/only element of `members` here, list index 0) must log its
+    true on-screen slot, not 0."""
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102), row_index=5)
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("OcrName", 2944)):
+        with caplog.at_level(logging.INFO):
+            _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert any(
+        "LLM fallback triggered" in r.message and "row 5" in r.message for r in caplog.records
+    )
+    assert not any("row 0)" in r.message for r in caplog.records)
+
+
+def test_llm_rejection_log_reports_the_physical_row(caplog: pytest.LogCaptureFixture) -> None:
+    donor = _suspect_donor(alliance_honor=9044, window=(0, 3102), row_index=5)
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with patch("app.llm_fallback.llm_fallback_donation", return_value=("SomeoneElse", 5000)):
+        with caplog.at_level(logging.WARNING):
+            _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert any("suspect-honor row 5" in r.message for r in caplog.records)
+
+
+def test_post_llm_monotonicity_warning_reports_the_physical_row(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Same scenario as test_logs_warning_when_still_non_monotone_after_llm_
+    replacement above, but with row_index values that differ from the list
+    indices (row 2 was dropped upstream) — the physical slot must appear in
+    the log, not the post-drop list position."""
+    row0 = _suspect_donor(alliance_honor=1000, window=(500, 2000), row_index=0)
+    row1 = _suspect_donor(alliance_honor=1500, window=(0, 1000), row_index=3)
+    result = DonationParseResult(period_type="weekly", members=[row0, row1])
+    with patch(
+        "app.llm_fallback.llm_fallback_donation",
+        side_effect=[("OcrName", 600), ("OcrName", 900)],
+    ):
+        with caplog.at_level(logging.WARNING):
+            _apply_llm_fallback(_IMG, result, _StubParser())
+
+    assert any("donation row 3:" in r.message for r in caplog.records)
+    assert not any("donation row 1:" in r.message for r in caplog.records)
 
 
 # ── _apply_llm_fallback: circuit breaker ───────────────────────────────────────
