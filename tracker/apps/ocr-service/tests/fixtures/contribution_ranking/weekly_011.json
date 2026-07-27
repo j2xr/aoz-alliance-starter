@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "kok",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3102
+    },
+    {
+      "name": "StoKaizer",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2944
+    },
+    {
+      "name": "Satana",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 2925
+    },
+    {
+      "name": "k.ch",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2878
+    },
+    {
+      "name": "Monsters",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2673
+    },
+    {
+      "name": "ÐÃŘĶ§ĮĐĒ•築",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 2613
+    },
+    {
+      "name": "Adaline",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2610
+    },
+    {
+      "name": "Devastador",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2570
+    },
+    {
+      "name": "Hambones",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2550
+    },
+    {
+      "name": "Copenhagen",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2471
+    },
+    {
+      "name": "moco",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2458
+    },
+    {
+      "name": "Somethin_kool",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 2385
+    }
+  ]
+}

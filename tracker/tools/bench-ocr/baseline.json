@@ -84,7 +84,7 @@
     },
     "weekly_003": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -102,7 +102,7 @@
     },
     "weekly_004": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -219,6 +219,24 @@
       },
       "name_exact": {
         "correct": 11,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_011": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
         "total": 12
       },
       "rank": {
