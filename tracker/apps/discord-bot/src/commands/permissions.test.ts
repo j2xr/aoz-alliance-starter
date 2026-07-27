@@ -25,7 +25,9 @@ vi.mock('../logger.js', () => ({
 // on an entire channel, membership/player-alias edit canonical player data,
 // setup-alliance creates a new at_alliances row, correct overwrites a
 // participation/donation score) and previously had no permission restriction
-// at all.
+// at all. find-duplicates is the one exception that writes nothing at all —
+// gated anyway, same bar as /merge, since it's the admin diagnostic tool that
+// feeds /merge decisions and isn't meant for regular members.
 const SENSITIVE_COMMANDS = [
   'merge',
   'upload',
@@ -34,6 +36,7 @@ const SENSITIVE_COMMANDS = [
   'player-alias',
   'setup-alliance',
   'correct',
+  'find-duplicates',
 ];
 
 describe('sensitive command permissions', () => {
