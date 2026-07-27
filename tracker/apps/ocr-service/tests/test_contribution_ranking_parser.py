@@ -1,6 +1,7 @@
 """Unit tests for the contribution_ranking_v1 (donation) parser and dispatcher."""
 
 import json
+import logging
 from math import ceil
 from pathlib import Path
 from typing import Any
@@ -1096,6 +1097,77 @@ def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
     mock_candidates.assert_not_called()
     assert members[1].alliance_honor == 9044
     assert members[1].suspect_honor_window == (0, 3173)
+
+
+# ── Honor monotonicity guard: log messages report the physical row ─────────────
+#
+# `i` (enumerate() index into `members`) drifts away from the row a human sees
+# in the screenshot as soon as an earlier row is dropped for being unreadable
+# or failing validation. row_index (assigned before any row is dropped, see
+# ContributionRankingV1Parser._parse_row / row_index's own field docstring)
+# tracks the true physical slot instead — these tests pin that the log lines
+# use it. This does NOT change the "row 11" signature: reaching list index 11
+# in a 12-slot layout requires all 12 rows to have survived, so row_index
+# always equals the list index there regardless.
+
+
+def test_monotonicity_log_reports_the_physical_row_not_the_list_index(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Physical row 2 was dropped upstream (unreadable/invalid), so the
+    survivor at list index 2 is actually physical row 3 — the log must say
+    so, not "row 2"."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0, row_index=0),
+        _donor(alliance_honor=2925, row_y=175, row_index=1),
+        _donor(alliance_honor=9044, row_y=525, row_index=3),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[]):
+        with caplog.at_level(logging.WARNING):
+            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert any("donation row 3:" in r.message for r in caplog.records)
+    assert not any("donation row 2:" in r.message for r in caplog.records)
+
+
+def test_monotonicity_corrected_log_reports_the_physical_row(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0, row_index=0),
+        _donor(alliance_honor=2925, row_y=175, row_index=1),
+        _donor(alliance_honor=9044, row_y=525, row_index=3),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[2878]):
+        with caplog.at_level(logging.INFO):
+            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert any(
+        "alliance_honor corrected" in r.message and "row 3:" in r.message for r in caplog.records
+    )
+
+
+def test_monotonicity_log_falls_back_to_list_index_when_row_index_is_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=3173, row_y=0, row_index=None),
+        _donor(alliance_honor=9044, row_y=175, row_index=None),
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[]):
+        with caplog.at_level(logging.WARNING):
+            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert any("donation row 1:" in r.message for r in caplog.records)
 
 
 def test_donation_member_suspect_honor_window_excluded_from_wire_payload() -> None:
