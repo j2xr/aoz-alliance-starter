@@ -862,6 +862,112 @@ def test_ocr_honor_skips_fallback_when_primary_already_succeeds() -> None:
     assert mock_string.call_count == 1
 
 
+# ── _ocr_honor_candidates: tall-crop fallback ────────────────────────────────
+#
+# _ocr_honor_candidates re-OCRs the honor cell when _enforce_honor_monotonicity
+# finds a violation, but until now it only ever re-tried the SAME tight band
+# _ocr_honor's first two attempts already read — never the taller fallback
+# crop _ocr_honor itself falls back to (see the tall-fallback section above).
+# On the one row where that tight band is known to starve Tesseract (row 11,
+# see docs/maintenance/2026-07-27-row11-honor-verification.md), the sweep
+# therefore re-read the same bad pixels six times and predictably found
+# nothing that fit the monotone window. These tests pin the fix: the tall
+# band joins the sweep as a strict, order-preserving addition.
+
+
+def test_ocr_honor_candidates_reaches_the_tall_band_when_the_tight_one_yields_nothing() -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        calls["n"] += 1
+        return "" if calls["n"] <= 6 else "2385"
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+
+    assert 2385 in candidates
+    assert calls["n"] == 12
+
+
+def test_ocr_honor_candidates_orders_tight_band_variants_first() -> None:
+    """Load-bearing: _enforce_honor_monotonicity takes the FIRST candidate
+    that fits its window, so a row where the tight band already produces a
+    fitting value must see that value before anything the tall band finds —
+    otherwise this change could silently alter an already-working row."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        calls["n"] += 1
+        return "2135" if calls["n"] <= 6 else "2385"
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+
+    assert candidates == [2135, 2385]
+
+
+def test_ocr_honor_candidates_skips_the_tall_band_at_the_image_bottom() -> None:
+    """Near the bottom of the image the taller slice clamps back to the same
+    height as the tight one — no new pixels, so no point re-reading them."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    with patch(_OCR_STRING, return_value="") as mock_string:
+        parser._ocr_honor_candidates(image, y=2270, scale=1.0)
+    assert mock_string.call_count == 6
+
+
+def test_ocr_honor_candidates_dedupes_a_tall_reading_that_repeats_a_tight_one() -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    with patch(_OCR_STRING, return_value="2135"):
+        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+    assert candidates == [2135]
+
+
+def test_ocr_honor_candidates_returns_empty_for_an_offscreen_row() -> None:
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    with patch(_OCR_STRING, return_value="2385") as mock_string:
+        candidates = parser._ocr_honor_candidates(image, y=3000, scale=1.0)
+    assert candidates == []
+    mock_string.assert_not_called()
+
+
+def test_enforce_honor_monotonicity_recovers_the_row11_case_via_the_tall_band() -> None:
+    """Integration: reproduces the real production pattern (see the SOD/Test
+    Alliance audit reports) — moco=2458, Somethin_kool misread as 92256 (the
+    documented leading-digit corruption), next row=2051. Only pytesseract is
+    mocked — _ocr_honor_candidates itself runs unmodified — so this proves
+    the tall band actually reaches _enforce_honor_monotonicity's correction
+    path, not just that the helper function returns the right list."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(name="moco", alliance_honor=2458, row_y=0),
+        _donor(name="Somethin_kool", alliance_honor=92256, row_y=175),
+        _donor(name="next", alliance_honor=2051, row_y=350),
+    ]
+    calls = {"n": 0}
+
+    def side_effect(*args: Any, **kwargs: Any) -> str:
+        calls["n"] += 1
+        return "92256" if calls["n"] <= 6 else "2385"
+
+    with patch(_OCR_STRING, side_effect=side_effect):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 2385
+    assert members[1].confidence == parser._MONOTONICITY_FIX_CONFIDENCE
+    # Must still be flagged suspect — this must not short-circuit the LLM
+    # fallback downstream (extract.py), which is what actually replaces the
+    # honor in production today (see the maintenance doc above).
+    assert members[1].suspect_honor_window == (2051, 2458)
+
+
 # ── Honor monotonicity guard ─────────────────────────────────────────────────────
 
 

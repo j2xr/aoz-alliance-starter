@@ -93,6 +93,34 @@ today (`parser_honor=92256`, not `2385`), `weekly_011.jpg` should **not** be pro
 yet — only after Part 2 ships and a rerun of `--mode parser` on
 `data/inbox/1527351181750440036/Screenshot_20260516_221949_Age_of_Origins.jpg` actually passes.
 
+## Update — Part 2 shipped, and it's better than "defense-in-depth"
+
+Rerunning `--mode parser` (no LLM) after adding the tall-crop fallback to `_ocr_honor_candidates`:
+**all 5 cases now pass at the parser level alone**, including both Test Alliance rows that were
+`fail` before:
+
+```
+Somethin_kool (92256->2385): parser pass/fail=2/0  (was 1/1)
+StoKaizer (9044->2944):      parser pass/fail=2/0  (was 1/1)
+Somethin_kool (955->255):    parser pass/fail=25/1 (was 24/2 — the 1 remaining fail is the
+                                                     unrelated KOR.morningstar coincidence, see above)
+ran (970->270):              parser pass/fail=2/0  (was 1/1)
+nuna (51325->5135):          parser pass/fail=2/0  (was 1/1)
+```
+
+So this isn't purely defense-in-depth after all — the tall crop genuinely recovers the correct
+value via OCR alone, with no LLM dependency, for every documented case. `tools/bench-ocr/bench.py`
+confirms no regression and a small unrelated improvement: **+2 correct `alliance_honor` points**
+(`weekly_003` and `weekly_004`, previously 11/12, now 12/12 — the same starved-crop failure mode,
+just not flagged by monotonicity in those fixtures).
+
+Per the fixture-promotion gate, `weekly_011.jpg` + `weekly_011.json` were added
+(`data/inbox/1527351181750440036/Screenshot_20260516_221949_Age_of_Origins.jpg`, the real
+Somethin_kool 92256→2385 capture) — `alliance_honor` 12/12, `rank` 12/12, `name` 11/12 (one
+tolerated MISMATCH: `Somethin_kool` → `Somethin kool`, underscore misread as space, similarity 0.92,
+well above the 0.70 gate). Baseline updated accordingly. The row-11 pattern is now permanently
+CI-gated for this specific case, not just verified once.
+
 ## Caveat, stated honestly
 
 `--mode full` calls a real (if local) vision model — not deterministic by construction. This run's
