@@ -17,6 +17,14 @@ export type OcrMember = {
 // NOT optional, since the field is always serialized, never omitted.
 export type PossibleTruncationFlag = {
   possible_truncation: boolean;
+  // Row slots that physically fit onscreen (the denominator possible_truncation
+  // was computed against) — null/absent for parsers that don't compute this
+  // geometry (e.g. player_stats). Lets a caller reject a severe loss (e.g. 1 of
+  // 12 rows read) instead of only seeing the boolean — see upsert.ts's
+  // truncation ratio guard. Optional here (like OcrDonationMember's
+  // leaderboard_position above) so existing object literals/fixtures don't
+  // need updating for a purely additive field — the wire payload always sends it.
+  expected_rows?: number | null;
 };
 
 export type OcrEventResult = {

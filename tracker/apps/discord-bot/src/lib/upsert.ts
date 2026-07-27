@@ -23,11 +23,22 @@ export type ProcessedUpsertResult = {
   reversedCorrectionsCount: number;
 };
 
+// A capture flagged possible_truncation whose read/expected ratio falls below
+// TRUNCATION_REJECT_RATIO — e.g. 1 of 12 visible rows read — is treated like
+// unsupported_period_type/no_members: rejected before any DB write rather than
+// silently inserted as a "success" with just an advisory warning line.
+export type TruncationRejectedResult = {
+  status: 'possible_truncation_rejected';
+  memberCount: number;
+  expectedRows: number;
+};
+
 export type UpsertResult =
   | ProcessedUpsertResult
   | { status: 'duplicate' }
   | { status: 'unknown_event'; eventType: string }
-  | { status: 'missing_datetime' };
+  | { status: 'missing_datetime' }
+  | TruncationRejectedResult;
 
 export type ProcessedDonationUpsertResult = {
   status: 'processed';
@@ -44,7 +55,27 @@ export type DonationUpsertResult =
   | ProcessedDonationUpsertResult
   | { status: 'duplicate' }
   | { status: 'unsupported_period_type'; periodType: string }
-  | { status: 'no_members' };
+  | { status: 'no_members' }
+  | TruncationRejectedResult;
+
+// Below this read/expected ratio, possible_truncation stops being "advisory"
+// (a warning next to an otherwise-successful embed) and becomes a rejection:
+// too much of the capture is missing to trust as a normal result. See the
+// audit case that motivated this: 1 of 12 visible members inserted silently.
+const TRUNCATION_REJECT_RATIO = 0.5;
+
+function checkTruncationRatio(
+  ocr: Pick<OcrEventResult | OcrDonationResult, 'possible_truncation' | 'expected_rows' | 'members'>,
+): TruncationRejectedResult | null {
+  if (!ocr.possible_truncation || !ocr.expected_rows) return null;
+  const ratio = ocr.members.length / ocr.expected_rows;
+  if (ratio >= TRUNCATION_REJECT_RATIO) return null;
+  return {
+    status: 'possible_truncation_rejected',
+    memberCount: ocr.members.length,
+    expectedRows: ocr.expected_rows,
+  };
+}
 
 interface UpsertParams {
   messageId: string;
@@ -464,6 +495,15 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
     return { status: 'duplicate' };
   }
 
+  const truncationRejection = checkTruncationRatio(ocr);
+  if (truncationRejection) {
+    logger.warn(
+      { fileHash, allianceId, ...truncationRejection },
+      'Truncated capture rejected: read ratio below threshold',
+    );
+    return truncationRejection;
+  }
+
   // Insert screenshot_uploads record (pending, updated at the end), reusing
   // a previous non-terminal attempt's row (if any) instead of a fresh insert.
   const inserted = await insertUploadRecord({
@@ -812,6 +852,16 @@ export async function upsertDonationResult(
     // for the same reason.
     logger.warn({ messageId, allianceId, filePath }, 'Donation OCR returned no members');
     return { status: 'no_members' };
+  }
+
+  const truncationRejection = checkTruncationRatio(ocr);
+  if (truncationRejection) {
+    // Same silent-rejection class as the guards above.
+    logger.warn(
+      { messageId, allianceId, filePath, ...truncationRejection },
+      'Truncated capture rejected: read ratio below threshold',
+    );
+    return truncationRejection;
   }
 
   // Insert upload record (pending), reusing a previous non-terminal

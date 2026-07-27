@@ -333,6 +333,7 @@ class PolarInvasionV1Parser(BaseParser):
             total_points=total_points,
             members=members,
             possible_truncation=possible_truncation,
+            expected_rows=rows_onscreen,
         )
 
     # ── List top detection ────────────────────────────────────────────────────

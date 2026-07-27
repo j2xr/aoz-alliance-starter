@@ -35,6 +35,13 @@ class TruncationFlagMixin(BaseModel):
     # ContributionRankingV1Parser.parse) so the field and its rationale are
     # defined once instead of drifting across copies.
     possible_truncation: bool = False
+    # Row slots that physically fit onscreen (the denominator possible_truncation
+    # was computed against), i.e. len(members) < expected_rows iff
+    # possible_truncation. None for parsers that don't compute this geometry
+    # (e.g. player_stats). Lets a caller judge how severe a truncation is —
+    # 1 of 12 rows read is a rejection-worthy loss, 11 of 12 is not — instead
+    # of only seeing the boolean.
+    expected_rows: int | None = None
 
 
 class ParseResult(TruncationFlagMixin):
