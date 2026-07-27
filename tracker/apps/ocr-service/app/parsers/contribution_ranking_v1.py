@@ -282,6 +282,45 @@ def _ocr_position_from_crop(crop: np.ndarray) -> int | None:
     return value if count / sum(votes.values()) >= _POSITION_MIN_VOTE_RATIO else None
 
 
+def tab_zone_stats(image: np.ndarray) -> tuple[list[float], float, int] | None:
+    """Raw ink-density stats behind tab detection: (means per _TABS_ORDER zone,
+    max deviation from the median, argmax index).
+
+    ``None`` when the band isn't sampleable at all — the frame is shorter than
+    the tab band, or narrower than a tab zone. These are the same two early
+    returns ``_detect_selected_tab`` used to have inline; they're pulled out
+    here too so a caller gets the same "can't even measure" signal.
+
+    Deliberately module-level, not a method: ``tools/measure_tab_delta.py``
+    needs to measure exactly what production decides — instantiating the
+    parser just to call this would invite the two implementations to drift
+    apart, which is exactly how the original 10.1/25.1 calibration numbers
+    ended up as an undocumented one-off instead of a checked-in, rerunnable
+    fact.
+    """
+    h, w = image.shape[:2]
+    y0, y1 = _TABS_Y
+    if y1 <= y0 or y1 > h:
+        return None
+
+    means: list[float] = []
+    for name in _TABS_ORDER:
+        xa, xb = _TAB_X[name]
+        xa = min(xa, w)
+        xb = min(xb, w)
+        if xb - xa < 2:
+            return None
+        band = image[y0:y1, xa:xb]
+        if band.ndim == 3:
+            band = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
+        means.append(float(band.mean()))
+
+    median = sorted(means)[1]
+    deviations = [abs(m - median) for m in means]
+    idx = max(range(len(_TABS_ORDER)), key=lambda i: deviations[i])
+    return means, deviations[idx], idx
+
+
 class ContributionRankingV1Parser(BaseParser):
     """Parser for the weekly Alliance Honor leaderboard (V1)."""
 
@@ -531,32 +570,17 @@ class ContributionRankingV1Parser(BaseParser):
     def _detect_selected_tab(
         self, image: np.ndarray
     ) -> Literal["daily", "weekly", "history", "unknown"]:
-        h, w = image.shape[:2]
-        y0, y1 = _TABS_Y
-        if y1 <= y0 or y1 > h:
+        stats = tab_zone_stats(image)
+        if stats is None:
             return _AMBIGUOUS_PERIOD_TYPE
+        means, delta, idx = stats
 
-        means: list[float] = []
-        for name in _TABS_ORDER:
-            xa, xb = _TAB_X[name]
-            xa = min(xa, w)
-            xb = min(xb, w)
-            if xb - xa < 2:
-                return _AMBIGUOUS_PERIOD_TYPE
-            band = image[y0:y1, xa:xb]
-            if band.ndim == 3:
-                band = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
-            means.append(float(band.mean()))
-
-        median = sorted(means)[1]
-        deviations = [abs(m - median) for m in means]
-        idx = max(range(len(_TABS_ORDER)), key=lambda i: deviations[i])
-        if deviations[idx] < _TAB_DETECT_MIN_DELTA:
+        if delta < _TAB_DETECT_MIN_DELTA:
             logger.warning(
                 "donation tab: no pill stands out (means=%s, delta=%.1f < %.1f) → %s "
                 "(capture will be rejected, not silently treated as weekly)",
                 [round(m, 1) for m in means],
-                deviations[idx],
+                delta,
                 _TAB_DETECT_MIN_DELTA,
                 _AMBIGUOUS_PERIOD_TYPE,
             )
@@ -567,7 +591,7 @@ class ContributionRankingV1Parser(BaseParser):
             "donation tab: selected=%s (means=%s, delta=%.1f)",
             selected,
             [round(m, 1) for m in means],
-            deviations[idx],
+            delta,
         )
         return selected  # type: ignore[return-value]
 
