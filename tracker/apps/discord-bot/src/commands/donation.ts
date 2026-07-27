@@ -75,7 +75,7 @@ const PERIOD_DATE_LABEL: Intl.DateTimeFormatOptions = {
   timeZone: 'UTC',
 };
 
-function formatPeriodLabel(start: string, end: string): string {
+export function formatPeriodLabel(start: string, end: string): string {
   // Dates are stored as YYYY-MM-DD (timestamptz-free); anchor AND format in
   // UTC so the label never shifts by a day, whatever the host timezone or the
   // season (a fixed +02:00 anchor rendered in Europe/Paris showed the previous
