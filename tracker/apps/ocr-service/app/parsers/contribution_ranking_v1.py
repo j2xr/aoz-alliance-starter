@@ -427,10 +427,21 @@ class ContributionRankingV1Parser(BaseParser):
             if member.alliance_honor <= upper:
                 continue  # nominal: non-increasing (or a legitimate tie)
 
+            # Log the PHYSICAL on-screen slot, not this member's index in the
+            # already-compacted list — any earlier row dropped as unreadable
+            # or invalid shifts every later index away from the row a human
+            # sees in the screenshot. Same reason _repair_position_sequence
+            # keys off row_index (see its docstring) and DonationMember.
+            # row_index. Logging only: the [lower, upper] window below is
+            # still computed from the adjacent SURVIVING members, which is
+            # correct — i-1/i+1 are the rows that actually bracket this
+            # value on the page, regardless of what their physical slot is.
+            row = member.row_index if member.row_index is not None else i
+
             lower = members[i + 1].alliance_honor if i + 1 < len(members) else 0
             logger.warning(
                 "donation row %d: alliance_honor=%d breaks monotonicity (previous row=%d)",
-                i,
+                row,
                 member.alliance_honor,
                 upper,
             )
@@ -444,7 +455,7 @@ class ContributionRankingV1Parser(BaseParser):
                 logger.info(
                     "donation row %d: alliance_honor corrected %d → %d via monotonicity "
                     "re-OCR (unverified — order-consistent, not confirmed correct)",
-                    i,
+                    row,
                     member.alliance_honor,
                     fixed,
                 )
@@ -454,7 +465,7 @@ class ContributionRankingV1Parser(BaseParser):
                 logger.warning(
                     "donation row %d: no re-OCR candidate for alliance_honor fits "
                     "[%d, %d] — keeping %d, lowering confidence for visibility",
-                    i,
+                    row,
                     lower,
                     upper,
                     member.alliance_honor,

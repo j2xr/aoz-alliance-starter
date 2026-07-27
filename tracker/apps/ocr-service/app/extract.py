@@ -110,6 +110,25 @@ def extract(
     return result
 
 
+def _physical_row(member: MemberResult | DonationMember, i: int) -> int:
+    """Physical on-screen row slot for log messages only — nothing downstream
+    keys off this value.
+
+    `i` is the member's index in the parser's already-compacted `members`
+    list; a row dropped upstream (unreadable, failed validation) shifts
+    every later index away from what's actually visible in the screenshot.
+    `DonationMember.row_index` carries the true physical slot, assigned by
+    the donation parser before any row is dropped (see
+    ContributionRankingV1Parser._parse_row / _repair_position_sequence's
+    docstring for the same distinction). `MemberResult` (event rows) has no
+    such concept — event parsers don't track it — so those keep `i`,
+    unchanged from before this helper existed.
+    """
+    if isinstance(member, DonationMember) and member.row_index is not None:
+        return member.row_index
+    return i
+
+
 def _apply_llm_fallback(
     image: np.ndarray,
     result: ParseResult | DonationParseResult,
@@ -146,6 +165,8 @@ def _apply_llm_fallback(
             updated.append(member)
             continue
 
+        row = _physical_row(member, i)
+
         if force_all:
             reason = "forced"
         elif honor_suspect:
@@ -155,7 +176,7 @@ def _apply_llm_fallback(
             reason = (
                 f"confidence {member.confidence:.2f} < threshold {_CONFIDENCE_THRESHOLD_NAME:.2f}"
             )
-        logger.info("LLM fallback triggered for %r (row %d): %s", member.name, i, reason)
+        logger.info("LLM fallback triggered for %r (row %d): %s", member.name, row, reason)
 
         # Bande réellement découpée par le parser : l'index dans `members` ne
         # correspond pas à l'index physique de la ligne (les lignes invalides
@@ -194,7 +215,7 @@ def _apply_llm_fallback(
                             "≠ OCR honor %d — likely a misaligned/overlaid read, keeping OCR",
                             member.name,
                             llm_name,
-                            i,
+                            row,
                             llm_score,
                             member.alliance_honor,
                         )
@@ -232,7 +253,7 @@ def _apply_llm_fallback(
                     logger.warning(
                         "LLM correction rejected for suspect-honor row %d (%r): score %r "
                         "not in monotonicity window [%d, %d] — keeping OCR honor %d, still flagged",
-                        i,
+                        row,
                         member.name,
                         llm_score,
                         lower,
@@ -251,7 +272,7 @@ def _apply_llm_fallback(
                         "donation row %d: alliance_honor replaced %d → %d via LLM (fits "
                         "suspect window [%d, %d]; disagrees with the monotonicity re-OCR's "
                         "value — tracked here to observe the disagreement rate)",
-                        i,
+                        row,
                         member.alliance_honor,
                         llm_score,
                         lower,
@@ -261,7 +282,7 @@ def _apply_llm_fallback(
                     logger.info(
                         "donation row %d: LLM score %d confirms the suspect honor's current "
                         "value (window [%d, %d])",
-                        i,
+                        row,
                         llm_score,
                         lower,
                         upper,
@@ -292,7 +313,7 @@ def _apply_llm_fallback(
             logger.exception(
                 "LLM fallback failed for %r (row %d), keeping OCR result",
                 member.name,
-                i,
+                row,
             )
             updated.append(member)
             if consecutive_failures >= _LLM_MAX_CONSECUTIVE_FAILURES:
@@ -315,7 +336,7 @@ def _apply_llm_fallback(
                 logger.warning(
                     "donation row %d: alliance_honor=%d still breaks monotonicity after "
                     "LLM fallback (previous row=%d)",
-                    i,
+                    _physical_row(donation_members[i], i),
                     donation_members[i].alliance_honor,
                     prev_honor,
                 )
