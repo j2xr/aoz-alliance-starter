@@ -968,7 +968,9 @@ class ContributionRankingV1Parser(BaseParser):
         return None
 
     def _ocr_honor_candidates(self, image: np.ndarray, y: int, scale: float) -> list[int]:
-        """Re-OCR the honor cell with several extra psm/threshold configs.
+        """Re-OCR the honor cell with several extra psm/threshold configs,
+        including a taller fallback crop once the tight-band variants are
+        exhausted (see the NEW comment below).
 
         Not on the hot path — ``_ocr_honor`` above already returns a value in
         the nominal case. Used only by ``_enforce_honor_monotonicity`` to look
@@ -984,10 +986,44 @@ class ContributionRankingV1Parser(BaseParser):
 
         crop_2x = cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         norm = cv2.normalize(crop_2x, None, 0, 255, cv2.NORM_MINMAX)  # type: ignore[call-overload]
+        variants: list[np.ndarray] = [crop_2x, norm]
+
+        # NEW — the taller band _ocr_honor already falls back to (see
+        # _Y_OFF_FALLBACK_MARGIN). Every candidate above comes from the SAME
+        # tight crop _ocr_honor's first two attempts already read, so when
+        # that crop is the problem (starved quiet-zone margin — the
+        # documented "2458" -> "9" leading-digit corruption), this sweep
+        # re-reads the same bad pixels six times and predictably finds
+        # nothing that fits the window — confirmed 5-for-5 in the 2026-07-26
+        # audits' real cases, always on row 11: the last of _MAX_ROWS=12
+        # slots, where the fixed 175px pitch has drifted furthest (see the
+        # _RANK_BADGE_Y comment). See docs/maintenance/2026-07-27-row11-
+        # honor-verification.md — PR #29's LLM fallback already recovers
+        # these end-to-end today, so this is defense-in-depth for when the
+        # LLM is disabled or unavailable, not a live-bug fix on its own.
+        #
+        # Appended LAST, never prepended: _enforce_honor_monotonicity takes
+        # the FIRST candidate that fits [lower, upper], so ordering the tight
+        # variants first keeps every row where they already produce a
+        # fitting candidate byte-identical to today.
+        tall_hy2 = y + int((_HONOR_Y_OFF[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
+        tall_crop = image[hy1:tall_hy2, _HONOR_X[0] : _HONOR_X[1]]
+        # Shape check, not just .size: near the image bottom the taller
+        # slice clamps back to the tight one — extra OCR calls on identical
+        # pixels would only add duplicates the `seen` set discards anyway.
+        if tall_crop.size and tall_crop.shape[0] > crop.shape[0]:
+            tall_2x = cv2.resize(tall_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            variants.append(tall_2x)
+            # ...and its contrast-stretched twin: _ocr_honor tries `norm` on
+            # the tight band and plain on the tall band, so "coloured digits
+            # AND starved margin" (the highlighted viewer row, which the
+            # audits flag as the most failure-prone) is the one combination
+            # nothing covered before this.
+            variants.append(cv2.normalize(tall_2x, None, 0, 255, cv2.NORM_MINMAX))  # type: ignore[call-overload]
 
         seen: set[int] = set()
         candidates: list[int] = []
-        for im in (crop_2x, norm):
+        for im in variants:
             for psm in (7, 8, 13):
                 text = pytesseract.image_to_string(
                     im, config=f"--psm {psm} -c tessedit_char_whitelist=0123456789,"
