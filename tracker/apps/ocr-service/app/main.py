@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -30,9 +31,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _ONE_HOUR = 3600.0
+# A job's worker thread runs a blocking, native tesseract call that cannot be
+# cancelled from outside (see tess_engine.py's per-key lock, acquired with no
+# timeout). If it hangs, _run_job never returns and never calls _set_job, so
+# the row would stay "pending" forever without this watchdog. 900s (15 min) is
+# comfortably above the documented worst-case *legitimate* duration: 2
+# consecutive LLM fallback failures x OLLAMA_TIMEOUT_SECONDS (300s default) =
+# 10 min (see extract.py's _LLM_MAX_CONSECUTIVE_FAILURES comment).
+_JOB_TIMEOUT_SECONDS = float(os.getenv("JOB_TIMEOUT_SECONDS", "900"))
+_JOB_WATCHDOG_INTERVAL_SECONDS = 30.0
 
 _db: aiosqlite.Connection | None = None
 _loop: asyncio.AbstractEventLoop | None = None
+_watchdog_task: asyncio.Task[None] | None = None
 
 
 @asynccontextmanager
@@ -82,13 +93,57 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.exception("Failed to load title aliases from Supabase — using built-in fallback")
 
+    global _watchdog_task
+    _watchdog_task = asyncio.create_task(_pending_job_watchdog())
+
     try:
         yield
     finally:
+        _watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _watchdog_task
         await _db.close()
         _db = None
         shutdown_pool()
         logger.info("OCR service stopped")
+
+
+async def _sweep_stale_pending_jobs() -> None:
+    """Error out any job still 'pending' past JOB_TIMEOUT_SECONDS. Factored out
+    of _pending_job_watchdog's loop so a test can trigger one sweep directly
+    instead of waiting on real time."""
+    assert _db is not None
+    cutoff = time.time() - _JOB_TIMEOUT_SECONDS
+    async with _db.execute(
+        "SELECT id FROM jobs WHERE status = 'pending' AND created_at < ?",
+        (cutoff,),
+    ) as cursor:
+        stale_ids = [row[0] for row in await cursor.fetchall()]
+    for job_id in stale_ids:
+        logger.warning(
+            "Job %s: timed out after %.0fs still pending, marking as error",
+            job_id,
+            _JOB_TIMEOUT_SECONDS,
+        )
+        await _set_job(job_id, "error", {"error": "timeout"})
+
+
+async def _pending_job_watchdog() -> None:
+    """Periodically error out jobs stuck in 'pending' past JOB_TIMEOUT_SECONDS.
+
+    A hung worker thread (native tesseract deadlock) never calls _set_job, so
+    without this the row — and the bot polling it — would wait forever. This
+    cannot stop the underlying stuck thread; it only unblocks the bot by
+    making the job's status observable as an explicit failure.
+    """
+    while True:
+        await asyncio.sleep(_JOB_WATCHDOG_INTERVAL_SECONDS)
+        try:
+            await _sweep_stale_pending_jobs()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Pending job watchdog sweep failed")
 
 
 async def _set_job(job_id: str, status: str, payload: dict[str, Any] | None = None) -> None:

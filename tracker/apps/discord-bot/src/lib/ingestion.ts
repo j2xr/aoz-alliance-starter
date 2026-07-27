@@ -197,6 +197,16 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
     if (donationResult.status === 'no_members') {
       return { outcome: 'failed', line: sharedMessages.noDonationMembers(filename) };
     }
+    if (donationResult.status === 'possible_truncation_rejected') {
+      return {
+        outcome: 'failed',
+        line: sharedMessages.possibleTruncationRejected(
+          filename,
+          donationResult.memberCount,
+          donationResult.expectedRows,
+        ),
+      };
+    }
 
     logger.info(
       { messageId: message.id, filename, periodId: donationResult.periodId },
@@ -240,6 +250,16 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
   }
   if (upsertResult.status === 'missing_datetime') {
     return { outcome: 'failed', line: messages.missingDatetime(filename) };
+  }
+  if (upsertResult.status === 'possible_truncation_rejected') {
+    return {
+      outcome: 'failed',
+      line: sharedMessages.possibleTruncationRejected(
+        filename,
+        upsertResult.memberCount,
+        upsertResult.expectedRows,
+      ),
+    };
   }
 
   logger.info(

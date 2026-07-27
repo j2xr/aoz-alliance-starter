@@ -320,6 +320,26 @@ describe('routeOcrResult — donation', () => {
 
     expect(result).toEqual({ outcome: 'failed', line: 'DB_ERROR:shot.png:Error: constraint violation' });
   });
+
+  it('possible_truncation_rejected: outcome failed, not success', async () => {
+    // Distinct from the 'success with possible_truncation' cases above: this
+    // status means the ratio guard in upsert.ts already rejected the write
+    // (nothing was inserted), so the embed must NOT be built — this is a
+    // failure outcome, not a success decorated with a warning line.
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'possible_truncation_rejected',
+      memberCount: 1,
+      expectedRows: 12,
+    });
+
+    const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.embed).toBeUndefined();
+    expect(result.line).toContain('shot.png');
+    expect(result.line).toContain('1/12');
+    expect(vi.mocked(buildDonationEmbed)).not.toHaveBeenCalled();
+  });
 });
 
 describe('routeOcrResult — event', () => {
@@ -406,6 +426,22 @@ describe('routeOcrResult — event', () => {
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
     expect(result).toEqual({ outcome: 'failed', line: 'DB_ERROR:shot.png:Error: timeout' });
+  });
+
+  it('possible_truncation_rejected: outcome failed, not success', async () => {
+    vi.mocked(upsertEventResult).mockResolvedValue({
+      status: 'possible_truncation_rejected',
+      memberCount: 1,
+      expectedRows: 12,
+    });
+
+    const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
+
+    expect(result.outcome).toBe('failed');
+    expect(result.embed).toBeUndefined();
+    expect(result.line).toContain('shot.png');
+    expect(result.line).toContain('1/12');
+    expect(vi.mocked(buildEventEmbed)).not.toHaveBeenCalled();
   });
 });
 

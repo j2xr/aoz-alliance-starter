@@ -297,13 +297,14 @@ def _canonical_image() -> np.ndarray:
 
 
 @pytest.mark.parametrize(
-    "list_top, row_returns, expected_member_count, expected_flag",
+    "list_top, row_returns, expected_member_count, expected_flag, expected_rows_onscreen",
     [
         pytest.param(
             700,
             [_donor(alliance_honor=1000 - i * 10) for i in range(6)] + [None, None, None],
             6,
             True,
+            9,
             id="rows_missing_within_reach_are_flagged",
         ),
         pytest.param(
@@ -311,6 +312,7 @@ def _canonical_image() -> np.ndarray:
             [_donor(alliance_honor=1000 - i * 10) for i in range(9)],
             9,
             False,
+            9,
             id="geometric_cutoff_not_flagged",
         ),
         pytest.param(
@@ -318,6 +320,7 @@ def _canonical_image() -> np.ndarray:
             [_donor(alliance_honor=1000 - i * 10) for i in range(_MAX_ROWS)],
             _MAX_ROWS,
             False,
+            _MAX_ROWS,
             id="every_row_reads_not_flagged",
         ),
     ],
@@ -327,6 +330,7 @@ def test_possible_truncation(
     row_returns: list[DonationMember | None],
     expected_member_count: int,
     expected_flag: bool,
+    expected_rows_onscreen: int,
 ) -> None:
     """rows_onscreen subsumes every way a row can go missing: it doesn't
     matter *why* a row within physical reach didn't make it into members
@@ -337,7 +341,10 @@ def test_possible_truncation(
     truncation as long as every row that physically fit was read — list_top
     =700 in a canonical-height image leaves room for exactly 9 rows
     ((2400-700-130)//175 + 1 == 9, case 2); list_top=0 leaves room for all
-    _MAX_ROWS (case 3)."""
+    _MAX_ROWS (case 3). expected_rows (the same rows_onscreen value) is
+    exposed on the result so a caller can judge how severe a flagged
+    truncation is (e.g. discord-bot's upsert.ts truncation ratio guard)
+    instead of only seeing the boolean."""
     parser = ContributionRankingV1Parser()
 
     with (
@@ -348,6 +355,7 @@ def test_possible_truncation(
 
     assert result.possible_truncation is expected_flag
     assert len(result.members) == expected_member_count
+    assert result.expected_rows == expected_rows_onscreen
 
 
 # ── list_top detection (synthetic bands) ──────────────────────────────────────

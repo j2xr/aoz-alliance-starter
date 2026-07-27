@@ -391,7 +391,10 @@ class ContributionRankingV1Parser(BaseParser):
             )
 
         return DonationParseResult(
-            period_type=period_type, members=members, possible_truncation=possible_truncation
+            period_type=period_type,
+            members=members,
+            possible_truncation=possible_truncation,
+            expected_rows=rows_onscreen,
         )
 
     # ── Cross-row consistency ────────────────────────────────────────────────
