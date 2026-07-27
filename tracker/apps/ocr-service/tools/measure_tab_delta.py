@@ -23,10 +23,19 @@ le conteneur ocr-service, voir docker-compose.yml) :
     # exit 1 si la bande morte n'est pas vide :
     uv run python tools/measure_tab_delta.py --fail-on-dead-band
 
-Via Docker, avec un montage ad hoc :
+Via Docker — vérifié réellement fonctionner sur cet hôte (contrairement à une
+version antérieure de cette docstring) : le Dockerfile ne copie QUE app/ dans
+l'image (voir Dockerfile), donc tools/ doit être monté explicitement en plus
+de data/inbox ; --no-deps évite de démarrer discord-bot ; JOBS_DB_PATH évite
+de toucher le volume ./data/ocr partagé avec le conteneur de production réel
+(voir entrypoint.sh) :
 
-    docker compose run --rm -v "$PWD/../../data/inbox:/inbox:ro" ocr-service \\
-        python tools/measure_tab_delta.py --root /inbox
+    cd tracker
+    docker compose run --rm --no-deps \\
+        -e JOBS_DB_PATH=/tmp/jobs.db \\
+        -v "$PWD/apps/ocr-service/tools:/app/tools:ro" \\
+        -v "$PWD/data/inbox:/inbox:ro" \\
+        ocr-service python tools/measure_tab_delta.py --root /inbox
 """
 
 from __future__ import annotations
