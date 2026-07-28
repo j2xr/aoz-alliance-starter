@@ -31,7 +31,7 @@ export function ParticipationRateTable({ rows }) {
   const [sortKey, setSortKey] = useState('participation_rate_pct');
   const [sortAsc, setSortAsc] = useState(false);
 
-  // Mémoïsé : chaque re-render (hover compris) re-triait toute l'alliance.
+  // Memoized: every re-render (including hover) used to re-sort the whole alliance.
   // Numeric vs. string comparison is driven by COLS.numeric, not value-sniffing
   // (a numeric column with two null rows previously fell through to `Infinity -
   // Infinity` = NaN, which Array.sort does not handle predictably). Nulls

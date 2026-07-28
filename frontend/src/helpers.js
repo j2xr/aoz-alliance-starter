@@ -28,9 +28,9 @@ export function firstDayOfMonth(y, m) { const d = new Date(y, m, 1).getDay(); re
 
 /** Return the UTC Monday of the week that contains `date`.
  *
- * Semaine UTC de la grille du calendrier — PAS la clé de période des dons
- * (voir features/tracking/utils/donationFormat.js,
- * getCurrentParisIsoWeekMondayString, calée sur Europe/Paris). */
+ * UTC week for the calendar grid — NOT the donation period key
+ * (see features/tracking/utils/donationFormat.js,
+ * getCurrentParisIsoWeekMondayString, anchored on Europe/Paris). */
 export function getMonday(date) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const day = d.getUTCDay();
@@ -130,9 +130,9 @@ export function toGoogleCalLink(event, occurrenceDate) {
 }
 
 // ─── iCal (.ics) ─────────────────────────────────────────────────────────────
-// Un seul builder VEVENT pour les trois téléchargements (événement seul, mois,
-// semaine) : le bloc était copié-collé trois fois et toute évolution du format
-// devait être répétée partout.
+// A single VEVENT builder for the three downloads (single event, month,
+// week): the block used to be copy-pasted three times and any format change
+// had to be repeated everywhere.
 
 function icsDtstamp() {
   return new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
