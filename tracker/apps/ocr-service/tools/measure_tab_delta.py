@@ -286,7 +286,9 @@ def main() -> int:
             "reserved for an already-homogeneous folder (e.g. fixtures/), not data/inbox."
         ),
     )
-    parser.add_argument("--json", action="store_true", help="JSON output instead of the text report")
+    parser.add_argument(
+        "--json", action="store_true", help="JSON output instead of the text report"
+    )
     parser.add_argument(
         "--fail-on-dead-band",
         action="store_true",

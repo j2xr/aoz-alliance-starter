@@ -400,7 +400,9 @@ def main() -> int:
         action="store_true",
         help="Also include cases not re-verified on screen (LOL #4) in the summary",
     )
-    parser.add_argument("--json", action="store_true", help="JSON output instead of the text report")
+    parser.add_argument(
+        "--json", action="store_true", help="JSON output instead of the text report"
+    )
     parser.add_argument(
         "--fail-on-regression",
         action="store_true",
