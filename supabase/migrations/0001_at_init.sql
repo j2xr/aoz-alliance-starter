@@ -1,6 +1,6 @@
 -- 0001_at_init.sql
--- Schéma initial : tables, index, activation RLS
--- Les policies RLS sont dans 0003_at_rls.sql
+-- Initial schema: tables, indexes, RLS activation
+-- The RLS policies are in 0003_at_rls.sql
 
 -- ─── Tables ───────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ create index idx_at_players_alliance_name     on at_players(alliance_id, name);
 create index idx_at_screenshot_uploads_status on at_screenshot_uploads(processing_status)
   where processing_status = 'pending';
 
--- ─── RLS — activation (policies dans 0003_at_rls.sql) ────────────────────────
+-- ─── RLS — activation (policies in 0003_at_rls.sql) ──────────────────────────
 
 alter table at_alliances          enable row level security;
 alter table at_event_types        enable row level security;

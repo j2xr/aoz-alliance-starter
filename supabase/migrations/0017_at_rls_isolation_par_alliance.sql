@@ -1,17 +1,17 @@
 -- 0017_at_rls_isolation_par_alliance.sql
--- Renforce les RLS : remplace les policies `using (true)` des migrations
--- 0003, 0005, 0010, 0011 par une isolation par alliance, basée sur
--- at_alliance_members (déjà utilisée par 0015_at_player_stats).
+-- Strengthens RLS: replaces the `using (true)` policies from migrations
+-- 0003, 0005, 0010, 0011 with per-alliance isolation, based on
+-- at_alliance_members (already used by 0015_at_player_stats).
 --
--- Le bot Discord continue d'utiliser SUPABASE_SERVICE_ROLE_KEY → bypass RLS.
--- Cette migration n'impacte que les lectures depuis le dashboard
--- (anon_key + session Auth utilisateur).
+-- The Discord bot keeps using SUPABASE_SERVICE_ROLE_KEY → bypasses RLS.
+-- This migration only affects reads from the dashboard
+-- (anon_key + user Auth session).
 --
--- Tables référentielles inchangées :
---   - at_event_types : catalogue partagé entre toutes les alliances.
+-- Reference tables left unchanged:
+--   - at_event_types: catalog shared across all alliances.
 
 -- ─── at_alliances ─────────────────────────────────────────────────────────────
--- L'utilisateur ne voit que les alliances dont il est membre via at_alliance_members.
+-- The user only sees alliances they're a member of, via at_alliance_members.
 
 drop policy if exists "at_alliances: authenticated read" on at_alliances;
 
@@ -51,7 +51,7 @@ create policy "at_players: authenticated read"
   );
 
 -- ─── at_participations ────────────────────────────────────────────────────────
--- Pas d'alliance_id direct → on joint via at_events.
+-- No direct alliance_id → joined via at_events.
 
 drop policy if exists "at_participations: authenticated read" on at_participations;
 
@@ -69,8 +69,8 @@ create policy "at_participations: authenticated read"
   );
 
 -- ─── at_screenshot_uploads ────────────────────────────────────────────────────
--- alliance_id est nullable (uploads non-attribués). On masque ces lignes au
--- dashboard : seuls les uploads rattachés à une alliance visible sont lisibles.
+-- alliance_id is nullable (unattributed uploads). These rows are hidden from
+-- the dashboard: only uploads attached to a visible alliance are readable.
 
 drop policy if exists "at_screenshot_uploads: authenticated read" on at_screenshot_uploads;
 
@@ -123,7 +123,7 @@ create policy "at_donation_periods: authenticated read"
   );
 
 -- ─── at_donations ─────────────────────────────────────────────────────────────
--- Pas d'alliance_id direct → on joint via at_donation_periods.
+-- No direct alliance_id → joined via at_donation_periods.
 
 drop policy if exists "at_donations: authenticated read" on at_donations;
 

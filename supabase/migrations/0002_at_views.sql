@@ -1,7 +1,7 @@
 -- 0002_at_views.sql
--- Vues utilitaires pour le dashboard et Grafana
+-- Utility views for the dashboard and Grafana
 
--- Taux de participation par joueur (tous événements confondus)
+-- Participation rate per player (across all events)
 create view at_v_player_participation_rate as
 select
   p.alliance_id,
@@ -19,7 +19,7 @@ left join at_participations pa on pa.player_id = p.id
 left join at_events e          on e.id = pa.event_id
 group by p.alliance_id, p.id, p.name, p.last_power;
 
--- Leaderboard par événement (classement par points décroissants)
+-- Leaderboard per event (ranked by descending points)
 create view at_v_event_leaderboard as
 select
   e.id               as event_id,

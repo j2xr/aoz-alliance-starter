@@ -1,26 +1,26 @@
 -- 0020_at_donations_leaderboard_position.sql
--- Ajoute la position affichée à l'écran (1-81) sur at_donations, en colonne
--- purement informative — PAS une clé d'identité/dédup (la contrainte unique
--- (donation_period_id, player_id) ne change pas).
+-- Adds the on-screen displayed position (1-81) to at_donations, as a
+-- purely informational column — NOT an identity/dedup key (the unique
+-- constraint (donation_period_id, player_id) doesn't change).
 --
--- Contexte : une calibration de l'OCR de cette colonne sur une vraie capture
--- a montré que le chiffre peut être mal lu de façon *confiante* (ex. la
--- médaille du rang 1 lue "2" avec 2 votes contre 0 pour "1"), contrairement à
--- un nom mal lu qui se voit à l'œil nu. En faire une clé UPSERT ferait courir
--- le risque d'écraser silencieusement la ligne d'un autre joueur. Elle sert
--- donc uniquement de signal de diagnostic (repérer un trou dans la séquence,
--- recouper avec l'ordre de tri par alliance_honor) — le nom (via at_players)
--- reste l'identité du joueur.
+-- Context: a calibration of this column's OCR on a real screenshot showed
+-- the digit can be misread *confidently* (e.g. rank 1's medal read as "2"
+-- with 2 votes against 0 for "1"), unlike a misread name which is visible
+-- to the naked eye. Making it an UPSERT key would risk silently
+-- overwriting another player's row. It therefore only serves as a
+-- diagnostic signal (spotting a gap in the sequence, cross-checking
+-- against the alliance_honor sort order) — the name (via at_players)
+-- remains the player's identity.
 
 alter table at_donations
   add column leaderboard_position int;
 
 comment on column at_donations.leaderboard_position is
-  'Position affichée à l''écran (1-81), OCR best-effort. Informative uniquement : NULL si le vote multi-config n''a pas atteint une majorité forte. Ne pas utiliser comme clé d''identité (voir DonationMember.leaderboard_position côté ocr-service).';
+  'On-screen displayed position (1-81), OCR best-effort. Informational only: NULL if the multi-config vote didn''t reach a strong majority. Do not use as an identity key (see DonationMember.leaderboard_position on the ocr-service side).';
 
--- Redéfinition de la vue pour exposer la colonne, à côté de `position`
--- (calculée par rank() over (...), inchangée) — pour que le bot/dashboard
--- puisse comparer les deux et repérer les écarts.
+-- Redefines the view to expose the column, alongside `position`
+-- (computed by rank() over (...), unchanged) — so the bot/dashboard can
+-- compare the two and spot discrepancies.
 drop view at_v_donation_leaderboard;
 
 create view at_v_donation_leaderboard

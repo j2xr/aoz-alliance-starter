@@ -1,8 +1,8 @@
 -- 0016_at_player_stats_views.sql
--- Vues utilitaires pour les stats militaires des joueurs.
+-- Utility views for player military stats.
 
--- Dernières stats par joueur par alliance (une ligne par joueur).
--- Utilisée par le dashboard pour afficher l'état actuel.
+-- Latest stats per player per alliance (one row per player).
+-- Used by the dashboard to display the current state.
 create view at_v_player_stats_latest as
 select distinct on (ps.alliance_id, ps.player_id)
   ps.alliance_id,
@@ -22,8 +22,8 @@ join at_alliances a on a.id = ps.alliance_id
 join at_players   p on p.id = ps.player_id
 order by ps.alliance_id, ps.player_id, ps.recorded_date desc;
 
--- Historique complet par joueur (pour graphiques d'évolution).
--- Le dashboard filtre par alliance_id + player_id et trie par recorded_date.
+-- Full history per player (for evolution charts).
+-- The dashboard filters by alliance_id + player_id and sorts by recorded_date.
 create view at_v_player_stats_history as
 select
   ps.id,

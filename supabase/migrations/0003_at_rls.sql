@@ -1,7 +1,7 @@
 -- 0003_at_rls.sql
--- Row-Level Security : policies
--- Le bot Discord utilise service_role (bypass RLS automatique).
--- Ces policies protègent l'accès depuis le dashboard (anon_key + session Auth).
+-- Row-Level Security: policies
+-- The Discord bot uses service_role (automatic RLS bypass).
+-- These policies protect access from the dashboard (anon_key + Auth session).
 
 -- ─── at_event_types ───────────────────────────────────────────────────────────
 

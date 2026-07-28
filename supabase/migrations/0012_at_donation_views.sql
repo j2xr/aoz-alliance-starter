@@ -1,7 +1,7 @@
 -- 0012_at_donation_views.sql
--- Vues utilitaires pour le suivi des dons (consommées par le bot et le dashboard).
+-- Utility views for donation tracking (consumed by the bot and the dashboard).
 
--- Classement des dons à l'intérieur d'une période (rank window function).
+-- Donation ranking within a period (rank window function).
 create view at_v_donation_leaderboard as
 select
   dp.id              as donation_period_id,
@@ -21,7 +21,7 @@ join at_alliances  a on a.id = dp.alliance_id
 join at_donations  d on d.donation_period_id = dp.id
 join at_players    p on p.id = d.player_id;
 
--- Totaux par joueur sur l'ensemble des périodes connues.
+-- Totals per player across all known periods.
 create view at_v_donation_player_totals as
 select
   p.alliance_id,
