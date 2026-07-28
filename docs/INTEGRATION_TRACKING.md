@@ -1,39 +1,39 @@
-# Intégration Alliance Tracker — dashboard `/tracking`
+# Alliance Tracker integration — `/tracking` dashboard
 
-> Guide d'intégration des tables `at_*` (produites par le tracker) dans le dashboard `/tracking` du frontend React.
-
----
-
-## Contexte
-
-Le backend (bot Discord + service OCR) vit dans un repo séparé `alliance-tracker`, déployé sur le home server. Les données transitent dans le projet Supabase **partagé** avec the frontend (`frontend/`), dans des tables préfixées `at_*`.
-
-Le dashboard s'ajoute à the frontend (`frontend/`) comme une nouvelle feature, pas un remplacement. L'objectif est de réutiliser au maximum ce qui existe (auth, layout, client Supabase, thème, composants) et de cloisonner le nouveau code sous `src/features/tracking/`.
+> Guide for integrating the `at_*` tables (produced by the tracker) into the React frontend's `/tracking` dashboard.
 
 ---
 
-## Ce qui est déjà en place dans the frontend (`frontend/`)
+## Context
 
-À vérifier et confirmer avant de commencer :
+The backend (Discord bot + OCR service) lives in a separate `alliance-tracker` repo, deployed on the home server. Data flows through the **shared** Supabase project with the frontend (`frontend/`), in tables prefixed `at_*`.
 
-- **Stack** : Vite + React + React Router
-- **Supabase client** : instance partagée, probablement dans `src/lib/supabase.ts` ou équivalent
-- **Auth** : Supabase Auth, session gérée (contexte React ou hook custom)
-- **Variables d'env** : `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` déjà configurées sur Vercel
-- **Routing** : un `<BrowserRouter>` avec des `<Routes>` en top-level
-- **Layout** : un composant header/nav qui liste les onglets ou sections principales
-
-Si un de ces points manque ou diffère, demander à l'utilisateur avant d'improviser.
+The dashboard is added to the frontend (`frontend/`) as a new feature, not a replacement. The goal is to reuse as much of what already exists as possible (auth, layout, Supabase client, theme, components) and to keep the new code isolated under `src/features/tracking/`.
 
 ---
 
-## Étapes d'intégration
+## What's already in place in the frontend (`frontend/`)
 
-### 1. Migration Supabase (si pas déjà faite depuis `alliance-tracker`)
+To check and confirm before starting:
 
-Les tables `at_*` doivent exister dans le projet Supabase. Normalement elles sont créées par les migrations du repo `alliance-tracker` (§3 de son `PLAN.md`).
+- **Stack**: Vite + React + React Router
+- **Supabase client**: shared instance, probably in `src/lib/supabase.ts` or equivalent
+- **Auth**: Supabase Auth, session managed (React context or custom hook)
+- **Env vars**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` already configured on Vercel
+- **Routing**: a top-level `<BrowserRouter>` with `<Routes>`
+- **Layout**: a header/nav component listing the main tabs or sections
 
-Vérification rapide :
+If any of these points is missing or differs, ask the user before improvising.
+
+---
+
+## Integration steps
+
+### 1. Supabase migration (if not already done from `alliance-tracker`)
+
+The `at_*` tables must exist in the Supabase project. They're normally created by the migrations in the `alliance-tracker` repo (§3 of its `PLAN.md`).
+
+Quick check:
 
 ```sql
 select table_name from information_schema.tables
@@ -41,34 +41,34 @@ where table_schema = 'public' and table_name like 'at_%'
 order by table_name;
 ```
 
-Doit retourner au minimum : `at_alliance_members`, `at_alliance_memberships`, `at_alliances`, `at_event_types`, `at_events`, `at_participations`, `at_players`, `at_screenshot_uploads`.
+Must return at least: `at_alliance_members`, `at_alliance_memberships`, `at_alliances`, `at_event_types`, `at_events`, `at_participations`, `at_players`, `at_screenshot_uploads`.
 
-Si absent, appliquer les migrations depuis `alliance-tracker/supabase/migrations/`.
+If missing, apply the migrations from `alliance-tracker/supabase/migrations/`.
 
-### 2. Déclarer les types Supabase
+### 2. Declare the Supabase types
 
-Si the frontend (`frontend/`) utilise `supabase gen types typescript`, régénérer pour inclure les tables `at_*` :
+If the frontend (`frontend/`) uses `supabase gen types typescript`, regenerate it to include the `at_*` tables:
 
 ```bash
 npx supabase gen types typescript --project-id <id> > src/types/database.types.ts
 ```
 
-Sinon, créer manuellement `src/features/tracking/types.ts` avec les types nécessaires (ou importer depuis le package `shared-types` du repo `alliance-tracker` si publié).
+Otherwise, manually create `src/features/tracking/types.ts` with the necessary types (or import from the `shared-types` package of the `alliance-tracker` repo, if published).
 
-### 3. Ajouter l'entrée de navigation
+### 3. Add the navigation entry
 
-Dans le composant de navigation principal (probablement `src/components/Nav.tsx` ou `src/layouts/MainLayout.tsx`), ajouter un lien vers `/tracking` :
+In the main navigation component (probably `src/components/Nav.tsx` or `src/layouts/MainLayout.tsx`), add a link to `/tracking`:
 
 ```tsx
-// Exemple — à adapter à la structure réelle
+// Example — adapt to the actual structure
 <NavLink to="/tracking">Alliance Tracking</NavLink>
 ```
 
-Le lien ne doit apparaître que pour les utilisateurs authentifiés et ayant au moins une ligne dans `at_alliance_members`. Utiliser un hook de type `useUserAlliances()` qui retourne les alliances du user connecté (cf étape 5).
+The link should only appear for authenticated users who have at least one row in `at_alliance_members`. Use a hook like `useUserAlliances()` that returns the logged-in user's alliances (see step 5).
 
-### 4. Ajouter les routes
+### 4. Add the routes
 
-Dans la config de routing (probablement `src/App.tsx` ou `src/routes.tsx`), enregistrer les nouvelles routes sous `/tracking` :
+In the routing config (probably `src/App.tsx` or `src/routes.tsx`), register the new routes under `/tracking`:
 
 ```tsx
 import { TrackingLayout } from './features/tracking/TrackingLayout';
@@ -77,9 +77,9 @@ import { EventsPage } from './features/tracking/pages/Events';
 import { EventDetailPage } from './features/tracking/pages/EventDetail';
 import { PlayersPage } from './features/tracking/pages/Players';
 import { PlayerDetailPage } from './features/tracking/pages/PlayerDetail';
-import { RequireAuth } from './components/RequireAuth'; // à adapter
+import { RequireAuth } from './components/RequireAuth'; // adapt as needed
 
-// Dans les Routes :
+// Inside Routes:
 <Route path="/tracking" element={<RequireAuth><TrackingLayout /></RequireAuth>}>
   <Route index element={<TrackingHome />} />
   <Route path="alliances/:allianceId">
@@ -91,15 +91,15 @@ import { RequireAuth } from './components/RequireAuth'; // à adapter
 </Route>
 ```
 
-### 5. Structure de la feature
+### 5. Feature structure
 
-Tout le code de la feature vit dans `src/features/tracking/` pour isolation maximale :
+All of the feature's code lives under `src/features/tracking/` for maximum isolation:
 
 ```
 src/features/tracking/
-├── TrackingLayout.tsx        # wrapper avec sidebar de sélection d'alliance
+├── TrackingLayout.tsx        # wrapper with alliance-selection sidebar
 ├── pages/
-│   ├── Home.tsx              # sélecteur + vue d'ensemble
+│   ├── Home.tsx              # selector + overview
 │   ├── Events.tsx
 │   ├── EventDetail.tsx
 │   ├── Players.tsx
@@ -118,15 +118,15 @@ src/features/tracking/
 │   ├── usePlayerStats.ts
 │   └── useParticipationRates.ts
 ├── queries/
-│   └── atQueries.ts          # toutes les requêtes Supabase centralisées
+│   └── atQueries.ts          # all Supabase queries centralized
 └── types.ts
 ```
 
-Rien de cette feature n'écrit vers les tables `at_*` — lecture uniquement. Les écritures sont faites par le bot Discord du repo `alliance-tracker` avec `service_role_key`. Le dashboard utilise uniquement `anon_key` + session utilisateur, avec RLS active.
+Nothing in this feature writes to the `at_*` tables — read-only. Writes are done by the Discord bot in the `alliance-tracker` repo using `service_role_key`. The dashboard only uses `anon_key` + user session, with RLS active.
 
-### 6. Exemples de requêtes
+### 6. Query examples
 
-**Hook `useUserAlliances`** (pour le sélecteur d'alliance et la garde de navigation) :
+**`useUserAlliances` hook** (for the alliance selector and the navigation guard):
 
 ```tsx
 import { useQuery } from '@tanstack/react-query';
@@ -151,7 +151,7 @@ export function useUserAlliances() {
 }
 ```
 
-**Hook `useAllianceEvents`** (liste paginée d'événements) :
+**`useAllianceEvents` hook** (paginated list of events):
 
 ```tsx
 export function useAllianceEvents(allianceId: string, limit = 20) {
@@ -172,7 +172,7 @@ export function useAllianceEvents(allianceId: string, limit = 20) {
 }
 ```
 
-**Hook `useEventLeaderboard`** (classement d'un événement via la vue) :
+**`useEventLeaderboard` hook** (an event's leaderboard, via the view):
 
 ```tsx
 export function useEventLeaderboard(eventId: string) {
@@ -192,7 +192,7 @@ export function useEventLeaderboard(eventId: string) {
 }
 ```
 
-**Hook `useParticipationRates`** (vue des taux par joueur) :
+**`useParticipationRates` hook** (per-player rate view):
 
 ```tsx
 export function useParticipationRates(allianceId: string) {
@@ -212,86 +212,86 @@ export function useParticipationRates(allianceId: string) {
 }
 ```
 
-### 7. UI — indications
+### 7. UI — guidance
 
-Le dashboard doit rester cohérent visuellement avec le reste de the frontend (`frontend/`). Utiliser :
+The dashboard must stay visually consistent with the rest of the frontend (`frontend/`). Use:
 
-- Le même thème / variables CSS / Tailwind config
-- Les mêmes composants de base (boutons, cards, tables) si disponibles
-- Les mêmes patterns de chargement / erreur (spinners, toasts)
+- The same theme / CSS variables / Tailwind config
+- The same base components (buttons, cards, tables) if available
+- The same loading / error patterns (spinners, toasts)
 
-Composants spécifiques à créer pour cette feature :
+Feature-specific components to create:
 
-- `AllianceSwitcher` : dropdown ou sidebar listant les alliances du user
-- `EventCard` : carte résumant un événement (type, date, rank, total battlers)
-- `LeaderboardTable` : tableau classement avec colonnes `position, player_name, rank, power, points`
-- `ParticipationRateTable` : tableau triable avec `name, rate%, events_participated/eligible_events, avg_points, last_participation`
-- `PointsEvolutionChart` : courbe `points` en Y, `event_datetime` en X, pour un joueur donné (Recharts ou équivalent déjà utilisé dans le projet)
-- `PowerHistoryChart` : idem pour `power`
+- `AllianceSwitcher`: dropdown or sidebar listing the user's alliances
+- `EventCard`: card summarizing an event (type, date, rank, total battlers)
+- `LeaderboardTable`: leaderboard table with columns `position, player_name, rank, power, points`
+- `ParticipationRateTable`: sortable table with `name, rate%, events_participated/eligible_events, avg_points, last_participation`
+- `PointsEvolutionChart`: `points` curve on Y, `event_datetime` on X, for a given player (Recharts or equivalent already used in the project)
+- `PowerHistoryChart`: same for `power`
 
-### 8. Gestion des permissions
+### 8. Permission handling
 
-La visibilité est gérée par RLS côté Supabase. Le dashboard n'a rien à faire de spécial au-delà de :
+Visibility is handled by RLS on the Supabase side. The dashboard has nothing special to do beyond:
 
-- Afficher le lien "Alliance Tracking" dans la nav uniquement si `useUserAlliances()` retourne au moins 1 alliance
-- Rediriger vers `/` si un user tente d'accéder à `/tracking/alliances/:id/...` pour une alliance dont il ne fait pas partie (RLS retournera 0 lignes, afficher un message "Non autorisé")
-- Ne pas exposer d'UI d'écriture (pas de formulaires qui modifient `at_*`). Toute modification passe par les commandes Discord du bot.
+- Showing the "Alliance Tracking" nav link only if `useUserAlliances()` returns at least 1 alliance
+- Redirecting to `/` if a user tries to access `/tracking/alliances/:id/...` for an alliance they're not part of (RLS will return 0 rows; show a "Not authorized" message)
+- Not exposing any write UI (no forms that modify `at_*`). Every change goes through the bot's Discord commands.
 
-### 9. Ajouter un utilisateur à une alliance
+### 9. Adding a user to an alliance
 
-Cette opération n'a PAS d'UI pour l'instant. Pour ajouter un utilisateur à une alliance :
+This operation has NO UI for now. To add a user to an alliance:
 
 ```sql
 insert into at_alliance_members (alliance_id, user_id, role)
 values ('<alliance_id>', '<user_id>', 'viewer');
 ```
 
-À faire manuellement depuis la console Supabase, ou via une commande Discord admin (Phase 4+). Si ce besoin devient fréquent, prévoir une page admin `/tracking/admin` visible uniquement pour `role = 'admin'`.
+To be done manually from the Supabase console, or via an admin Discord command (Phase 4+). If this need becomes frequent, plan for an admin page `/tracking/admin` visible only for `role = 'admin'`.
 
 ---
 
-## Checklist de déploiement
+## Deployment checklist
 
-- [ ] Migrations `at_*` appliquées sur le projet Supabase
-- [ ] Types TypeScript régénérés ou ajoutés manuellement
-- [ ] Route `/tracking` ajoutée dans le routing
-- [ ] Lien de navigation conditionnel (visible si `useUserAlliances()` non vide)
-- [ ] Feature `src/features/tracking/` créée et isolée
-- [ ] Hooks Supabase avec React Query (ou équivalent utilisé dans le projet)
-- [ ] Tests Vitest sur au moins les hooks principaux
-- [ ] PR vers main → preview Vercel
-- [ ] Validation manuelle sur preview avec un user test
-- [ ] Merge → déploiement production auto
+- [ ] `at_*` migrations applied on the Supabase project
+- [ ] TypeScript types regenerated or added manually
+- [ ] `/tracking` route added to the routing
+- [ ] Conditional navigation link (visible if `useUserAlliances()` is non-empty)
+- [ ] `src/features/tracking/` feature created and isolated
+- [ ] Supabase hooks with React Query (or equivalent used in the project)
+- [ ] Vitest tests on at least the main hooks
+- [ ] PR to main → Vercel preview
+- [ ] Manual validation on preview with a test user
+- [ ] Merge → automatic production deployment
 
-**Stats militaires (feature `player_stats`)**
+**Military stats (`player_stats` feature)**
 
-- [ ] Migrations `0015_at_player_stats.sql` et `0016_at_player_stats_views.sql` appliquées
-- [ ] Route `/tracking/alliances/:id/stats` ajoutée sous la route alliance existante
-- [ ] `PlayerStatsTable` créé et lié à `usePlayerStatsLatest`
-- [ ] `usePlayerStatsHistory` implémenté pour la fiche joueur (graphique d'évolution)
+- [ ] Migrations `0015_at_player_stats.sql` and `0016_at_player_stats_views.sql` applied
+- [ ] Route `/tracking/alliances/:id/stats` added under the existing alliance route
+- [ ] `PlayerStatsTable` created and wired to `usePlayerStatsLatest`
+- [ ] `usePlayerStatsHistory` implemented for the player profile (evolution chart)
 
 ---
 
-## Stats militaires des joueurs
+## Player military stats
 
-La feature `player_stats_chat` ajoute un 3ème type de capture au pipeline : des screenshots du chat in-game "(LOL) City stats" où les membres postent leurs stats.
+The `player_stats_chat` feature adds a 3rd screenshot type to the pipeline: screenshots of the in-game "(LOL) City stats" chat, where members post their stats.
 
-### Tables et vues disponibles
+### Available tables and views
 
-- **`at_player_stats`** — une ligne par joueur par jour, latest-wins via UPSERT. Colonnes : `player_id, alliance_id, attack_pct, attack_kind (lra|mra), hp_pct, defense_pct, ocr_confidence, recorded_date`.
-- **`at_v_player_stats_latest`** — dernières stats par joueur (1 ligne par joueur). Colonnes supplémentaires : `player_name, last_rank, alliance_name`.
-- **`at_v_player_stats_history`** — historique complet, à filtrer par `alliance_id` et `player_id`, trié par `recorded_date`.
+- **`at_player_stats`** — one row per player per day, latest-wins via UPSERT. Columns: `player_id, alliance_id, attack_pct, attack_kind (lra|mra), hp_pct, defense_pct, ocr_confidence, recorded_date`.
+- **`at_v_player_stats_latest`** — latest stats per player (1 row per player). Extra columns: `player_name, last_rank, alliance_name`.
+- **`at_v_player_stats_history`** — full history, to be filtered by `alliance_id` and `player_id`, sorted by `recorded_date`.
 
-### Nouvelle route
+### New route
 
 ```tsx
-// Sous la route /tracking/alliances/:allianceId/
+// Under the /tracking/alliances/:allianceId/ route
 <Route path="stats" element={<PlayerStatsPage />} />
 ```
 
-Ajouter un onglet "Stats militaires" dans la sous-nav de l'alliance, à côté de "Événements", "Joueurs" et "Dons".
+Add a "Stats" tab in the alliance's sub-nav, next to "Events", "Players" and "Donations".
 
-### Hook `usePlayerStatsLatest`
+### `usePlayerStatsLatest` hook
 
 ```ts
 // src/features/tracking/hooks/usePlayerStatsLatest.ts
@@ -312,7 +312,7 @@ export function usePlayerStatsLatest(allianceId: string) {
 }
 ```
 
-### Hook `usePlayerStatsHistory`
+### `usePlayerStatsHistory` hook
 
 ```ts
 // src/features/tracking/hooks/usePlayerStatsHistory.ts
@@ -334,45 +334,45 @@ export function usePlayerStatsHistory(allianceId: string, playerId: string) {
 }
 ```
 
-### Page `PlayerStatsPage`
+### `PlayerStatsPage` page
 
-Composants à créer dans `src/features/tracking/components/` :
+Components to create in `src/features/tracking/components/`:
 
-- **`PlayerStatsTable`** — tableau trié par `attack_pct` desc, colonnes : Joueur, Rang, Attaque %, HP %, Défense %, Date. Chaque ligne est cliquable et navigue vers `/players/:playerId` (fiche joueur).
-- **`StatsEvolutionChart`** — graphique en courbes montrant l'évolution de `attack_pct` / `hp_pct` / `defense_pct` sur `recorded_date`. Réutiliser le pattern de `PointsEvolutionChart` (Recharts ou équivalent).
+- **`PlayerStatsTable`** — table sorted by `attack_pct` desc, columns: Player, Rank, Attack %, HP %, Defense %, Date. Each row is clickable and navigates to `/players/:playerId` (player profile).
+- **`StatsEvolutionChart`** — line chart showing the evolution of `attack_pct` / `hp_pct` / `defense_pct` over `recorded_date`. Reuse the `PointsEvolutionChart` pattern (Recharts or equivalent).
 
-Les stats sont affichées dans la fiche joueur existante (`PlayerDetailPage`) en ajoutant une section "Stats militaires" qui consomme `usePlayerStatsHistory`.
-
----
-
-## À ne pas faire dans the frontend (`frontend/`)
-
-- Écrire dans les tables `at_*` depuis le frontend (lecture uniquement)
-- Utiliser `service_role_key` — uniquement `anon_key`
-- Dupliquer le client Supabase — utiliser celui qui existe déjà
-- Créer des tables ou migrations préfixées autrement que `at_` pour cette feature
-- Mélanger le code de tracking avec les autres features — tout doit rester sous `src/features/tracking/`
-- Changer le thème ou le layout global pour cette feature spécifique
-- Assumer qu'un user a accès à toutes les alliances — toujours filtrer par `useUserAlliances()`
+Stats are shown in the existing player profile (`PlayerDetailPage`) by adding a "Military stats" section that consumes `usePlayerStatsHistory`.
 
 ---
 
-## Questions fréquentes
+## What NOT to do in the frontend (`frontend/`)
 
-**Pourquoi pas un projet Vercel séparé ?**
-Éviter la multiplication des projets. L'auth, le client Supabase, le thème et le déploiement sont déjà en place dans the frontend (`frontend/`).
+- Write to the `at_*` tables from the frontend (read-only)
+- Use `service_role_key` — only `anon_key`
+- Duplicate the Supabase client — use the one that already exists
+- Create tables or migrations prefixed other than `at_` for this feature
+- Mix tracking code with other features — everything must stay under `src/features/tracking/`
+- Change the global theme or layout for this specific feature
+- Assume a user has access to every alliance — always filter by `useUserAlliances()`
 
-**Pourquoi pas un projet Supabase séparé ?**
-Même raison : éviter la multiplication des comptes et avoir une seule base à sauvegarder. Le préfixe `at_` suffit pour isoler.
+---
 
-**Pourquoi Vite et pas Next.js ?**
-Cohérence avec l'existant. Le projet the frontend (`frontend/`) est en Vite, on ne change pas de stack pour une sous-feature.
+## FAQ
 
-**Comment tester en local avec des données réelles ?**
-Récupérer un dump de la base Supabase (ou utiliser `supabase start` avec les migrations), puis peupler manuellement une alliance de test avec quelques captures traitées par le bot déployé en mode dev.
+**Why not a separate Vercel project?**
+To avoid multiplying projects. Auth, the Supabase client, the theme and the deployment are already in place in the frontend (`frontend/`).
 
-**Le bot Discord tourne-t-il en local pour le dev du dashboard ?**
-Non. Le dashboard se contente de lire la base. Pour développer le dashboard, il suffit d'avoir des données dans les tables `at_*` (qu'elles viennent du bot de prod ou d'un seed manuel).
+**Why not a separate Supabase project?**
+Same reason: avoid multiplying accounts and have a single database to back up. The `at_` prefix is enough to isolate.
 
-**Comment ajouter un nouveau type d'événement ?**
-Côté backend : ajouter un parseur dans `alliance-tracker/apps/ocr-service/app/parsers/`, ajouter une ligne dans `at_event_types`. Côté dashboard : normalement rien à changer si le nouveau type utilise les mêmes champs (points, power, rank). Sinon, ajouter un rendu spécifique dans `EventDetailPage` conditionné par `event_type.code`.
+**Why Vite and not Next.js?**
+Consistency with what already exists. The frontend (`frontend/`) project is on Vite; we don't switch stacks for a sub-feature.
+
+**How do I test locally with real data?**
+Get a dump of the Supabase database (or use `supabase start` with the migrations), then manually populate a test alliance with a few screenshots processed by the bot running in dev mode.
+
+**Does the Discord bot need to run locally for dashboard dev?**
+No. The dashboard just reads the database. To develop the dashboard, you just need data in the `at_*` tables (whether it comes from the prod bot or a manual seed).
+
+**How do I add a new event type?**
+Backend side: add a parser in `alliance-tracker/apps/ocr-service/app/parsers/`, add a row in `at_event_types`. Dashboard side: normally nothing to change if the new type uses the same fields (points, power, rank). Otherwise, add specific rendering in `EventDetailPage` conditioned on `event_type.code`.

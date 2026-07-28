@@ -1,23 +1,23 @@
 # Fixtures — Wasteland Showdown
 
-Ground truth pour les tests du parseur OCR `wasteland_showdown`.
+Ground truth for the `wasteland_showdown` OCR parser tests.
 
-Wasteland Showdown utilise le même layout que Polar Invasion (`PolarInvasionV1Parser`).
+Wasteland Showdown uses the same layout as Polar Invasion (`PolarInvasionV1Parser`).
 
-## Titre détecté par le dispatcher
+## Title detected by the dispatcher
 
 ```
 "wasteland showdown"   → wasteland_showdown
 ```
 
-## Convention de nommage
+## Naming convention
 
 ```
-<YYYYMMDDTHHMM>_<NNN>.jpg    capture brute Android (~1080×2400 portrait)
-<YYYYMMDDTHHMM>_<NNN>.json   sortie attendue du parseur
+<YYYYMMDDTHHMM>_<NNN>.jpg    raw Android screenshot (~1080×2400 portrait)
+<YYYYMMDDTHHMM>_<NNN>.json   expected parser output
 ```
 
-## Format JSON attendu
+## Expected JSON format
 
 ```json
 {
@@ -34,23 +34,23 @@ Wasteland Showdown utilise le même layout que Polar Invasion (`PolarInvasionV1P
 }
 ```
 
-Note : `event_type` vaut `"polar_invasion"` dans le JSON (valeur retournée directement
-par le parseur). Le code `"wasteland_showdown"` est assigné par le dispatcher en amont.
+Note: `event_type` is `"polar_invasion"` in the JSON (value returned directly
+by the parser). The code `"wasteland_showdown"` is assigned by the dispatcher upstream.
 
-## Objectifs de qualité
+## Quality targets
 
-| Champ | Objectif |
+| Field | Target |
 |-------|----------|
-| `event_datetime` | Premiers 16 chars exacts |
+| `event_datetime` | First 16 chars exact |
 | `total_battlers`, `alliance_rank`, `total_points` | Exact |
 | `power`, `points` | Exact |
 | `rank` | Exact |
-| `name` | Similarité ≥ 0.66 (SequenceMatcher) |
+| `name` | Similarity ≥ 0.66 (SequenceMatcher) |
 
-## Ajouter des captures
+## Adding screenshots
 
-1. Prendre plusieurs captures à différentes positions de scroll (5–10 captures par événement)
-2. Relever manuellement les valeurs visibles à l'écran
-3. Créer le JSON de référence avec les valeurs exactes lues à l'écran
-4. Placer `.jpg` + `.json` dans ce dossier (même nom de fichier, extension différente)
-5. Lancer `uv run pytest tests/test_v1_event_parsers.py -v` pour vérifier
+1. Take several screenshots at different scroll positions (5–10 screenshots per event)
+2. Manually note the values visible on screen
+3. Create the reference JSON with the exact values read from the screen
+4. Place the `.jpg` + `.json` in this folder (same filename, different extension)
+5. Run `uv run pytest tests/test_v1_event_parsers.py -v` to verify
