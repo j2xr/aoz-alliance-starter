@@ -203,7 +203,7 @@ def test_parser_member_with_low_power_skipped() -> None:
 
 
 def _header_digits_side_effect(digits: str) -> Any:
-    """image_to_string qui renvoie `digits` pour toute lecture numérique du header."""
+    """image_to_string that returns `digits` for any numeric header read."""
 
     def side_effect(crop: Any, config: str = "", **kwargs: Any) -> str:
         if "tessedit_char_whitelist=0123456789" in config:
@@ -214,8 +214,8 @@ def _header_digits_side_effect(digits: str) -> Any:
 
 
 def test_forced_two_col_layout_ignores_stray_rank_digit() -> None:
-    """Un chiffre parasite dans la cellule rang ne force plus le layout 3 colonnes
-    quand le code événement (2 colonnes) est connu."""
+    """A stray digit in the rank cell no longer forces the 3-column layout
+    when the event code (2 columns) is known."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = PolarInvasionV1Parser()
 
@@ -243,8 +243,8 @@ def test_forced_three_col_layout_reads_alliance_rank() -> None:
 
 
 def test_fallback_header_rejects_implausible_rank() -> None:
-    """Sans code événement, une lecture de rang invraisemblable (>9999) fait
-    basculer l'heuristique sur le layout 2 colonnes."""
+    """Without an event code, an implausible rank reading (>9999) makes the
+    heuristic fall back to the 2-column layout."""
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = PolarInvasionV1Parser()
 

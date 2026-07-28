@@ -268,9 +268,9 @@ class _PoolEntry:
     lock: threading.Lock
     lang: str
     psm: int
-    # Positionné (sous `lock`) quand l'instance a été évincée et End() appelé.
-    # Un worker qui avait récupéré la référence via get() avant l'éviction doit
-    # re-demander une instance au pool au lieu d'utiliser un handle détruit.
+    # Set (under `lock`) once the instance has been evicted and End() called.
+    # A worker that grabbed the reference via get() before the eviction must
+    # request a fresh instance from the pool instead of using a dead handle.
     ended: bool = False
 
 
@@ -337,10 +337,10 @@ class _Pool:
             self._entries[key] = entry
             while len(self._entries) > self._max_size:
                 evicted.append(self._entries.popitem(last=False))
-        # End() hors du lock du pool (pour ne pas bloquer les autres workers
-        # pendant un Recognize en cours) mais sous le lock de l'instance
-        # évincée : End() sans ce lock détruisait le handle natif pendant
-        # qu'un autre thread était en plein Recognize dessus (use-after-free).
+        # End() outside the pool lock (so as not to block other workers
+        # during an in-progress Recognize) but under the evicted instance's
+        # lock: End() without this lock used to destroy the native handle
+        # while another thread was mid-Recognize on it (use-after-free).
         for evicted_key, evicted_entry in evicted:
             with evicted_entry.lock:
                 evicted_entry.ended = True
@@ -448,12 +448,12 @@ def _apply_runtime_variables(api: Any, runtime_vars: tuple[tuple[str, str], ...]
 
 @contextmanager
 def _locked_entry(cfg: _ParsedConfig) -> Iterator[_PoolEntry]:
-    """Yield une instance du pool avec son lock pris, garantie non-End()-ée.
+    """Yield a pool instance with its lock held, guaranteed not End()-ed.
 
-    Une instance peut être évincée (et son handle natif détruit) entre le
-    ``get()`` et la prise de son lock ; dans ce cas ``ended`` est positionné
-    et on redemande une instance fraîche au pool au lieu d'utiliser le
-    handle mort.
+    An instance can be evicted (and its native handle destroyed) between
+    ``get()`` and taking its lock; in that case ``ended`` is set and a
+    fresh instance is requested from the pool instead of using the dead
+    handle.
     """
     pool = _get_pool()
     key = _PoolKey(lang=cfg.lang, psm=cfg.psm, init_vars=cfg.init_vars)

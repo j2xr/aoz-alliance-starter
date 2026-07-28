@@ -42,7 +42,7 @@ def test_refresh_loads_db_aliases_and_detection_uses_them(
     monkeypatch.setattr(dispatcher.httpx, "get", lambda *a, **k: _Resp())
     assert dispatcher.refresh_title_patterns_from_supabase() is True
 
-    # Un alias présent uniquement en base doit désormais être détecté.
+    # An alias present only in the database must now be detected.
     monkeypatch.setattr(dispatcher, "_ocr_header", lambda image: "brand new event 2026-05-01")
     kind, code = dispatcher.detect_screen_kind(np.zeros((10, 10), dtype=np.uint8))
     assert (kind, code) == ("event", "new_event")
@@ -61,7 +61,7 @@ def test_refresh_keeps_fallback_on_empty_rows(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(dispatcher.httpx, "get", lambda *a, **k: _Resp())
     assert dispatcher.refresh_title_patterns_from_supabase() is False
 
-    # Le fallback statique reste opérationnel.
+    # The static fallback remains operational.
     monkeypatch.setattr(dispatcher, "_ocr_header", lambda image: "polar invasion 2026")
     kind, code = dispatcher.detect_screen_kind(np.zeros((10, 10), dtype=np.uint8))
     assert (kind, code) == ("event", "polar_invasion")
@@ -79,7 +79,7 @@ def test_refresh_propagates_network_error_for_lifespan_to_catch(
     with pytest.raises(httpx.ConnectError):
         dispatcher.refresh_title_patterns_from_supabase()
 
-    # Après l'échec (avalé par le lifespan), le fallback reste en place.
+    # After the failure (swallowed by the lifespan), the fallback stays in place.
     monkeypatch.setattr(dispatcher, "_ocr_header", lambda image: "void war 2026")
     kind, code = dispatcher.detect_screen_kind(np.zeros((10, 10), dtype=np.uint8))
     assert (kind, code) == ("event", "void_war")

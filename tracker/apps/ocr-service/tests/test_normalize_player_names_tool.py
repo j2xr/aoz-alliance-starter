@@ -1,6 +1,6 @@
-"""Tests unitaires du calcul de collisions de tools/normalize_player_names.py.
+"""Unit tests for tools/normalize_player_names.py's collision computation.
 
-Fonction pure (pas d'accès réseau) : aucun mock PostgREST nécessaire.
+Pure function (no network access): no PostgREST mock needed.
 """
 
 from tools.normalize_player_names import PlayerRow, compute_renames

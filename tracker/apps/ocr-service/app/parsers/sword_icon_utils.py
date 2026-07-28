@@ -33,12 +33,12 @@ def load_sword_icon() -> np.ndarray | None:
 
 @lru_cache(maxsize=8)
 def _resized_icon(scale: float) -> np.ndarray | None:
-    """Sprite redimensionné, mémoïsé par échelle.
+    """Resized sprite, memoized by scale.
 
-    Le resize LANCZOS était refait à chaque ligne de chaque capture alors que
-    le résultat ne dépend que de `scale` (toujours 1.0 en pratique). Le sprite
-    retourné est partagé : les appelants ne doivent PAS le muter — seul
-    matchTemplate le lit.
+    The LANCZOS resize used to be redone for every row of every screenshot
+    even though the result only depends on `scale` (always 1.0 in practice).
+    The returned sprite is shared: callers must NOT mutate it — only
+    matchTemplate reads it.
     """
     icon = load_sword_icon()
     if icon is None:

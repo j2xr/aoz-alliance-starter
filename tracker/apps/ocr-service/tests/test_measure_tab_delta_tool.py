@@ -1,9 +1,9 @@
-"""Tests unitaires de tools/measure_tab_delta.py.
+"""Unit tests for tools/measure_tab_delta.py.
 
-Fonctions pures uniquement — aucune image, aucun I/O disque. Le comportement
-sur de vraies images est déjà couvert par test_contribution_ranking_parser.py
-(qui exerce tab_zone_stats/_detect_selected_tab directement) ; ce module ne
-teste que la logique de classification/agrégation propre à l'outil.
+Pure functions only — no image, no disk I/O. Behavior on real images is
+already covered by test_contribution_ranking_parser.py (which exercises
+tab_zone_stats/_detect_selected_tab directly); this module only tests the
+tool's own classification/aggregation logic.
 """
 
 from pathlib import Path
@@ -18,7 +18,7 @@ from tools.measure_tab_delta import (
     summarize,
 )
 
-_THRESHOLD = 15.0  # valeur par défaut de _TAB_DETECT_MIN_DELTA au moment de l'écriture
+_THRESHOLD = 15.0  # default value of _TAB_DETECT_MIN_DELTA at the time of writing
 
 
 def _measurement(delta: float, detected: str = "weekly") -> TabMeasurement:

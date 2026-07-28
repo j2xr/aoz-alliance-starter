@@ -1,4 +1,4 @@
-"""Tests du module partagé de lecture des pseudos (app.parsers.name_ocr)."""
+"""Tests for the shared nickname-reading module (app.parsers.name_ocr)."""
 
 import unicodedata
 from typing import Any
@@ -59,22 +59,22 @@ def test_mean_word_conf() -> None:
 
 def test_fix_name_substitutions_restores_arrows() -> None:
     assert fix_name_substitutions("«= .AL3X. =>") == "←.AL3X.→"
-    # La règle du « > » final ne retire pas l'espace intermédiaire.
+    # The trailing ">" rule doesn't remove the space in between.
     assert fix_name_substitutions("« Name >") == "←Name →"
 
 
 def test_fix_name_substitutions_kanji_between_kana() -> None:
     assert fix_name_substitutions("お一しあ") == "おーしあ"
-    # Le kanji isolé (pas entouré de kana) est conservé.
+    # An isolated kanji (not surrounded by kana) is kept.
     assert fix_name_substitutions("一番") == "一番"
 
 
 def test_fix_name_substitutions_collapses_cjk_spaces() -> None:
-    # Tesseract sème des espaces entre glyphes CJK adjacents.
+    # Tesseract sprinkles spaces between adjacent CJK glyphs.
     assert fix_name_substitutions("中 本") == "中本"
     assert fix_name_substitutions("幸恵 丸 ポ ー タ ー") == "幸恵丸ポーター"
-    # Un espace entouré d'au moins un caractère non-CJK est conservé
-    # (pseudos à flèches, handles mixtes CJK+latin).
+    # A space surrounded by at least one non-CJK character is kept
+    # (arrow-decorated pseudos, mixed CJK+Latin handles).
     assert fix_name_substitutions("焼鳥 Yakitori") == "焼鳥 Yakitori"
     assert fix_name_substitutions("← .AL3X. →") == "← .AL3X. →"
 
@@ -126,7 +126,7 @@ def test_disambiguate_rus_branch_returns_winning_pass_data() -> None:
         name, data = disambiguate_cyrillic(_CROP, "АНА", original)
 
     assert name == "Аня"
-    # La confiance recalculée en aval doit refléter la passe russe gagnante.
+    # The confidence recomputed downstream must reflect the winning Russian pass.
     assert data is rus
     assert mean_word_conf(data) == 85.0
     assert "-l rus" in mocked.call_args_list[0].kwargs.get(
@@ -161,28 +161,28 @@ def test_disambiguate_keeps_original_when_eng_too_short() -> None:
 
 # ── normalize_name ────────────────────────────────────────────────────────────
 #
-# Vecteurs issus des corruptions réellement observées, catalogués dans
+# Vectors drawn from corruptions actually observed, cataloged in
 # docs/maintenance/0014-player-duplicates-merge.md.
 
 
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        # Mojibake latin-1/UTF-8
+        # latin-1/UTF-8 mojibake
         ("MjÃ¶lnir", "Mjölnir"),
         ("BigÂ§teelCurtain", "Big§teelCurtain"),
         ("Ð¡ÐºÐ°Ð·ÐºÐ°", "Сказка"),
         ("DuyMáº¯tTheo", "DuyMắtTheo"),
-        # Pleine chasse → ASCII (repli aussi la parenthèse, indispensable pour
-        # _ALLIANCE_TAG_RE côté contribution_ranking)
+        # Fullwidth → ASCII (also folds the parenthesis, needed for
+        # _ALLIANCE_TAG_RE on the contribution_ranking side)
         ("ï¼ˆLOLï¼‰CHIANTI", "(LOL)CHIANTI"),
         ("ＶＩＰ", "VIP"),
-        # Zero-width supprimé, espaces multiples repliés, trim
+        # Zero-width removed, multiple spaces collapsed, trimmed
         ("a​b", "ab"),
         ("a‌b‍", "ab"),
         ("﻿Name", "Name"),
         ("  Name   With   Spaces  ", "Name With Spaces"),
-        # Pseudos légitimes non altérés
+        # Legitimate pseudos left unaltered
         ("← .AL3X. →", "← .AL3X. →"),
         ("おーしあ", "おーしあ"),
         ("Дмитрий", "Дмитрий"),

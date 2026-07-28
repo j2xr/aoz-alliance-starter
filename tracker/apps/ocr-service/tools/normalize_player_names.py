@@ -1,25 +1,25 @@
-"""One-shot : applique normalize_name() aux pseudos déjà stockés dans at_players.
+"""One-shot: applies normalize_name() to nicknames already stored in at_players.
 
-Contexte : normalize_name() (app/parsers/name_ocr.py) est désormais appliqué à
-la source par les parsers OCR, mais les joueurs déjà en base sous forme
-mojibake (voir docs/maintenance/0014-player-duplicates-merge.md) ne
-matcheront plus les captures futures — celles-ci arrivent désormais propres.
-Ce script renomme l'historique une seule fois pour éviter que chaque joueur
-mojibake reforme un doublon "propre" au prochain upload.
+Context: normalize_name() (app/parsers/name_ocr.py) is now applied at the
+source by the OCR parsers, but players already in the database in mojibake
+form (see docs/maintenance/0014-player-duplicates-merge.md) will no longer
+match future screenshots — those now arrive clean. This script renames the
+historical data once to prevent every mojibake player from re-forming a
+"clean" duplicate on the next upload.
 
-Dry-run par défaut : affiche le tableau avant→après et les collisions
-(alliance_id, nom normalisé déjà pris par un autre joueur) à traiter par
-/merge. --apply exécute les renommages sans collision et réaffiche la liste
-des collisions restantes.
+Dry-run by default: prints the before→after table and the collisions
+(alliance_id, normalized name already taken by another player) to be
+handled via /merge. --apply performs the collision-free renames and
+reprints the list of remaining collisions.
 
 Usage:
     uv run python tools/normalize_player_names.py            # dry-run
-    uv run python tools/normalize_player_names.py --apply     # applique
+    uv run python tools/normalize_player_names.py --apply     # applies
 
-Requiert SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY dans l'environnement (même
-accès PostgREST que app/dispatcher.py::refresh_title_patterns_from_supabase ;
-la clé service est nécessaire car la RLS de at_players ne donne la lecture/
-écriture qu'aux rôles authenticated/service).
+Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in the environment (same
+PostgREST access as app/dispatcher.py::refresh_title_patterns_from_supabase;
+the service key is needed because at_players' RLS only grants read/write
+to the authenticated/service roles).
 """
 
 from __future__ import annotations
@@ -69,16 +69,17 @@ def fetch_players(url: str, key: str, timeout: float = 30.0) -> list[PlayerRow]:
 
 
 def compute_renames(players: list[PlayerRow]) -> tuple[list[Rename], list[Collision]]:
-    """Calcule les renommages sûrs et les collisions à traiter manuellement.
+    """Computes safe renames and collisions to be handled manually.
 
-    Fonction pure (aucun accès réseau) pour rester testable unitairement.
+    Pure function (no network access) to stay unit-testable.
 
-    Une collision survient quand le nom normalisé (alliance_id, new_name)
-    coïncide déjà avec un AUTRE joueur — soit un joueur existant non touché
-    par la normalisation, soit un autre doublon dont le nom normalise vers la
-    même valeur (deux variantes mojibake du même pseudo, ex. ``Mjolnir`` et
-    ``MjÃ¶lnir``). ``unique (alliance_id, name)`` en base interdit le
-    renommage direct dans ces cas ; ces paires nécessitent un ``/merge``.
+    A collision occurs when the normalized name (alliance_id, new_name)
+    already coincides with ANOTHER player — either an existing player
+    untouched by normalization, or another duplicate whose name normalizes
+    to the same value (two mojibake variants of the same nickname, e.g.
+    ``Mjolnir`` and ``MjÃ¶lnir``). The database's ``unique (alliance_id,
+    name)`` forbids a direct rename in these cases; these pairs require a
+    ``/merge``.
     """
     existing_names: set[tuple[str, str]] = {(p.alliance_id, p.name) for p in players}
 
@@ -88,7 +89,7 @@ def compute_renames(players: list[PlayerRow]) -> tuple[list[Rename], list[Collis
         if new_name != p.name:
             candidates.append((p, new_name))
 
-    # Nombre de candidats (par id distinct) visant le même (alliance_id, new_name).
+    # Number of candidates (by distinct id) targeting the same (alliance_id, new_name).
     target_counts: dict[tuple[str, str], int] = {}
     for p, new_name in candidates:
         key = (p.alliance_id, new_name)
@@ -102,7 +103,7 @@ def compute_renames(players: list[PlayerRow]) -> tuple[list[Rename], list[Collis
         other_existing = target_key in existing_names and (p.alliance_id, p.name) != target_key
         if other_existing:
             collisions.append(
-                Collision(p, new_name, "nom déjà utilisé par un autre joueur de l'alliance")
+                Collision(p, new_name, "name already used by another player in the alliance")
             )
             continue
 
@@ -111,7 +112,7 @@ def compute_renames(players: list[PlayerRow]) -> tuple[list[Rename], list[Collis
                 Collision(
                     p,
                     new_name,
-                    "plusieurs doublons de cette alliance normalisent vers le même nom",
+                    "several duplicates in this alliance normalize to the same name",
                 )
             )
             continue
@@ -141,14 +142,14 @@ def apply_renames(url: str, key: str, renames: list[Rename], timeout: float = 30
 
 def _print_report(renames: list[Rename], collisions: list[Collision]) -> None:
     if renames:
-        print(f"\n{len(renames)} renommage(s):")
+        print(f"\n{len(renames)} rename(s):")
         for r in renames:
             print(f"  [{r.player.alliance_id}] {r.player.name!r} -> {r.new_name!r}")
     else:
-        print("\nAucun renommage nécessaire.")
+        print("\nNo rename needed.")
 
     if collisions:
-        print(f"\n{len(collisions)} collision(s) à traiter par /merge:")
+        print(f"\n{len(collisions)} collision(s) to handle via /merge:")
         for c in collisions:
             print(f"  [{c.player.alliance_id}] {c.player.name!r} -> {c.new_name!r} ({c.reason})")
 
@@ -158,14 +159,14 @@ def main() -> int:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Applique les renommages sans collision (dry-run par défaut).",
+        help="Apply the collision-free renames (dry-run by default).",
     )
     args = parser.parse_args()
 
     url = os.getenv("SUPABASE_URL", "")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not key:
-        print("SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont requis.", file=sys.stderr)
+        print("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.", file=sys.stderr)
         return 1
 
     players = fetch_players(url, key)
@@ -173,11 +174,11 @@ def main() -> int:
     _print_report(renames, collisions)
 
     if args.apply and renames:
-        print(f"\nApplication de {len(renames)} renommage(s)...")
+        print(f"\nApplying {len(renames)} rename(s)...")
         apply_renames(url, key, renames)
-        print("Terminé.")
+        print("Done.")
     elif not args.apply and renames:
-        print("\nDry-run : relancer avec --apply pour renommer.")
+        print("\nDry-run: rerun with --apply to rename.")
 
     return 0
 

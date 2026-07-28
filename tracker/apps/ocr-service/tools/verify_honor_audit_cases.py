@@ -1,38 +1,39 @@
-"""Vérifie, sur les images réelles qui les ont produits, si les cas concrets de
-"donation row 11: alliance_honor=X breaks monotonicity" documentés dans les
-audits `/reprocess-channel` du 2026-07-26 (voir docs/maintenance/2026-07-26-
-reprocess-channel-*.md) sont aujourd'hui corrigés — plutôt que de le supposer.
+"""Checks, against the real images that produced them, whether the concrete
+"donation row 11: alliance_honor=X breaks monotonicity" cases documented in
+the `/reprocess-channel` audits of 2026-07-26 (see docs/maintenance/2026-07-26-
+reprocess-channel-*.md) are actually fixed today — rather than assuming so.
 
-Contexte : ces trois audits ont trouvé la même signature dans trois alliances
-différentes : la dernière ligne d'une capture pleine page (row 11 sur
-_MAX_ROWS=12, voir contribution_ranking_v1.py) casse la monotonie de
-l'alliance_honor, parce que la bande de crop y est la plus mal alignée
-(dérive géométrique documentée dans contribution_ranking_v1.py, lignes
-~134-178). PR #29 (déjà mergée) a corrigé la circularité honor<->LLM pour les
-lignes explicitement "suspect" (suspect_honor_window fixé par
-_enforce_honor_monotonicity) — mais deux des cas documentés (SOD: 'ran' et
-'Somethin_kool' à 955/970) ne cassent PAS la monotonie (leur valeur est plus
-petite que la ligne précédente) et sont rejetés par une branche différente
-(le "self-consistency gate" quand aucune fenêtre n'est fixée) que PR #29 ne
-touche pas. Cet outil règle la question empiriquement, cas par cas, plutôt que
-par déduction.
+Context: these three audits found the same signature in three different
+alliances: the last row of a full-page screenshot (row 11 out of
+_MAX_ROWS=12, see contribution_ranking_v1.py) breaks alliance_honor
+monotonicity, because the crop band there is the most poorly aligned
+(geometric drift documented in contribution_ranking_v1.py, lines ~134-178).
+PR #29 (already merged) fixed the honor<->LLM circularity for rows
+explicitly flagged "suspect" (suspect_honor_window set by
+_enforce_honor_monotonicity) — but two of the documented cases (SOD: 'ran'
+and 'Somethin_kool' at 955/970) do NOT break monotonicity (their value is
+smaller than the previous row) and are rejected by a different branch (the
+"self-consistency gate" when no window is set) that PR #29 doesn't touch.
+This tool settles the question empirically, case by case, rather than by
+deduction.
 
-Deux passes par image concernée :
-  - "parser" : ContributionRankingV1Parser.parse() seul, déterministe, sans LLM.
-  - "full"   : app.extract.extract() — le pipeline de production complet,
-    y compris le fallback LLM si LLM_FALLBACK_ENABLED (lu à l'import, voir
-    app/extract.py — impossible à bascule après coup depuis ce script).
+Two passes per relevant image:
+  - "parser": ContributionRankingV1Parser.parse() alone, deterministic, no LLM.
+  - "full"  : app.extract.extract() — the full production pipeline,
+    including the LLM fallback if LLM_FALLBACK_ENABLED (read at import time,
+    see app/extract.py — cannot be toggled after the fact from this script).
 
-La table CASES ci-dessous est le "ground truth" : la valeur mémorisée en base
-(stored_honor, ce que la capture d'origine a produit) sert de repère de ligne
-au même titre que le nom, car deux des noms réels sont eux-mêmes tronqués par
-l'OCR ("Somethin kool", "ran") — matcher uniquement par nom serait peu fiable.
+The CASES table below is the "ground truth": the value stored in the
+database (stored_honor, what the original screenshot produced) serves as a
+row marker just like the name, because two of the real names are themselves
+truncated by OCR ("Somethin kool", "ran") — matching by name alone would be
+unreliable.
 
-Usage — cet outil, comme measure_tab_delta.py, n'a pas accès à data/inbox/ ni
-à un venv utilisable directement sur cet hôte (aucun `uv` sur le PATH, le
-`.venv` du conteneur pointe vers un interpréteur qui n'existe que dedans, et
-l'image ne contient PAS tools/ — seul app/ est copié, voir Dockerfile). La
-seule invocation qui fonctionne réellement sur cet hôte :
+Usage — like measure_tab_delta.py, this tool has no access to data/inbox/
+nor to a venv usable directly on this host (no `uv` on the PATH, the
+container's `.venv` points to an interpreter that only exists inside it, and
+the image does NOT contain tools/ — only app/ is copied, see Dockerfile).
+The only invocation that actually works on this host:
 
     cd tracker
     docker compose run --rm --no-deps \\
@@ -41,15 +42,15 @@ seule invocation qui fonctionne réellement sur cet hôte :
         -v "$PWD/data/inbox:/inbox:ro" \\
         ocr-service python tools/verify_honor_audit_cases.py --root /inbox
 
-  --mode {parser,full,both} (défaut both)
-  --include-unconfirmed   : inclut aussi les cas non re-vérifiés à l'écran (LOL #4)
+  --mode {parser,full,both} (default both)
+  --include-unconfirmed   : also includes cases not re-verified on screen (LOL #4)
   --json
-  --fail-on-regression    : sortie 1 si un cas confirmé est FAIL en mode full
+  --fail-on-regression    : exit 1 if a confirmed case is FAIL in full mode
 
-Note : le mode "full" appelle le vrai Ollama de production (pas d'API payante
-— voir app/llm_fallback.py, _DEFAULT_BASE_URL="http://localhost:11434") et
-n'est donc ni déterministe ni adapté à CI/bench.py — à lancer manuellement,
-de préférence hors heures de forte utilisation Discord.
+Note: "full" mode calls the real production Ollama (no paid API — see
+app/llm_fallback.py, _DEFAULT_BASE_URL="http://localhost:11434") and is
+therefore neither deterministic nor suited to CI/bench.py — run it manually,
+preferably outside peak Discord usage hours.
 """
 
 from __future__ import annotations
@@ -69,18 +70,18 @@ from app.parsers.base import DonationMember, DonationParseResult
 from app.preprocess import preprocess_image
 
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
-# Même seuil que tools/bench-ocr/bench.py:_sim — pas redéfini indépendamment.
+# Same threshold as tools/bench-ocr/bench.py:_sim — not redefined independently.
 NAME_SIM_THRESHOLD = 0.70
 
 
 @dataclass(frozen=True)
 class AuditCase:
-    label: str  # nom joueur tel qu'imprimé dans le rapport d'audit
-    stored_honor: int  # valeur FAUSSE effectivement stockée en prod — sert aussi de repère de ligne
-    true_honor: int  # valeur confirmée par capture d'écran dans l'audit
-    source: str  # doc + numéro de finding
-    message_id: str | None = None  # None = scanner tout le corpus (message inconnu)
-    confirmed: bool = True  # False = l'audit n'a pas re-vérifié à l'écran (LOL #4)
+    label: str  # player name as printed in the audit report
+    stored_honor: int  # WRONG value actually stored in prod — also serves as a row marker
+    true_honor: int  # value confirmed by screenshot in the audit
+    source: str  # doc + finding number
+    message_id: str | None = None  # None = scan the whole corpus (unknown message)
+    confirmed: bool = True  # False = the audit did not re-verify on screen (LOL #4)
 
 
 CASES: tuple[AuditCase, ...] = (
@@ -98,9 +99,9 @@ CASES: tuple[AuditCase, ...] = (
         "2026-07-26-reprocess-channel-data-quality-report.md#1",
         message_id="1527351181750440036",
     ),
-    # Le rapport SOD cite ces deux lignes de log mais ne précise jamais de
-    # quel message elles proviennent — d'où message_id=None : on scanne tout
-    # le corpus et on rapporte où la ligne apparaît.
+    # The SOD report cites these two log lines but never specifies which
+    # message they came from — hence message_id=None: the whole corpus is
+    # scanned and where the row appears is reported.
     AuditCase(
         "Somethin_kool",
         955,
@@ -125,8 +126,8 @@ CASES: tuple[AuditCase, ...] = (
 
 
 def is_contribution_ranking(image: object) -> bool:
-    """Même garde que measure_tab_delta.py : un en-tête non reconnu lève
-    UnknownEventError, traité comme « pas une Contribution Ranking »."""
+    """Same guard as measure_tab_delta.py: an unrecognized header raises
+    UnknownEventError, treated as "not a Contribution Ranking"."""
     try:
         kind, code = detect_screen_kind(image)  # type: ignore[arg-type]
     except UnknownEventError:
@@ -135,7 +136,7 @@ def is_contribution_ranking(image: object) -> bool:
 
 
 def iter_images(root: Path) -> Iterator[Path]:
-    """*.jpg/*.jpeg/*.png, récursif, trié (déterministe)."""
+    """*.jpg/*.jpeg/*.png, recursive, sorted (deterministic)."""
     if not root.is_dir():
         return
     seen: set[Path] = set()
@@ -151,23 +152,23 @@ def _name_matches(name: str, label: str) -> bool:
 
 
 def match_case(members: Sequence[DonationMember], case: AuditCase) -> list[DonationMember]:
-    """Toutes les lignes dont l'honor OU le nom correspond au cas — jamais
-    seulement la meilleure : le même joueur apparaît légitimement sur
-    plusieurs captures qui se chevauchent (voir weekly_010, où Somethin_kool
-    lit correctement 2385, contre la capture voisine du même message où il
-    tombe en row 11 et lit 92256). L'honor sert de repère de ligne car deux
-    des noms réels sont eux-mêmes tronqués par l'OCR ("Somethin kool", "ran")
-    — matcher uniquement par nom serait peu fiable pour ces deux-là.
+    """All rows whose honor OR name matches the case — never just the best
+    one: the same player legitimately appears across several overlapping
+    screenshots (see weekly_010, where Somethin_kool correctly reads 2385,
+    versus the neighboring screenshot of the same message where they land
+    on row 11 and read 92256). Honor serves as a row marker because two of
+    the real names are themselves truncated by OCR ("Somethin kool", "ran")
+    — matching by name alone would be unreliable for those two.
 
-    Limite assumée : deux cas qui partagent le MÊME label mais des paires
-    stored/true_honor différentes (les deux vrais "Somethin_kool", un par
-    alliance, 92256/2385 et 955/255) ne sont PAS mutuellement exclusifs ici —
-    le repère par nom seul ne peut pas les distinguer, et le scan par
-    message_id=None (rapport SOD : message inconnu) empêche de les séparer
-    par contexte. Une ligne de l'un peut donc aussi apparaître comme hit de
-    l'autre, avec un verdict 'other' (ni son stored_honor ni son true_honor) —
-    du bruit visible dans le rapport, jamais un PASS/FAIL silencieusement
-    faux. Voir test_match_case_same_named_cases_can_still_cross_match.
+    Accepted limitation: two cases that share the SAME label but different
+    stored/true_honor pairs (the two real "Somethin_kool"s, one per
+    alliance, 92256/2385 and 955/255) are NOT mutually exclusive here — the
+    name-only marker can't distinguish them, and the message_id=None scan
+    (SOD report: unknown message) prevents separating them by context. A
+    row from one can therefore also show up as a hit for the other, with a
+    verdict of 'other' (neither its stored_honor nor its true_honor) —
+    noise visible in the report, never a silently wrong PASS/FAIL. See
+    test_match_case_same_named_cases_can_still_cross_match.
     """
     return [
         m
@@ -181,9 +182,9 @@ Verdict = str  # "pass" | "fail" | "other"
 
 
 def classify(honor: int, case: AuditCase) -> Verdict:
-    """'pass' = la valeur vraie confirmée par l'audit ; 'fail' = la valeur
-    fausse effectivement stockée en prod ; 'other' = ni l'une ni l'autre —
-    rapporté tel quel, jamais deviné."""
+    """'pass' = the true value confirmed by the audit; 'fail' = the wrong
+    value actually stored in prod; 'other' = neither one — reported as-is,
+    never guessed."""
     if honor == case.true_honor:
         return "pass"
     if honor == case.stored_honor:
@@ -208,9 +209,9 @@ class RowHit:
 
 
 def scan_root(root: Path, cases: Sequence[AuditCase], *, mode: str) -> list[RowHit]:
-    """mode: 'parser' (pas de LLM), 'full' (pipeline complet), 'both'."""
+    """mode: 'parser' (no LLM), 'full' (full pipeline), 'both'."""
     parser = get_parser(DONATION_CODE)
-    if parser is None:  # pragma: no cover — garde défensive, jamais vrai en pratique
+    if parser is None:  # pragma: no cover — defensive guard, never true in practice
         raise RuntimeError(f"No parser registered for {DONATION_CODE!r}")
 
     hits: list[RowHit] = []
@@ -248,10 +249,10 @@ def scan_root(root: Path, cases: Sequence[AuditCase], *, mode: str) -> list[RowH
         for case, members in case_matches.items():
             for m in members:
                 final = final_by_row_index.get(m.row_index) if m.row_index is not None else None
-                # Reflète le vrai déclencheur d'app.extract._apply_llm_fallback :
-                # une ligne "suspect" ou sous le seuil de confiance nom est
-                # envoyée au LLM dès que LLM_FALLBACK_ENABLED est vrai (lu ici
-                # depuis le même module, donc la valeur réellement active).
+                # Reflects the real trigger of app.extract._apply_llm_fallback:
+                # a "suspect" row or one below the name confidence threshold
+                # is sent to the LLM as soon as LLM_FALLBACK_ENABLED is true
+                # (read here from the same module, so the actually active value).
                 reached_llm = _LLM_FALLBACK_ENABLED and (
                     m.suspect_honor_window is not None or m.confidence < _CONFIDENCE_THRESHOLD_NAME
                 )
@@ -281,11 +282,11 @@ def summary_key(case: AuditCase) -> str:
 
 
 def summarize(hits: Sequence[RowHit], *, cases: Sequence[AuditCase]) -> dict[str, dict[str, int]]:
-    """Un résumé par cas dans `cases` : combien de hits PASS/FAIL/OTHER en mode
-    parser et en mode full, et combien ont atteint le LLM. N'exclut PAS les cas
-    confirmed=False elle-même — c'est à l'appelant de filtrer `cases` (voir
-    main()'s --include-unconfirmed) puisqu'un résumé doit rester une fonction
-    pure du couple (hits, cases) qu'on lui donne."""
+    """A summary per case in `cases`: how many PASS/FAIL/OTHER hits in parser
+    mode and in full mode, and how many reached the LLM. Does NOT itself
+    exclude confirmed=False cases — it's up to the caller to filter `cases`
+    (see main()'s --include-unconfirmed) since a summary should stay a pure
+    function of the (hits, cases) pair it's given."""
     summary: dict[str, dict[str, int]] = {}
     for case in cases:
         key = summary_key(case)
@@ -371,9 +372,9 @@ def format_report(
 
 
 def _default_inbox_root() -> Path:
-    """Même garde que measure_tab_delta.py — voir sa docstring pour le
-    raisonnement complet (pas de 4e parent quand seul apps/ocr-service est
-    copié dans l'image Docker)."""
+    """Same guard as measure_tab_delta.py — see its docstring for the full
+    reasoning (no 4th parent when only apps/ocr-service is copied into the
+    Docker image)."""
     here = Path(__file__).resolve()
     if len(here.parents) > 3:
         return here.parents[3] / "data" / "inbox"
@@ -389,31 +390,31 @@ def main() -> int:
         "--root",
         type=Path,
         default=default_root,
-        help=f"Racine à scanner (défaut : {default_root})",
+        help=f"Root to scan (default: {default_root})",
     )
     parser.add_argument(
-        "--mode", choices=("parser", "full", "both"), default="both", help="Passes à exécuter"
+        "--mode", choices=("parser", "full", "both"), default="both", help="Passes to run"
     )
     parser.add_argument(
         "--include-unconfirmed",
         action="store_true",
-        help="Inclure aussi les cas non re-vérifiés à l'écran (LOL #4) dans le résumé",
+        help="Also include cases not re-verified on screen (LOL #4) in the summary",
     )
-    parser.add_argument("--json", action="store_true", help="Sortie JSON au lieu du rapport texte")
+    parser.add_argument("--json", action="store_true", help="JSON output instead of the text report")
     parser.add_argument(
         "--fail-on-regression",
         action="store_true",
-        help="Code de sortie 1 si un cas confirmé est FAIL en mode full",
+        help="Exit code 1 if a confirmed case is FAIL in full mode",
     )
     args = parser.parse_args()
 
     if not args.root.is_dir():
-        print(f"Racine introuvable : {args.root}", file=sys.stderr)
+        print(f"Root not found: {args.root}", file=sys.stderr)
         return 2
 
-    # Toujours scanner TOUS les cas (un cas non confirmé doit quand même être
-    # rapporté per-hit) — --include-unconfirmed ne change que ce que le RÉSUMÉ
-    # affiche, via summary_cases ci-dessous.
+    # Always scan ALL cases (an unconfirmed case must still be reported
+    # per-hit) — --include-unconfirmed only changes what the SUMMARY
+    # displays, via summary_cases below.
     hits = scan_root(args.root, CASES, mode=args.mode)
     summary_cases = CASES if args.include_unconfirmed else tuple(c for c in CASES if c.confirmed)
 

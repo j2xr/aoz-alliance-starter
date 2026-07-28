@@ -201,11 +201,10 @@ def _parse_stat_line(line: str, position: int) -> tuple[str | None, float | None
 
 
 def _slot_is_explicit(line: str) -> bool:
-    """True si la ligne désigne son slot explicitement (label reconnu ou "2)370").
+    """True if the line names its slot explicitly (recognized label or "2)370").
 
-    Les nombres nus, eux, ne sont attribués à un slot que par leur position —
-    une simple supposition qui ne doit jamais l'emporter sur une valeur
-    étiquetée.
+    Bare numbers, on the other hand, are only assigned to a slot by their
+    position — a mere guess that must never outweigh a labeled value.
     """
     s = line.strip()
     if _RE_POS_PLAIN.match(s):
@@ -252,10 +251,10 @@ def _build_block(name: str, stat_lines: list[str]) -> PlayerStatsMember | None:
         (*_parse_stat_line(line, i), _slot_is_explicit(line)) for i, line in enumerate(stat_lines)
     ]
 
-    # Passe 1 : lignes à slot explicite (label reconnu ou position "2)370").
-    # Elles priment sur les nombres nus : sans cela, un nombre nu en ligne 0
-    # occupait "attack" et la valeur étiquetée "LRA 412" qui suivait était
-    # silencieusement perdue.
+    # Pass 1: lines with an explicit slot (recognized label or position
+    # "2)370"). They take priority over bare numbers: without this, a bare
+    # number on line 0 would occupy "attack" and the labeled "LRA 412" value
+    # that followed would be silently lost.
     for slot, val, kind, explicit in parsed:
         if val is None or not explicit:
             continue
@@ -268,9 +267,9 @@ def _build_block(name: str, stat_lines: list[str]) -> PlayerStatsMember | None:
         elif slot == "defense" and defense is None:
             defense = val
 
-    # Passe 2 : nombres nus (slot déduit de la position) et labels inconnus.
-    # Si le slot positionnel est déjà pris, la valeur rejoint la réserve pour
-    # le remplissage ordonné ci-dessous au lieu d'être perdue.
+    # Pass 2: bare numbers (slot inferred from position) and unknown labels.
+    # If the positional slot is already taken, the value joins the reserve
+    # for the ordered fill-in below instead of being lost.
     for slot, val, kind, explicit in parsed:
         if val is None or explicit:
             continue

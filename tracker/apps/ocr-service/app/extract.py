@@ -178,13 +178,13 @@ def _apply_llm_fallback(
             )
         logger.info("LLM fallback triggered for %r (row %d): %s", member.name, row, reason)
 
-        # Bande réellement découpée par le parser : l'index dans `members` ne
-        # correspond pas à l'index physique de la ligne (les lignes invalides
-        # sont éliminées), et list_top / row_height effectifs diffèrent des
-        # constantes de classe (_detect_list_top dynamique, scaling h/2400 du
-        # parser donation). Recalculer ici décalait le crop et attribuait le
-        # nom d'un joueur à un autre. Les constantes ne servent plus que de
-        # filet de sécurité si un parser n'a pas renseigné row_y/row_h.
+        # Band actually cropped by the parser: the index in `members` doesn't
+        # match the row's physical index (invalid rows are dropped), and the
+        # effective list_top / row_height differ from the class constants
+        # (dynamic _detect_list_top, donation parser's h/2400 scaling).
+        # Recomputing here used to shift the crop and attribute one player's
+        # name to another. The constants now only serve as a safety net if a
+        # parser didn't set row_y/row_h.
         y = member.row_y if member.row_y is not None else member_list_top + i * row_height
         crop_h = member.row_h if member.row_h is not None else row_height
         row_crop: np.ndarray = image[y : y + crop_h, :]
