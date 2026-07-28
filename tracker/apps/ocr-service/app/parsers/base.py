@@ -16,12 +16,12 @@ class MemberResult(BaseModel):
     # Debug-only crop coordinates; populated by parsers when emit_trace=True
     # and excluded from JSON serialization so the production API is unchanged.
     trace: RowTrace | None = Field(default=None, exclude=True)
-    # Bande verticale réellement découpée par le parser pour cette ligne.
-    # Toujours renseignée (contrairement à `trace`) : le fallback LLM s'en
-    # sert pour recadrer la bonne ligne — l'index dans `members` ne correspond
-    # pas à l'index physique (lignes invalides éliminées) et le list_top /
-    # row_height effectifs diffèrent des constantes de classe (détection
-    # dynamique, scaling). Exclue de la sérialisation JSON.
+    # Vertical band actually cropped by the parser for this row. Always set
+    # (unlike `trace`): the LLM fallback uses it to re-crop the right row —
+    # the index in `members` doesn't match the physical index (invalid rows
+    # dropped) and the effective list_top / row_height differ from the
+    # class constants (dynamic detection, scaling). Excluded from JSON
+    # serialization.
     row_y: int | None = Field(default=None, exclude=True)
     row_h: int | None = Field(default=None, exclude=True)
 
@@ -55,7 +55,7 @@ class ParseResult(TruncationFlagMixin):
 
 
 class DonationMember(BaseModel):
-    name: str  # canonicalisé (tag d'alliance strippé)
+    name: str  # canonicalized (alliance tag stripped)
     alliance_tag: str | None
     rank: str  # R1..R5 ou ""
     alliance_honor: int
@@ -67,7 +67,7 @@ class DonationMember(BaseModel):
     # when the multi-config vote doesn't reach a strong majority.
     leaderboard_position: int | None = None
     trace: RowTrace | None = Field(default=None, exclude=True)
-    # Voir MemberResult.row_y/row_h : bande réelle de la ligne pour le fallback LLM.
+    # See MemberResult.row_y/row_h: actual row band for the LLM fallback.
     row_y: int | None = Field(default=None, exclude=True)
     row_h: int | None = Field(default=None, exclude=True)
     # Physical on-screen row slot (0.._MAX_ROWS-1) this member came from,
@@ -101,8 +101,8 @@ class PlayerStatsMember(BaseModel):
     attack_kind: Literal["lra", "mra"] = "lra"
     hp_pct: float | None = None
     defense_pct: float | None = None
-    confidence: float  # nb stats parsées / 3
-    raw_lines: str = ""  # lignes OCR brutes attribuées à ce joueur
+    confidence: float  # nb stats parsed / 3
+    raw_lines: str = ""  # raw OCR lines attributed to this player
 
 
 class PlayerStatsParseResult(BaseModel):
@@ -118,11 +118,11 @@ class BaseParser(ABC):
         emit_trace: bool = False,
         event_code: str | None = None,
     ) -> ParseResult | DonationParseResult | PlayerStatsParseResult:
-        """Parse une capture.
+        """Parse a screenshot.
 
-        ``event_code`` est le code événement déjà connu de l'appelant
-        (détection du dispatcher ou override utilisateur). Les parsers qui
-        gèrent plusieurs layouts s'en servent pour choisir le bon de façon
-        déterministe au lieu de le deviner à l'OCR ; les autres l'ignorent.
+        ``event_code`` is the event code already known to the caller
+        (dispatcher detection or user override). Parsers that handle
+        several layouts use it to pick the right one deterministically
+        instead of guessing from OCR; others ignore it.
         """
         ...

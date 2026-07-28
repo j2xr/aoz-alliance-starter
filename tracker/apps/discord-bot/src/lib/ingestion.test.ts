@@ -150,7 +150,7 @@ describe('routeOcrResult — player_stats', () => {
 
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
-    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — capture déjà traitée (doublon).' });
+    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — screenshot already processed (duplicate).' });
   });
 
   it('no_members', async () => {
@@ -160,7 +160,7 @@ describe('routeOcrResult — player_stats', () => {
 
     expect(result).toEqual({
       outcome: 'failed',
-      line: '⚠️ **shot.png** — aucun joueur extrait de la capture stats.',
+      line: '⚠️ **shot.png** — no players extracted from the stats screenshot.',
     });
   });
 
@@ -214,7 +214,7 @@ describe('routeOcrResult — donation', () => {
 
     expect(result.embed).toBe(fakeEmbed);
     expect(result.line).toContain('shot.png');
-    expect(result.line).toContain('2 corrections');
+    expect(result.line).toContain('2 manual corrections');
   });
 
   it('success with possible_truncation: embed and warning line both come through', async () => {
@@ -236,7 +236,7 @@ describe('routeOcrResult — donation', () => {
 
     expect(result.embed).toBe(fakeEmbed);
     expect(result.line).toContain('shot.png');
-    expect(result.line).toContain('interrompue');
+    expect(result.line).toContain('stopped');
   });
 
   it('success with both a reversed correction and possible_truncation: one line, both warnings', async () => {
@@ -257,8 +257,8 @@ describe('routeOcrResult — donation', () => {
     });
 
     expect(result.embed).toBe(fakeEmbed);
-    expect(result.line).toContain('interrompue');
-    expect(result.line).toContain('2 corrections');
+    expect(result.line).toContain('stopped');
+    expect(result.line).toContain('2 manual corrections');
   });
 
   it('duplicate', async () => {
@@ -266,7 +266,7 @@ describe('routeOcrResult — donation', () => {
 
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
-    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — capture déjà traitée (doublon).' });
+    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — screenshot already processed (duplicate).' });
   });
 
   it('unsupported_period_type', async () => {
@@ -279,7 +279,7 @@ describe('routeOcrResult — donation', () => {
 
     expect(result).toEqual({
       outcome: 'failed',
-      line: '⚠️ **shot.png** — onglet `daily` non géré (V1 = Weekly uniquement).',
+      line: '⚠️ **shot.png** — tab `daily` is not handled (V1 = Weekly only).',
     });
   });
 
@@ -297,8 +297,8 @@ describe('routeOcrResult — donation', () => {
     expect(result).toEqual({
       outcome: 'failed',
       line:
-        "⚠️ **shot.png** — onglet (Daily/Weekly/History) illisible sur cette capture. " +
-        "Vérifiez que la bande d'onglets est visible et bien cadrée, puis renvoyez la capture.",
+        '⚠️ **shot.png** — the tab (Daily/Weekly/History) is unreadable on this screenshot. ' +
+        'Check that the tab strip is visible and well framed, then resend the screenshot.',
     });
   });
 
@@ -309,7 +309,7 @@ describe('routeOcrResult — donation', () => {
 
     expect(result).toEqual({
       outcome: 'failed',
-      line: '⚠️ **shot.png** — aucun membre extrait de la capture de dons.',
+      line: '⚠️ **shot.png** — no members extracted from the donation screenshot.',
     });
   });
 
@@ -393,7 +393,7 @@ describe('routeOcrResult — event', () => {
 
     expect(result.embed).toBe(fakeEmbed);
     expect(result.line).toContain('shot.png');
-    expect(result.line).toContain('interrompue');
+    expect(result.line).toContain('stopped');
   });
 
   it('duplicate', async () => {
@@ -401,7 +401,7 @@ describe('routeOcrResult — event', () => {
 
     const result = await routeOcrResult({ ...BASE_PARAMS, ocr: OCR });
 
-    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — capture déjà traitée (doublon).' });
+    expect(result).toEqual({ outcome: 'duplicate', line: '🔁 **shot.png** — screenshot already processed (duplicate).' });
   });
 
   it('unknown_event: uses caller-supplied unknownEventType wording', async () => {

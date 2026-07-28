@@ -22,7 +22,7 @@ describe('buildVEvent', () => {
     expect(v).toContain('DTEND:20260521T190000Z');
     expect(v).toContain('UID:evt-1-2026-05-21@aoz-alliance');
     expect(v).toContain('DESCRIPTION:Line one\\nLine two');
-    // Lignes séparées en CRLF pur (RFC 5545)
+    // Lines separated by pure CRLF (RFC 5545)
     expect(v.split('\r\n')[0]).toBe('BEGIN:VEVENT');
     expect(v).not.toMatch(/[^\r]\n/);
   });

@@ -1,115 +1,115 @@
 # Fixtures — Polar Invasion
 
-Ground truth pour les tests du parseur OCR `polar_invasion_v1`.
+Ground truth for the `polar_invasion_v1` OCR parser tests.
 
-Chaque JSON représente la sortie attendue du parseur pour une capture d'écran donnée (champ `source_file`).
+Each JSON represents the expected parser output for a given screenshot (`source_file` field).
 
-## Structure des fichiers
+## File structure
 
 ```
 polar_invasion/
-├── README.md                    # ce fichier
-├── 20260407T1500_001.json       # Event 1, scroll le plus haut
+├── README.md                    # this file
+├── 20260407T1500_001.json       # Event 1, highest scroll
 ├── 20260407T1500_002.json
 ├── 20260407T1500_003.json
 ├── 20260407T1500_004.json
-├── 20260407T1500_005.json       # Event 1, scroll le plus bas
-├── 20260414T2300_001.json       # Event 2, scroll le plus haut
+├── 20260407T1500_005.json       # Event 1, lowest scroll
+├── 20260414T2300_001.json       # Event 2, highest scroll
 ├── 20260414T2300_002.json
-└── 20260414T2300_003.json       # Event 2, scroll le plus bas
+└── 20260414T2300_003.json       # Event 2, lowest scroll
 ```
 
-Les captures correspondantes (`source_file`) doivent être placées dans le même dossier, sous les noms indiqués dans chaque JSON.
+The corresponding screenshots (`source_file`) must be placed in the same folder, under the names given in each JSON.
 
-## Événements couverts
+## Events covered
 
-| Event | Date | Alliance rank | Battlers | Points | Captures |
+| Event | Date | Alliance rank | Battlers | Points | Screenshots |
 |-------|------|---------------|----------|--------|----------|
 | 1     | 2026-04-07 15:00 | 1 | 43 | 21 955 | 5 |
 | 2     | 2026-04-14 23:00 | 2 | 26 | 11 630 | 3 |
 
-## Cohérence vérifiée
+## Verified consistency
 
-L'union des pseudos à travers toutes les captures d'un même événement correspond exactement au `total_battlers` affiché dans le header :
+The union of nicknames across all screenshots of a given event matches exactly the `total_battlers` shown in the header:
 
-- Event 1 : 43 pseudos distincts sur 5 captures = 43 battlers ✓
-- Event 2 : 26 pseudos distincts sur 3 captures = 26 battlers ✓
+- Event 1: 43 distinct nicknames across 5 screenshots = 43 battlers ✓
+- Event 2: 26 distinct nicknames across 3 screenshots = 26 battlers ✓
 
-Cela garantit que les captures couvrent 100% des membres (les chevauchements volontaires entre scrolls consécutifs permettent au parseur d'être testé sur la dédup).
+This guarantees the screenshots cover 100% of members (the deliberate overlaps between consecutive scrolls let the parser be tested on deduplication).
 
-## Cas limites représentés
+## Edge cases represented
 
-Le dataset a été choisi pour couvrir volontairement les cas qui mettent le parseur en difficulté.
+The dataset was chosen to deliberately cover cases that challenge the parser.
 
-### Alphabets non-latins
+### Non-Latin alphabets
 
-| Pseudo | Alphabet | Notes |
+| Nickname | Alphabet | Notes |
 |--------|----------|-------|
-| Медвежонок | Cyrillique | "Ourson" en russe |
-| Метью      | Cyrillique | "Matthew" translittéré |
-| Герман     | Cyrillique | "German"/"Hermann" |
-| Толик      | Cyrillique | Diminutif de "Anatoly" |
-| おーしあ   | Japonais (hiragana + marque d'allongement) | "Oshia" |
+| Медвежонок | Cyrillic | "Bear cub" in Russian |
+| Метью      | Cyrillic | Transliterated "Matthew" |
+| Герман     | Cyrillic | "German"/"Hermann" |
+| Толик      | Cyrillic | Diminutive of "Anatoly" |
+| おーしあ   | Japanese (hiragana + long-vowel mark) | "Oshia" |
 
-→ Nécessite `tesseract-ocr-rus` et `tesseract-ocr-jpn`. Si Tesseract échoue, fallback LLM déclenché.
+→ Requires `tesseract-ocr-rus` and `tesseract-ocr-jpn`. If Tesseract fails, the LLM fallback is triggered.
 
-### Caractères accentués
+### Accented characters
 
-- `LEÓN` — accent aigu sur le O majuscule
+- `LEÓN` — acute accent on the capital O
 
-### Ponctuation dans les pseudos
+### Punctuation in nicknames
 
-| Pseudo | Caractère spécial |
+| Nickname | Special character |
 |--------|-------------------|
-| KOR.Park | point |
-| LATAM.REYCOLIMAN | point |
-| kor,spark | virgule |
-| THOR,01 | virgule |
+| KOR.Park | period |
+| LATAM.REYCOLIMAN | period |
+| kor,spark | comma |
+| THOR,01 | comma |
 | Ichigo_19 | underscore |
-| KANHA_ | underscore terminal |
-| RageX_ | underscore terminal |
+| KANHA_ | trailing underscore |
+| RageX_ | trailing underscore |
 
-→ Attention aux parseurs qui splitent naïvement sur `,` ou `.`. La whitelist de caractères pour les pseudos ne doit PAS être trop restrictive.
+→ Watch out for parsers that naively split on `,` or `.`. The character whitelist for nicknames must NOT be too restrictive.
 
-### Chiffres dans les pseudos
+### Digits in nicknames
 
-Beaucoup de pseudos mélangent lettres et chiffres (Yuyuyu325, jc0n, 1jr, FATCAT29, Goldeneye21, Hardcore101, THOR,01, doradora12, Ichigo_19, BakersBakedd27, Duvan395). Le parseur ne doit pas confondre ces chiffres avec les colonnes `power` ou `points` adjacentes. Le découpage par régions (crop par coordonnées) est crucial ici.
+Many nicknames mix letters and digits (Yuyuyu325, jc0n, 1jr, FATCAT29, Goldeneye21, Hardcore101, THOR,01, doradora12, Ichigo_19, BakersBakedd27, Duvan395). The parser must not confuse these digits with the adjacent `power` or `points` columns. Splitting by region (crop by coordinates) is crucial here.
 
-### Valeurs à zéro
+### Zero values
 
-Plusieurs joueurs ont `points: 0` (inscrits à l'événement mais n'ont rien fait). Ce n'est PAS une absence — la ligne est présente à l'écran, avec un "0" aligné à droite. Sémantiquement c'est différent d'un joueur qui n'apparaît pas du tout (lui n'était pas inscrit). Le parseur doit les conserver.
+Several players have `points: 0` (registered for the event but did nothing). This is NOT an absence — the row is present on screen, with a "0" right-aligned. Semantically this differs from a player who doesn't appear at all (who wasn't registered). The parser must keep them.
 
-### Chevauchements entre captures
+### Overlaps between screenshots
 
-Les captures d'un même événement se chevauchent volontairement (scroll successifs). Exemples :
+Screenshots of the same event deliberately overlap (successive scrolls). Examples:
 
-- `20260407T1500_003.json` et `20260407T1500_004.json` partagent `Gattopardo` (même valeurs power et points)
-- `20260414T2300_002.json` et `20260414T2300_003.json` partagent 6 membres
+- `20260407T1500_003.json` and `20260407T1500_004.json` share `Gattopardo` (same power and points values)
+- `20260414T2300_002.json` and `20260414T2300_003.json` share 6 members
 
-Le parseur extrait chaque capture indépendamment. La dédup est faite en aval par l'UPSERT sur `(event_id, player_id)`. Les tests peuvent vérifier que les valeurs reportées pour un même joueur sur deux captures sont identiques — sinon c'est un bug d'extraction.
+The parser extracts each screenshot independently. Deduplication is done downstream by the UPSERT on `(event_id, player_id)`. Tests can check that the values reported for the same player across two screenshots are identical — otherwise it's an extraction bug.
 
-### Évolution de rank entre événements
+### Rank changes between events
 
-Deux joueurs changent de rank entre event 1 et event 2 :
+Two players change rank between event 1 and event 2:
 
-- `Bulleit` : R1 → R2
-- `Yojimbo` : R4 → R5
+- `Bulleit`: R1 → R2
+- `Yojimbo`: R4 → R5
 
-Ce n'est pas une erreur OCR, c'est une promotion légitime. Le parseur ne doit pas tenter de "normaliser" le rank en le comparant à un événement antérieur. Chaque capture est la source de vérité pour le moment où elle a été prise.
+This is not an OCR error, it's a legitimate promotion. The parser must not try to "normalize" the rank by comparing it to an earlier event. Each screenshot is the source of truth for the moment it was taken.
 
-### Couleur du texte (UI variante)
+### Text color (UI variant)
 
-Certains pseudos et valeurs sont affichés en vert (ex: `Xrage` dans event 1, `1jr` dans event 2). C'est l'indicateur "c'est moi" dans l'UI du jeu. Le parseur doit traiter ces lignes comme les autres — ignorer la couleur. Ne pas ajouter de champ "is_self" dans la sortie (pas pertinent pour l'usage).
+Some nicknames and values are shown in green (e.g. `Xrage` in event 1, `1jr` in event 2). This is the "this is you" indicator in the game's UI. The parser must treat these rows like any other — ignore the color. Do not add an "is_self" field to the output (not relevant for this use case).
 
-## Convention de datetime
+## Datetime convention
 
-Les captures affichent `2026-04-07 15:00` sans information de fuseau horaire. On suppose que c'est l'heure locale de l'utilisateur (Strasbourg, CEST = UTC+2 à ces dates). Les fixtures utilisent donc `+02:00`.
+The screenshots show `2026-04-07 15:00` with no timezone information. We assume this is the user's local time (Strasbourg, CEST = UTC+2 on these dates). The fixtures therefore use `+02:00`.
 
-**À vérifier** : si le jeu affiche en réalité l'heure du serveur et non l'heure locale, corriger le `event_datetime` dans tous les fichiers. Dans ce cas, documenter la convention dans `app/parsers/polar_invasion_v1.py`.
+**To verify**: if the game actually displays server time rather than local time, fix `event_datetime` in every file. If so, document the convention in `app/parsers/polar_invasion_v1.py`.
 
-## Usage dans les tests
+## Usage in tests
 
-Exemple d'utilisation pytest (à adapter selon la structure du parseur) :
+Example pytest usage (adapt to the parser's actual structure):
 
 ```python
 import json
@@ -134,7 +134,7 @@ def test_parser_matches_fixture(fixture_file: Path):
     assert result["total_battlers"] == expected["total_battlers"]
     assert result["total_points"] == expected["total_points"]
 
-    # Members, par position
+    # Members, by position
     assert len(result["members"]) == len(expected["members"])
     for i, (got, want) in enumerate(zip(result["members"], expected["members"])):
         assert got["name"] == want["name"], f"row {i}: name mismatch"
@@ -143,7 +143,7 @@ def test_parser_matches_fixture(fixture_file: Path):
         assert got["points"] == want["points"], f"row {i}: points mismatch"
 ```
 
-Pour un test plus permissif (accepter une erreur tolérée sur les pseudos exotiques) :
+For a more permissive test (accepting a tolerated error on exotic nicknames):
 
 ```python
 from difflib import SequenceMatcher
@@ -151,24 +151,24 @@ from difflib import SequenceMatcher
 def similar(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
-# Dans le test
+# In the test
 assert similar(got["name"], want["name"]) > 0.9, f"row {i}: name too different"
-# Mais strict sur les nombres
+# But strict on numbers
 assert got["power"] == want["power"]
 assert got["points"] == want["points"]
 ```
 
-## Objectifs de qualité
+## Quality targets
 
-Pour considérer le parseur prêt pour la Phase 2 (bot Discord) :
+To consider the parser ready for Phase 2 (Discord bot):
 
-| Champ | Objectif | Stratégie |
+| Field | Target | Strategy |
 |-------|----------|-----------|
-| `total_battlers`, `total_points`, `alliance_rank` | 100% | Crop fixe, whitelist chiffres |
-| `event_datetime` | 100% | Crop fixe, whitelist `0-9-: ` |
-| `power`, `points` | ≥ 95% | Crop par ligne, whitelist chiffres |
-| `rank` | ≥ 98% | Badge R1-R5, whitelist `R12345` |
-| `name` (latin) | ≥ 90% | Tesseract eng |
-| `name` (cyrillique, japonais) | ≥ 75% OU fallback LLM | Tesseract rus+jpn, fallback si conf < 0.75 |
+| `total_battlers`, `total_points`, `alliance_rank` | 100% | Fixed crop, digit whitelist |
+| `event_datetime` | 100% | Fixed crop, whitelist `0-9-: ` |
+| `power`, `points` | ≥ 95% | Crop per row, digit whitelist |
+| `rank` | ≥ 98% | R1-R5 badge, whitelist `R12345` |
+| `name` (Latin) | ≥ 90% | Tesseract eng |
+| `name` (Cyrillic, Japanese) | ≥ 75% OR LLM fallback | Tesseract rus+jpn, fallback if conf < 0.75 |
 
-Si ces seuils ne sont pas atteints, activer le LLM fallback (cf PLAN.md §4.3) avant de passer à la Phase 2.
+If these thresholds aren't reached, enable the LLM fallback (cf PLAN.md §4.3) before moving to Phase 2.

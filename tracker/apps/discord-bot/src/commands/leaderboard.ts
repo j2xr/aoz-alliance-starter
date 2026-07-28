@@ -16,12 +16,12 @@ const PAGE_SIZE = 10;
 
 export const data = new SlashCommandBuilder()
   .setName('leaderboard')
-  .setDescription("Classement d'un événement")
+  .setDescription("An event's leaderboard")
   .addStringOption((opt) =>
     opt
       .setName('event_id')
       .setDescription(
-        "ID de l'événement (8 premiers chars suffisent, affiché par /event list). Défaut : plus récent.",
+        'Event ID (first 8 chars are enough, shown by /event list). Default: most recent.',
       )
       .setRequired(false),
   );
@@ -86,7 +86,7 @@ export async function renderLeaderboard(
     .maybeSingle();
 
   if (evErr) throw evErr;
-  if (!eventData) return { error: `Événement introuvable.` };
+  if (!eventData) return { error: `Event not found.` };
 
   const ev = eventData as unknown as EventMeta;
 
@@ -105,7 +105,7 @@ export async function renderLeaderboard(
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
   const lbRows = (rows ?? []) as LeaderboardRow[];
 
-  const dt = new Date(ev.event_datetime).toLocaleString('fr-FR', {
+  const dt = new Date(ev.event_datetime).toLocaleString('en-GB', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -119,8 +119,8 @@ export async function renderLeaderboard(
   const lines = lbRows.map((r) => {
     const pos = r.position;
     const prefix = pos <= 3 ? (medals[pos - 1] ?? `**${pos}.**`) : `**${pos}.**`;
-    const pts = r.points != null ? r.points.toLocaleString('fr-FR') : '—';
-    const pwr = r.power != null ? ` · ${r.power.toLocaleString('fr-FR')}` : '';
+    const pts = r.points != null ? r.points.toLocaleString('en-GB') : '—';
+    const pwr = r.power != null ? ` · ${r.power.toLocaleString('en-GB')}` : '';
     const rank = r.player_rank ? ` (${r.player_rank})` : '';
     return `${prefix} ${r.player_name}${rank} — ${pts} pts${pwr}`;
   });
@@ -129,9 +129,9 @@ export async function renderLeaderboard(
     .setColor(0xf1c40f)
     .setTitle(`🏆 ${typeName} — ${dt}`)
     .addFields(
-      { name: 'Rang alliance', value: ev.alliance_rank != null ? `#${ev.alliance_rank}` : '—', inline: true },
+      { name: 'Alliance rank', value: ev.alliance_rank != null ? `#${ev.alliance_rank}` : '—', inline: true },
       { name: 'Battlers', value: String(ev.total_battlers ?? '—'), inline: true },
-      { name: 'Points totaux', value: ev.total_points != null ? ev.total_points.toLocaleString('fr-FR') : '—', inline: true },
+      { name: 'Total points', value: ev.total_points != null ? ev.total_points.toLocaleString('en-GB') : '—', inline: true },
     )
     .setDescription(lines.join('\n') || '—')
     .setFooter({ text: `Page ${page + 1}/${totalPages} · ID ${eventId.slice(0, 8)}` });
@@ -158,8 +158,8 @@ export async function execute(
   if (!eventId) {
     await interaction.editReply(
       rawId
-        ? `❌ Aucun événement trouvé avec l'ID \`${rawId}\`.`
-        : "❌ Aucun événement disponible pour cette alliance.",
+        ? `❌ No event found with ID \`${rawId}\`.`
+        : '❌ No event available for this alliance.',
     );
     return;
   }

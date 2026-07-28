@@ -20,18 +20,18 @@ function summarizeLines(lines: string[], maxLines = 20): string[] {
 
   return [
     ...lines.slice(0, maxLines),
-    `... ${lines.length - maxLines} autre(s) resultat(s) masque(s).`,
+    `... ${lines.length - maxLines} other result(s) hidden.`,
   ];
 }
 
 export const data = new SlashCommandBuilder()
   .setName('reprocess-channel')
-  .setDescription('Retraiter toutes les captures du canal courant')
+  .setDescription('Reprocess every screenshot in the current channel')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')
-      .setDescription('Forcer le LLM sur toutes les lignes (ignorer le seuil de confiance OCR)')
+      .setDescription('Force the LLM on every line (ignore the OCR confidence threshold)')
       .setRequired(false),
   );
 
@@ -47,28 +47,28 @@ export async function execute(
   const channel = await interaction.client.channels.fetch(interaction.channelId);
 
   if (!channel?.isTextBased() || !channel.isSendable()) {
-    await interaction.editReply('❌ Channel introuvable ou inaccessible.');
+    await interaction.editReply('❌ Channel not found or inaccessible.');
     return;
   }
 
   await interaction.editReply(
-    `⏳ Inventaire des captures du canal en cours${forceLlm ? ' (LLM force)' : ''}...`,
+    `⏳ Taking inventory of the channel's screenshots${forceLlm ? ' (LLM forced)' : ''}...`,
   );
 
   const messages = await fetchChannelImageMessages(channel);
   if (messages.length === 0) {
-    await interaction.editReply('❌ Aucune capture trouvee dans ce canal.');
+    await interaction.editReply('❌ No screenshot found in this channel.');
     return;
   }
 
   await interaction.editReply(
-    `⏳ Retraitement de ${messages.length} message(s) avec captures${forceLlm ? ' (LLM force sur toutes les lignes)' : ''}. Cette operation peut prendre longtemps.`,
+    `⏳ Reprocessing ${messages.length} message(s) with screenshots${forceLlm ? ' (LLM forced on every line)' : ''}. This may take a while.`,
   );
 
-  // Messages traités en parallèle (pool borné) : le gros du temps par capture
-  // est de l'attente (download + polling OCR). La progression compte les
-  // messages TERMINÉS ; l'agrégation se fait ensuite depuis le tableau
-  // ordonné pour garder les lignes dans l'ordre du canal.
+  // Messages processed in parallel (bounded pool): most of the time per
+  // screenshot is waiting (download + OCR polling). Progress counts
+  // COMPLETED messages; aggregation then happens from the ordered array to
+  // keep lines in channel order.
   let completed = 0;
   let completedImages = 0;
   const results = await mapWithConcurrency(
@@ -86,7 +86,7 @@ export async function execute(
         await safeProgressReply(
           interaction,
           channel,
-          `⏳ Progression: ${completed}/${messages.length} message(s), ${completedImages} capture(s) retraitee(s)...`,
+          `⏳ Progress: ${completed}/${messages.length} message(s), ${completedImages} screenshot(s) reprocessed...`,
         );
       }
       return result;
@@ -124,13 +124,13 @@ export async function execute(
   );
 
   const summary = [
-    '✅ Retraitement du canal termine.',
-    `Messages avec captures : ${messages.length}`,
-    `Captures trouvees : ${totalImages}`,
-    `Succes : ${successCount}`,
-    `Doublons : ${duplicateCount}`,
-    `Types inconnus : ${unknownEventCount}`,
-    `Echecs : ${failedCount}`,
+    '✅ Channel reprocessing complete.',
+    `Messages with screenshots: ${messages.length}`,
+    `Screenshots found: ${totalImages}`,
+    `Successes: ${successCount}`,
+    `Duplicates: ${duplicateCount}`,
+    `Unknown types: ${unknownEventCount}`,
+    `Failures: ${failedCount}`,
   ];
 
   const details = summarizeLines(lines);

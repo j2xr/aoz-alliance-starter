@@ -265,7 +265,7 @@ describe('upload execute — donation routing (goes through routeOcrResult)', ()
     const call = editReply.mock.calls.at(-1)?.[0] as { content?: string; embeds?: unknown[] };
     expect(call.embeds).toHaveLength(1);
     expect(call.content).toContain('shot.png');
-    expect(call.content).toContain('interrompue');
+    expect(call.content).toContain('stopped');
   });
 
   it('no_members: failed line, no embed', async () => {
@@ -284,7 +284,7 @@ describe('upload execute — donation routing (goes through routeOcrResult)', ()
 
     await execute(interaction);
 
-    expect(editReply).toHaveBeenLastCalledWith(expect.stringContaining('aucun membre extrait'));
+    expect(editReply).toHaveBeenLastCalledWith(expect.stringContaining('no members extracted'));
     expect(vi.mocked(buildDonationEmbed)).not.toHaveBeenCalled();
   });
 
@@ -312,7 +312,7 @@ describe('upload execute — donation routing (goes through routeOcrResult)', ()
 
     await execute(interaction);
 
-    expect(editReply).toHaveBeenLastCalledWith(expect.stringContaining('réponse OCR incohérente'));
+    expect(editReply).toHaveBeenLastCalledWith(expect.stringContaining('inconsistent OCR response'));
     expect(vi.mocked(upsertDonationResult)).not.toHaveBeenCalled();
     expect(vi.mocked(upsertEventResult)).not.toHaveBeenCalled();
   });

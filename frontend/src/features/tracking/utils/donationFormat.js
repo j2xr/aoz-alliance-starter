@@ -40,11 +40,11 @@ export function formatUpdatedAt(iso) {
 /**
  * Monday (ISO week start) in Europe/Paris for the supplied UTC date, as YYYY-MM-DD.
  *
- * IMPORTANT : le bot possède une implémentation jumelle
- * (tracker/apps/discord-bot/src/lib/period.ts, isoWeekStartParis) qui DOIT
- * rester d'accord avec celle-ci — le bot écrit period_start, le frontend
- * dérive la clé de la période courante. Les deux sont testées contre les
- * mêmes vecteurs : shared-test-vectors/paris-iso-week.json.
+ * IMPORTANT: the bot has a twin implementation
+ * (tracker/apps/discord-bot/src/lib/period.ts, isoWeekStartParis) that MUST
+ * stay in agreement with this one — the bot writes period_start, the
+ * frontend derives the current period's key. Both are tested against the
+ * same vectors: shared-test-vectors/paris-iso-week.json.
  */
 export function getCurrentParisIsoWeekMondayString(now = new Date()) {
   const parisFmt = new Intl.DateTimeFormat('en-CA', {

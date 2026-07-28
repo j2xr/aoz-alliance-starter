@@ -47,7 +47,7 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
     if (!command) {
       logger.warn({ commandName: interaction.commandName }, 'Unknown command');
       await interaction.reply({
-        content: '❌ Commande inconnue.',
+        content: '❌ Unknown command.',
         ephemeral: true,
       });
       return;
@@ -66,7 +66,7 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
         'Command execution error',
       );
       const payload = {
-        content: '❌ Une erreur inattendue est survenue. Réessayez plus tard.',
+        content: '❌ An unexpected error occurred. Please try again later.',
         ephemeral: true,
       };
       if (interaction.deferred || interaction.replied) {
@@ -102,7 +102,7 @@ async function handleInteraction(interaction: Interaction): Promise<void> {
         'Button handler error',
       );
       await interaction.editReply({
-        content: '❌ Une erreur est survenue lors de la navigation.',
+        content: '❌ An error occurred while navigating.',
         components: [],
       });
     }

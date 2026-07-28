@@ -138,12 +138,12 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
     }
 
     if (statsResult.status === 'duplicate') {
-      return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
+      return { outcome: 'duplicate', line: sharedMessages.duplicate(filename) };
     }
     if (statsResult.status === 'no_members') {
       return {
         outcome: 'failed',
-        line: `⚠️ **${filename}** — aucun joueur extrait de la capture stats.`,
+        line: `⚠️ **${filename}** — no players extracted from the stats screenshot.`,
       };
     }
 
@@ -183,7 +183,7 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
     }
 
     if (donationResult.status === 'duplicate') {
-      return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
+      return { outcome: 'duplicate', line: sharedMessages.duplicate(filename) };
     }
     if (donationResult.status === 'unsupported_period_type') {
       return {
@@ -240,7 +240,7 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
   }
 
   if (upsertResult.status === 'duplicate') {
-    return { outcome: 'duplicate', line: `🔁 **${filename}** — capture déjà traitée (doublon).` };
+    return { outcome: 'duplicate', line: sharedMessages.duplicate(filename) };
   }
   if (upsertResult.status === 'unknown_event') {
     return {

@@ -1,7 +1,7 @@
 -- 0011_at_donations.sql
--- Tables pour le suivi des dons de ressources (Alliance Honor / Contribution Ranking).
--- Domaine séparé d'at_events ; partage at_players / at_alliance_memberships
--- pour la canonicalisation des joueurs.
+-- Tables for resource donation tracking (Alliance Honor / Contribution Ranking).
+-- Separate domain from at_events; shares at_players / at_alliance_memberships
+-- for player canonicalization.
 
 create table at_donation_periods (
   id            uuid primary key default gen_random_uuid(),
@@ -22,7 +22,7 @@ create table at_donations (
   player_id           uuid not null references at_players(id) on delete cascade,
   alliance_honor      bigint not null check (alliance_honor >= 0),
   player_rank         text,                   -- R1..R5 au moment de la capture
-  alliance_tag        text,                   -- "(SOD)" capturé pour diagnostic
+  alliance_tag        text,                   -- "(SOD)" captured for diagnostics
   ocr_confidence      real,
   raw_ocr             jsonb,
   source_message_id   text,

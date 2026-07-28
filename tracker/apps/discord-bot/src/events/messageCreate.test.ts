@@ -144,7 +144,7 @@ describe('handleMessageCreate', () => {
     expect(editArg).toContain('shot.png');
   });
 
-  it('editReplies with ⚠️ and "type d\'écran non reconnu" when OCR returns unknown_event error', async () => {
+  it('editReplies with ⚠️ and "unrecognized screen type" when OCR returns unknown_event error', async () => {
     vi.mocked(resolveAlliance).mockResolvedValue(ALLIANCE);
     vi.mocked(processImageAttachment).mockResolvedValue({
       ok: true,
@@ -160,7 +160,7 @@ describe('handleMessageCreate', () => {
 
     const editArg = ackMsg.edit.mock.calls[0]?.[0] as string;
     expect(editArg).toContain('⚠️');
-    expect(editArg).toContain("type d'écran non reconnu");
+    expect(editArg).toContain('unrecognized screen type');
   });
 
   it('calls buildEventEmbed and editReplies with embeds on nominal event path', async () => {

@@ -1,23 +1,22 @@
 #!/bin/bash
 # reset-ocr-data.sh
 #
-# Équivalent REST de reset-ocr-data.sql, pour les environnements où
-# `supabase db query --linked` n'est pas utilisable (ex: pas de token CLI
-# login sur cette machine, pas de psql/DATABASE_URL en fallback). Utilise la
-# service-role key pour DELETE chaque table via PostgREST (bypass RLS), dans
-# un ordre FK-safe (feuilles d'abord) puisque REST n'a pas l'atomicité
-# multi-tables d'un TRUNCATE.
+# REST equivalent of reset-ocr-data.sql, for environments where
+# `supabase db query --linked` isn't usable (e.g. no CLI login token on
+# this machine, no psql/DATABASE_URL fallback). Uses the service-role key
+# to DELETE each table via PostgREST (bypasses RLS), in FK-safe order
+# (leaves first) since REST doesn't have a TRUNCATE's multi-table atomicity.
 #
-# Usage :
-#   supabase/scripts/reset-ocr-data.sh [chemin/vers/.env]
+# Usage:
+#   supabase/scripts/reset-ocr-data.sh [path/to/.env]
 #
-# Par défaut, source tracker/apps/ocr-service/.env (ou
-# tracker/apps/discord-bot/.env, les deux pointent le même projet Supabase
-# lié) pour SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
+# By default, sources tracker/apps/ocr-service/.env (or
+# tracker/apps/discord-bot/.env, both point to the same linked Supabase
+# project) for SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.
 #
-# Conservé / nettoyé : voir reset-ocr-data.sql, notamment la note sur
-# at_screenshot_uploads (dédup reprocess-channel) et at_player_aliases
-# (cascade depuis at_players).
+# Preserved / cleaned: see reset-ocr-data.sql, in particular the note on
+# at_screenshot_uploads (reprocess-channel dedup) and at_player_aliases
+# (cascade from at_players).
 
 set -euo pipefail
 
@@ -25,7 +24,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 env_file="${1:-$script_dir/../../tracker/apps/ocr-service/.env}"
 
 if [[ ! -f "$env_file" ]]; then
-  echo "Fichier .env introuvable: $env_file" >&2
+  echo ".env file not found: $env_file" >&2
   exit 1
 fi
 
@@ -34,11 +33,11 @@ set -a
 source "$env_file"
 set +a
 
-: "${SUPABASE_URL:?SUPABASE_URL manquant dans $env_file}"
-: "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY manquant dans $env_file}"
+: "${SUPABASE_URL:?SUPABASE_URL missing from $env_file}"
+: "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY missing from $env_file}"
 
-# Ordre FK-safe, feuilles d'abord (voir reset-ocr-data.sql pour le détail
-# des dépendances, notamment at_corrections -> at_players ajoutée en
+# FK-safe order, leaves first (see reset-ocr-data.sql for the dependency
+# details, in particular at_corrections -> at_players added in
 # migration 0022).
 TABLES=(
   at_donations
@@ -53,7 +52,7 @@ TABLES=(
   at_players
 )
 
-echo "--- suppression ---"
+echo "--- deleting ---"
 for t in "${TABLES[@]}"; do
   code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
@@ -63,7 +62,7 @@ for t in "${TABLES[@]}"; do
   echo "DELETE $t -> $code"
 done
 
-echo "--- vérification (doit être 0, sauf tables préservées) ---"
+echo "--- verification (should be 0, except preserved tables) ---"
 for t in "${TABLES[@]}" at_alliances at_event_types; do
   range=$(curl -s -D - -o /dev/null -X HEAD \
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \

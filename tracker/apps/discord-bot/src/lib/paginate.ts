@@ -9,12 +9,12 @@ export function paginationRow(
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(prevId)
-      .setLabel('◀ Précédent')
+      .setLabel('◀ Previous')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page === 0),
     new ButtonBuilder()
       .setCustomId(nextId)
-      .setLabel('Suivant ▶')
+      .setLabel('Next ▶')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(page >= totalPages - 1),
   );

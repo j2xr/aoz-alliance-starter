@@ -1,26 +1,25 @@
-# Runbook — nettoyage d'erreurs OCR (ex-migration 0009)
+# Runbook — OCR error cleanup (ex-migration 0009)
 
-SQL d'origine de `supabase/migrations/0009_at_cleanup_ocr_errors.sql`,
-retiré du chemin de migration : c'était une réparation ponctuelle du
-déploiement d'origine (seuils magiques, joueurs nommés), rejouée à tort
-par chaque nouveau clone. La correction de l'inversion power ↔ points
-vit désormais à l'ingestion (`apps/ocr-service/app/validators.py`,
-`maybe_swap_power_points`). Conservé ici comme modèle de réparation
-manuelle — à exécuter uniquement après les diagnostics de la section A.
+Original SQL from `supabase/migrations/0009_at_cleanup_ocr_errors.sql`,
+removed from the migration path: it was a one-off repair for the original
+deployment (magic thresholds, named players), wrongly replayed by every new
+clone. The power ↔ points swap fix now lives at ingestion time
+(`apps/ocr-service/app/validators.py`, `maybe_swap_power_points`). Kept here
+as a manual-repair template — run only after the diagnostics in section A.
 
 ```sql
 -- 0009_at_cleanup_ocr_errors.sql
--- Nettoyage des erreurs OCR : inversion power ↔ points et joueurs mal reconnus
+-- OCR error cleanup: power ↔ points inversion and misrecognized players
 --
--- ⚠️  AVANT D'EXÉCUTER :
---   1. Lancer les requêtes de diagnostic (section A) pour vérifier les seuils
---   2. Adapter les seuils si nécessaire selon tes données
---   3. Lancer la section B (swap) — elle est safe et transactionnelle
---   4. Lancer la section C (joueurs suspects) uniquement après review manuelle
+-- ⚠️  BEFORE RUNNING:
+--   1. Run the diagnostic queries (section A) to check the thresholds
+--   2. Adjust the thresholds if needed based on your data
+--   3. Run section B (swap) — it's safe and transactional
+--   4. Run section C (suspect players) only after manual review
 
 -- ─── A. DIAGNOSTIC (read-only) ───────────────────────────────────────────────
 --
--- Inversion power ↔ points : les valeurs suspectes
+-- power ↔ points inversion: suspect values
 --   SELECT
 --     p.id,
 --     pl.name,
@@ -34,7 +33,7 @@ manuelle — à exécuter uniquement après les diagnostics de la section A.
 --   WHERE p.power < 10000 AND p.points > 100000
 --   ORDER BY p.created_at;
 --
--- Joueurs aux noms trop courts (probables artefacts OCR) :
+-- Players with names that are too short (likely OCR artifacts):
 --   SELECT
 --     pl.id,
 --     pl.name,
@@ -47,17 +46,17 @@ manuelle — à exécuter uniquement après les diagnostics de la section A.
 --   GROUP BY pl.id
 --   ORDER BY nb_participations, pl.name;
 --
--- Joueurs "Ye" spécifiquement :
+-- Players named "Ye" specifically:
 --   SELECT * FROM at_players WHERE name = 'Ye';
 
--- ─── B. CORRECTION INVERSION power ↔ points ──────────────────────────────────
+-- ─── B. FIX power ↔ points INVERSION ──────────────────────────────────────────
 --
--- Heuristique : power (force de combat) est typiquement > 100 000.
--- Si power < 10 000 et points > 100 000, les colonnes sont probablement inversées.
+-- Heuristic: power (combat strength) is typically > 100,000.
+-- If power < 10,000 and points > 100,000, the columns are probably swapped.
 --
--- Adapte les seuils si tes données montrent autre chose dans le diagnostic A.
--- Le swap est fait en une seule transaction ; at_players.last_power est corrigé
--- en même temps pour les joueurs affectés.
+-- Adjust the thresholds if your data shows otherwise in diagnostic A.
+-- The swap is done in a single transaction; at_players.last_power is fixed
+-- at the same time for the affected players.
 
 BEGIN;
 
@@ -83,19 +82,19 @@ WHERE pl.id = s.player_id;
 
 COMMIT;
 
--- ─── C. SUPPRESSION DES JOUEURS SUSPECTS (review manuelle requise) ────────────
+-- ─── C. DELETE SUSPECT PLAYERS (manual review required) ───────────────────────
 --
--- À décommenter et adapter après avoir examiné les résultats du diagnostic A.
--- La suppression d'un joueur cascade sur at_participations et at_alliance_memberships.
+-- Uncomment and adapt after examining the diagnostic A results.
+-- Deleting a player cascades to at_participations and at_alliance_memberships.
 --
--- Option 1 : supprimer un joueur précis par son nom exact
+-- Option 1: delete one specific player by exact name
 --   BEGIN;
 --   DELETE FROM at_players
---   WHERE name = 'Ye'            -- ← adapter le nom
---     AND alliance_id = (SELECT id FROM at_alliances WHERE name = 'MonAlliance');
+--   WHERE name = 'Ye'            -- ← adjust the name
+--     AND alliance_id = (SELECT id FROM at_alliances WHERE name = 'MyAlliance');
 --   COMMIT;
 --
--- Option 2 : supprimer tous les joueurs avec 0 participation et nom court
+-- Option 2: delete every player with 0 participations and a short name
 --   BEGIN;
 --   DELETE FROM at_players pl
 --   WHERE length(pl.name) <= 2
@@ -104,8 +103,8 @@ COMMIT;
 --     );
 --   COMMIT;
 --
--- Option 3 : supprimer un joueur et réattribuer ses participations à un autre
---   (si "Ye" est en réalité "YeKaterina" déjà dans la base)
+-- Option 3: delete a player and reassign their participations to another
+--   (if "Ye" is actually "YeKaterina", already in the database)
 --   BEGIN;
 --   UPDATE at_participations
 --   SET player_id = (SELECT id FROM at_players WHERE name = 'YeKaterina' AND alliance_id = ...)

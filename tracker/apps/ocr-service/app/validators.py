@@ -7,23 +7,23 @@ logger = logging.getLogger(__name__)
 
 MIN_POWER = 1_000_000
 
-# En dessous de ce seuil, une valeur ne peut pas être un power réel
-# (MIN_POWER = 1M) : si les points, eux, ressemblent à un power, les deux
-# colonnes ont probablement été interverties par l'OCR.
+# Below this threshold, a value can't be a real power reading
+# (MIN_POWER = 1M): if the points, on the other hand, look like a power,
+# the two columns were probably swapped by OCR.
 SWAP_MAX_POWER = 10_000
 
 
 def maybe_swap_power_points(member: MemberResult) -> tuple[MemberResult, bool]:
-    """Corrige l'inversion power ↔ points produite par certains misreads OCR.
+    """Fixes the power ↔ points inversion produced by some OCR misreads.
 
-    Version ingestion de l'heuristique historique de la migration 0009 (qui ne
-    réparait qu'après coup, à chaque déploiement) : le swap n'est appliqué que
-    si la ligne corrigée est plausible — 0 < power < 10 000 ET points ≥ MIN_POWER
-    (plus strict que le seuil 100k de 0009 : après swap, power doit de toute
-    façon satisfaire validate_member). Le power=0 exclu volontairement : un OCR
-    qui n'a pas lu de power du tout ne doit pas hériter d'un points légitime.
-    Sans ce swap, validate_member rejetait silencieusement la ligne et le
-    membre était perdu.
+    Ingestion-time version of migration 0009's historical heuristic (which
+    only repaired after the fact, on every deployment): the swap is only
+    applied if the corrected row is plausible — 0 < power < 10,000 AND
+    points >= MIN_POWER (stricter than 0009's 100k threshold: after the swap,
+    power must still satisfy validate_member anyway). power=0 is deliberately
+    excluded: an OCR read that didn't capture any power at all shouldn't
+    inherit a legitimate points value. Without this swap, validate_member
+    would silently reject the row and the member would be lost.
     """
     if (
         0 < member.power < SWAP_MAX_POWER

@@ -11,10 +11,10 @@ import logger from '../logger.js';
 
 export const data = new SlashCommandBuilder()
   .setName('setup-alliance')
-  .setDescription("Créer l'alliance liée à ce channel Discord")
+  .setDescription('Create the alliance linked to this Discord channel')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
-    opt.setName('name').setDescription("Nom de l'alliance").setRequired(true),
+    opt.setName('name').setDescription('Alliance name').setRequired(true),
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -54,7 +54,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   const embed = new EmbedBuilder()
     .setColor(0x2ecc71)
-    .setTitle('✅ Alliance créée')
+    .setTitle('✅ Alliance created')
     .setDescription(messages.allianceCreated(name));
 
   await interaction.editReply({ embeds: [embed] });

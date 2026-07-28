@@ -248,7 +248,7 @@ describe('/correct execute', () => {
     expect(reply.embeds).toHaveLength(1);
   });
 
-  it('refuses cleanly when no participation exists for this player+event (ligne absente)', async () => {
+  it('refuses cleanly when no participation exists for this player+event (missing row)', async () => {
     queueMaybeSingle(ALLIANCE, null, 1);
     queueMaybeSingle(PLAYER, null, 2);
     queueMaybeSingle(
@@ -314,7 +314,7 @@ describe('/correct execute', () => {
     });
   });
 
-  it('refuses cleanly when no donation period exists for the given week (ligne absente)', async () => {
+  it('refuses cleanly when no donation period exists for the given week (missing row)', async () => {
     queueMaybeSingle(ALLIANCE, null, 1);
     queueMaybeSingle(PLAYER, null, 2);
     queueMaybeSingle(null, null, 3); // no donation period
@@ -386,7 +386,7 @@ describe('/correct execute', () => {
     const interaction = fakeInteraction({});
     await execute(interaction);
 
-    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('Joueur introuvable'));
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('Player not found'));
     expect(supabase.from).toHaveBeenCalledTimes(2);
   });
 });

@@ -17,37 +17,37 @@ const PAGE_SIZE = 10;
 
 export const data = new SlashCommandBuilder()
   .setName('donation')
-  .setDescription("Suivi des dons hebdomadaires (Alliance Honor)")
+  .setDescription('Weekly donation tracking (Alliance Honor)')
   .addSubcommand((sub) =>
     sub
       .setName('leaderboard')
-      .setDescription('Classement des dons pour une semaine')
+      .setDescription('Donation leaderboard for a week')
       .addStringOption((opt) =>
         opt
           .setName('period_start')
-          .setDescription('Lundi de la semaine (YYYY-MM-DD). Défaut : semaine en cours.')
+          .setDescription('Monday of the week (YYYY-MM-DD). Default: current week.')
           .setRequired(false),
       ),
   )
   .addSubcommand((sub) =>
     sub
       .setName('player')
-      .setDescription('Historique de dons d\'un joueur')
+      .setDescription("A player's donation history")
       .addStringOption((opt) =>
         opt
           .setName('name')
-          .setDescription('Nom du joueur (partiel accepté, insensible à la casse)')
+          .setDescription('Player name (partial accepted, case-insensitive)')
           .setRequired(true),
       ),
   )
   .addSubcommand((sub) =>
     sub
       .setName('list')
-      .setDescription('Liste des semaines connues pour cette alliance')
+      .setDescription('List of weeks known for this alliance')
       .addIntegerOption((opt) =>
         opt
           .setName('limit')
-          .setDescription('Nombre de semaines à afficher (défaut : 5, max 20)')
+          .setDescription('Number of weeks to show (default: 5, max 20)')
           .setMinValue(1)
           .setMaxValue(20)
           .setRequired(false),
@@ -80,9 +80,9 @@ export function formatPeriodLabel(start: string, end: string): string {
   // UTC so the label never shifts by a day, whatever the host timezone or the
   // season (a fixed +02:00 anchor rendered in Europe/Paris showed the previous
   // day in winter, when Paris is +01:00).
-  const startLabel = new Date(`${start}T00:00:00Z`).toLocaleDateString('fr-FR', PERIOD_DATE_LABEL);
-  const endLabel = new Date(`${end}T00:00:00Z`).toLocaleDateString('fr-FR', PERIOD_DATE_LABEL);
-  return `du ${startLabel} au ${endLabel}`;
+  const startLabel = new Date(`${start}T00:00:00Z`).toLocaleDateString('en-GB', PERIOD_DATE_LABEL);
+  const endLabel = new Date(`${end}T00:00:00Z`).toLocaleDateString('en-GB', PERIOD_DATE_LABEL);
+  return `${startLabel} to ${endLabel}`;
 }
 
 async function resolvePeriodId(
@@ -146,14 +146,14 @@ async function renderLeaderboard(period: PeriodRow, page: number): Promise<Rende
     const pos = r.position;
     const prefix = pos <= 3 ? (medals[pos - 1] ?? `**${pos}.**`) : `**${pos}.**`;
     const rank = r.player_rank ? ` (${r.player_rank})` : '';
-    return `${prefix} ${r.player_name}${rank} — ${r.alliance_honor.toLocaleString('fr-FR')}`;
+    return `${prefix} ${r.player_name}${rank} — ${r.alliance_honor.toLocaleString('en-GB')}`;
   });
 
   const embed = new EmbedBuilder()
     .setColor(0xb59f3b)
-    .setTitle(`🎁 Dons Alliance Honor — ${formatPeriodLabel(period.period_start, period.period_end)}`)
+    .setTitle(`🎁 Alliance Honor donations — ${formatPeriodLabel(period.period_start, period.period_end)}`)
     .setDescription(lines.join('\n') || '—')
-    .setFooter({ text: `Page ${page + 1}/${totalPages} · Semaine ${period.period_start}` });
+    .setFooter({ text: `Page ${page + 1}/${totalPages} · Week ${period.period_start}` });
 
   const prevId = `dlb|${period.id}|${page - 1}`;
   const nextId = `dlb|${period.id}|${page + 1}`;
@@ -169,7 +169,7 @@ async function executeLeaderboard(interaction: ChatInputCommandInteraction): Pro
 
   const periodStart = interaction.options.getString('period_start');
   if (periodStart && !/^\d{4}-\d{2}-\d{2}$/.test(periodStart)) {
-    await interaction.editReply("❌ Format `period_start` attendu : `YYYY-MM-DD` (lundi de la semaine).");
+    await interaction.editReply('❌ Expected `period_start` format: `YYYY-MM-DD` (Monday of the week).');
     return;
   }
 
@@ -177,8 +177,8 @@ async function executeLeaderboard(interaction: ChatInputCommandInteraction): Pro
   if (!period) {
     await interaction.editReply(
       periodStart
-        ? `❌ Aucune période \`${periodStart}\` enregistrée pour cette alliance.`
-        : "❌ Aucune période de don enregistrée pour cette alliance.",
+        ? `❌ No period \`${periodStart}\` recorded for this alliance.`
+        : '❌ No donation period recorded for this alliance.',
     );
     return;
   }
@@ -214,14 +214,14 @@ async function executePlayer(interaction: ChatInputCommandInteraction): Promise<
 
   const name = interaction.options.getString('name', true);
   if (name.trim().length === 0 || name.length > 50) {
-    await interaction.editReply('❌ Le nom doit faire entre 1 et 50 caractères.');
+    await interaction.editReply('❌ The name must be between 1 and 50 characters.');
     return;
   }
   const lookup = await resolvePlayerByName(alliance.id, name, { match: 'partial' });
 
   if (lookup.status === 'none') {
     await interaction.editReply(
-      `❌ Aucun joueur trouvé pour \`${name}\` dans l'alliance **${alliance.name}**.`,
+      `❌ No player found for \`${name}\` in alliance **${alliance.name}**.`,
     );
     return;
   }
@@ -229,7 +229,7 @@ async function executePlayer(interaction: ChatInputCommandInteraction): Promise<
   if (lookup.status === 'ambiguous') {
     const list = lookup.candidates.map((p) => `• ${p.name}`).join('\n');
     await interaction.editReply(
-      `Plusieurs joueurs correspondent à \`${name}\`. Précisez le nom :\n${list}`,
+      `Multiple players match \`${name}\`. Specify the name:\n${list}`,
     );
     return;
   }
@@ -259,30 +259,30 @@ async function executePlayer(interaction: ChatInputCommandInteraction): Promise<
 
   const embed = new EmbedBuilder()
     .setColor(0xb59f3b)
-    .setTitle(`🎁 ${player.name} — Dons`)
-    .setDescription(`Alliance : **${alliance.name}**`);
+    .setTitle(`🎁 ${player.name} — Donations`)
+    .setDescription(`Alliance: **${alliance.name}**`);
 
   if (s && s.periods_contributed > 0) {
     embed.addFields(
-      { name: 'Semaines contribuées', value: String(s.periods_contributed), inline: true },
+      { name: 'Weeks contributed', value: String(s.periods_contributed), inline: true },
       {
-        name: 'Honor cumulé',
-        value: s.total_alliance_honor.toLocaleString('fr-FR'),
+        name: 'Total honor',
+        value: s.total_alliance_honor.toLocaleString('en-GB'),
         inline: true,
       },
       {
-        name: 'Meilleure semaine',
-        value: s.best_period_honor != null ? s.best_period_honor.toLocaleString('fr-FR') : '—',
+        name: 'Best week',
+        value: s.best_period_honor != null ? s.best_period_honor.toLocaleString('en-GB') : '—',
         inline: true,
       },
       {
-        name: 'Moyenne / semaine',
-        value: s.avg_per_period.toLocaleString('fr-FR'),
+        name: 'Avg. / week',
+        value: s.avg_per_period.toLocaleString('en-GB'),
         inline: true,
       },
     );
   } else {
-    embed.addFields({ name: 'Statistiques', value: 'Aucune donation enregistrée.' });
+    embed.addFields({ name: 'Statistics', value: 'No donations recorded.' });
   }
 
   if (recentRows.length > 0) {
@@ -292,9 +292,9 @@ async function executePlayer(interaction: ChatInputCommandInteraction): Promise<
         ? formatPeriodLabel(period.period_start, period.period_end)
         : '?';
       const rank = r.player_rank ? ` (${r.player_rank})` : '';
-      return `${label}${rank} — **${r.alliance_honor.toLocaleString('fr-FR')}**`;
+      return `${label}${rank} — **${r.alliance_honor.toLocaleString('en-GB')}**`;
     });
-    embed.addFields({ name: '📅 5 dernières semaines', value: lines.join('\n') });
+    embed.addFields({ name: '📅 Last 5 weeks', value: lines.join('\n') });
   }
 
   await interaction.editReply({ embeds: [embed] });
@@ -318,13 +318,13 @@ async function executeList(interaction: ChatInputCommandInteraction): Promise<vo
 
   const periods = (rows ?? []) as PeriodRow[];
   if (periods.length === 0) {
-    await interaction.editReply("❌ Aucune période de don enregistrée pour cette alliance.");
+    await interaction.editReply('❌ No donation period recorded for this alliance.');
     return;
   }
 
   const embed = new EmbedBuilder()
     .setColor(0xb59f3b)
-    .setTitle(`📅 Périodes de dons — ${alliance.name}`)
+    .setTitle(`📅 Donation periods — ${alliance.name}`)
     .setDescription(
       periods
         .map((p) => `• ${formatPeriodLabel(p.period_start, p.period_end)}  \`${p.period_start}\``)
@@ -340,7 +340,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (sub === 'leaderboard') return executeLeaderboard(interaction);
   if (sub === 'player') return executePlayer(interaction);
   if (sub === 'list') return executeList(interaction);
-  await interaction.editReply(`❌ Sous-commande inconnue : \`${sub}\`.`);
+  await interaction.editReply(`❌ Unknown subcommand: \`${sub}\`.`);
 }
 
 // customId format: dlb|<periodId>|<page>
@@ -366,7 +366,7 @@ export async function handleButton(
     .maybeSingle();
 
   if (error || !periodRow) {
-    await interaction.editReply({ content: '❌ Période introuvable.', components: [] });
+    await interaction.editReply({ content: '❌ Period not found.', components: [] });
     return;
   }
 

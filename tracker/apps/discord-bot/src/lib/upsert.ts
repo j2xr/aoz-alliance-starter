@@ -174,9 +174,9 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
     );
   }
 
-  // Le nom canonique est embarqué via la FK player_id → at_players : il permet
-  // aux membres aliasés de rejoindre l'upsert batch (onConflict alliance_id,name)
-  // au lieu d'un UPDATE par ligne (N+1).
+  // The canonical name is embedded via the player_id → at_players FK: it lets
+  // aliased members join the upsert batch (onConflict alliance_id,name)
+  // instead of a per-row UPDATE (N+1).
   const { data: aliasRows, error: aliasError } = await supabase
     .from('at_player_aliases')
     .select('raw_name, player_id, at_players(name)')
@@ -185,8 +185,8 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
 
   if (aliasError) throw new Error(`Alias lookup failed: ${aliasError.message}`);
 
-  // supabase-js type la relation embarquée en tableau ; le runtime renvoie un
-  // objet pour une FK to-one. On accepte les deux formes.
+  // supabase-js types the embedded relation as an array; the runtime returns
+  // an object for a to-one FK. Both shapes are accepted.
   const typedAliasRows = (aliasRows ?? []) as unknown as {
     raw_name: string;
     player_id: string;
@@ -201,11 +201,11 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
     if (rel?.name) canonicalNameById.set(r.player_id, rel.name);
   }
 
-  // Résolution floue : pour les membres sans alias exact, chercher dans le
-  // roster de l'alliance un joueur existant dont le nom est probablement une
-  // variante OCR (glyphe parasite, correction LLM non déterministe, etc.).
-  // Ne redirige que sur un candidat unique ; ≥2 candidats ou 0 → laissé tel
-  // quel (nouveau joueur), jamais de fusion hasardeuse.
+  // Fuzzy resolution: for members without an exact alias, look in the
+  // alliance's roster for an existing player whose name is likely an OCR
+  // variant (stray glyph, non-deterministic LLM correction, etc.). Only
+  // redirects on a single candidate; ≥2 candidates or 0 → left as-is (new
+  // player), never a risky merge.
   const stillUnresolved = uniqueMembers.filter((m) => !aliasToCanonicalId.has(m.name));
   if (stillUnresolved.length > 0) {
     const { data: rosterRows, error: rosterError } = await supabase
@@ -220,8 +220,8 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
       [];
 
     for (const m of stillUnresolved) {
-      // Nom déjà présent tel quel dans le roster : l'upsert onConflict
-      // (alliance_id,name) le gère nativement, pas besoin d'alias.
+      // Name already present as-is in the roster: the onConflict upsert
+      // (alliance_id,name) handles it natively, no alias needed.
       if (roster.some((p) => p.name === m.name)) continue;
 
       const match = findFuzzyMatch(m.name, roster);
@@ -286,11 +286,11 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
 }
 
 /**
- * Déduplique un payload d'upsert at_players par sa clé de conflit (le nom,
- * l'alliance étant constante) en gardant la ligne de meilleure confiance.
- * Nécessaire quand membres directs et aliasés partagent un même joueur
- * canonique : Postgres rejette un upsert qui touche deux fois la même ligne
- * (« cannot affect row a second time »).
+ * Deduplicates an at_players upsert payload by its conflict key (the name,
+ * since the alliance is constant), keeping the highest-confidence row.
+ * Needed when direct and aliased members share the same canonical player:
+ * Postgres rejects an upsert that touches the same row twice
+ * ("cannot affect row a second time").
  */
 function dedupeByName<R extends { name: string }>(
   entries: { row: R; confidence: number }[],
@@ -304,10 +304,10 @@ function dedupeByName<R extends { name: string }>(
 }
 
 /**
- * Combine les lignes joueurs résolues : membres directs (nom OCR) + membres
- * aliasés re-clés sur leur nom OCR (pour que memberByName, construit depuis
- * uniqueMembers, résolve à l'étape participations/donations), dédupliquées
- * par id.
+ * Combines the resolved player rows: direct members (OCR name) + aliased
+ * members re-keyed under their OCR name (so memberByName, built from
+ * uniqueMembers, resolves at the participations/donations step),
+ * deduplicated by id.
  */
 function combinePlayerRows(
   directPlayerRows: { id: string; name: string }[],
@@ -372,9 +372,10 @@ async function upsertMemberships(
 }
 
 /**
- * True quand la confiance OCR est basse (0 <= confidence < 0.5) — à distinguer
- * du sentinel -1 (correction LLM acceptée, voir _rewrite_name côté ocr-service)
- * qui n'est PAS un signal de mauvaise qualité et ne doit donc jamais être flaggé.
+ * True when OCR confidence is low (0 <= confidence < 0.5) — to be
+ * distinguished from the -1 sentinel (accepted LLM correction, see
+ * _rewrite_name on the ocr-service side), which is NOT a low-quality signal
+ * and must therefore never be flagged.
  */
 function needsReview(confidence: number): boolean {
   return confidence >= 0 && confidence < 0.5;
@@ -391,7 +392,7 @@ const UPLOAD_ALREADY_PROCESSED = 'processed';
 
 type ExistingUpload = { id: string; processingStatus: string };
 
-/** Ligne at_screenshot_uploads existante pour (file_hash, alliance_id), le cas échéant. */
+/** Existing at_screenshot_uploads row for (file_hash, alliance_id), if any. */
 async function findExistingUpload(
   fileHash: string,
   allianceId: string,
@@ -410,14 +411,14 @@ async function findExistingUpload(
 type InsertUploadOutcome = { status: 'inserted'; uploadId: string } | { status: 'duplicate' };
 
 /**
- * Écrit la ligne at_screenshot_uploads. Si `existingId` est fourni (un essai
- * précédent non terminal — voir UPLOAD_ALREADY_PROCESSED — pour ce même
- * (file_hash, alliance_id)), la ligne existante est réinitialisée en place
- * via UPDATE plutôt qu'un second INSERT, qui violerait la contrainte unique.
- * Sans `existingId`, une violation de cette contrainte (insertion concurrente
- * entre le check et l'insert — deux captures identiques traitées en même
- * temps) est traduite en { status: 'duplicate' } au lieu d'une erreur brute
- * (Postgres 23505).
+ * Writes the at_screenshot_uploads row. If `existingId` is provided (a
+ * previous non-terminal attempt — see UPLOAD_ALREADY_PROCESSED — for this
+ * same (file_hash, alliance_id)), the existing row is reset in place via
+ * UPDATE rather than a second INSERT, which would violate the unique
+ * constraint. Without `existingId`, a violation of that constraint
+ * (concurrent insert between the check and the insert — two identical
+ * screenshots processed at the same time) is translated into
+ * { status: 'duplicate' } instead of a raw error (Postgres 23505).
  */
 async function insertUploadRecord(params: {
   messageId: string;
@@ -479,9 +480,9 @@ async function insertUploadRecord(params: {
 export async function upsertEventResult(params: UpsertParams): Promise<UpsertResult> {
   const { messageId, userId, allianceId, fileHash, filePath, ocr } = params;
 
-  // Date/heure illisible sur la capture : at_events.event_datetime est NOT NULL
-  // et fait partie de la clé de dédup — refus propre plutôt qu'une erreur brute
-  // Postgres 23502 qui jetterait aussi les participations.
+  // Unreadable date/time on the screenshot: at_events.event_datetime is NOT
+  // NULL and part of the dedup key — a clean rejection rather than a raw
+  // Postgres 23502 error that would also drop the participations.
   if (!ocr.event_datetime) {
     logger.warn({ fileHash, allianceId }, 'OCR result has no event_datetime, skipping');
     return { status: 'missing_datetime' };
@@ -566,11 +567,11 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
   const { uniqueMembers, directMembers, aliasedMembers, aliasToCanonicalId, canonicalNameById } =
     await resolveAndDedup(ocr.members, allianceId);
 
-  // 4b. Un seul upsert batch pour membres directs ET aliasés : les lignes
-  // aliasées visent le joueur canonique par son nom (conflit alliance_id,name
-  // → update), au lieu d'un UPDATE par ligne. Les aliasés dont le nom
-  // canonique n'a pu être résolu sont simplement omis du batch (leur ligne
-  // at_players existe déjà ; seuls last_* ne sont pas rafraîchis).
+  // 4b. A single upsert batch for both direct AND aliased members: aliased
+  // rows target the canonical player by name (alliance_id,name conflict →
+  // update), instead of a per-row UPDATE. Aliased members whose canonical
+  // name couldn't be resolved are simply omitted from the batch (their
+  // at_players row already exists; only last_* isn't refreshed).
   const playerPayload = dedupeByName([
     ...directMembers.map((m) => ({
       row: {
@@ -610,8 +611,8 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
     if (playersError ?? !players) {
       throw new Error(`Failed to upsert players: ${String(playersError?.message)}`);
     }
-    // playerRows doit rester indexé par nom OCR : les lignes canoniques issues
-    // des aliasés sont réintroduites par combinePlayerRows sous leur nom OCR.
+    // playerRows must stay indexed by OCR name: canonical rows coming from
+    // aliased members are reintroduced by combinePlayerRows under their OCR name.
     const directNames = new Set(directMembers.map((m) => m.name));
     directPlayerRows = (players as { id: string; name: string }[]).filter((p) =>
       directNames.has(p.name),
@@ -798,8 +799,8 @@ export async function recordUploadError(params: {
       existingId: existingUpload?.id,
     });
   } catch (err) {
-    // Best-effort : l'enregistrement de l'échec ne doit pas masquer l'erreur
-    // d'origine (comportement historique : insert sans vérification).
+    // Best-effort: recording the failure must not mask the original error
+    // (historical behavior: insert without checking).
     logger.warn({ fileHash, err: String(err) }, 'Failed to record upload error');
   }
 }
@@ -898,7 +899,7 @@ export async function upsertDonationResult(
   const { uniqueMembers, directMembers, aliasedMembers, aliasToCanonicalId, canonicalNameById } =
     await resolveAndDedup(ocr.members, allianceId, 'donation OCR result');
 
-  // 5. Un seul upsert batch (directs + aliasés via leur nom canonique) —
+  // 5. A single upsert batch (direct + aliased via their canonical name) —
   // donations only refresh last_rank, not last_seen_at/last_power.
   const playerPayload = dedupeByName([
     ...directMembers.map((m) => ({

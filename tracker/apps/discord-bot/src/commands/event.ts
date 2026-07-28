@@ -14,15 +14,15 @@ const PAGE_SIZE = 8;
 
 export const data = new SlashCommandBuilder()
   .setName('event')
-  .setDescription('Gestion des événements')
+  .setDescription('Event management')
   .addSubcommand((sub) =>
     sub
       .setName('list')
-      .setDescription("Liste des dernières occurrences d'événements pour l'alliance de ce channel")
+      .setDescription("List the latest event occurrences for this channel's alliance")
       .addStringOption((opt) =>
         opt
           .setName('type')
-          .setDescription('Code du type (ex: polar_invasion). Défaut: tous les types.')
+          .setDescription('Type code (e.g. polar_invasion). Default: all types.')
           .setRequired(false),
       ),
   );
@@ -52,7 +52,7 @@ export async function renderEventList(
       .select('id')
       .eq('code', etCode)
       .maybeSingle();
-    if (!et) return { error: `Type d'événement inconnu : \`${etCode}\`` };
+    if (!et) return { error: `Unknown event type: \`${etCode}\`` };
     etId = (et as { id: string }).id;
   }
 
@@ -75,11 +75,11 @@ export async function renderEventList(
   const rows = (events ?? []) as unknown as EventRow[];
 
   if (rows.length === 0) {
-    return { content: '📭 Aucun événement trouvé.', components: [] };
+    return { content: '📭 No events found.', components: [] };
   }
 
   const lines = rows.map((e) => {
-    const dt = new Date(e.event_datetime).toLocaleString('fr-FR', {
+    const dt = new Date(e.event_datetime).toLocaleString('en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -91,16 +91,16 @@ export async function renderEventList(
     const rank = e.alliance_rank != null ? `#${e.alliance_rank}` : '—';
     const battlers = e.total_battlers ?? '—';
     const pts =
-      e.total_points != null ? e.total_points.toLocaleString('fr-FR') : '—';
+      e.total_points != null ? e.total_points.toLocaleString('en-GB') : '—';
     const shortId = e.id.slice(0, 8);
-    return `**${typeName}** — ${dt}\n  Rang ${rank} · ${battlers} battlers · ${pts} pts · \`${shortId}\``;
+    return `**${typeName}** — ${dt}\n  Rank ${rank} · ${battlers} battlers · ${pts} pts · \`${shortId}\``;
   });
 
   const etSafe = etCode ?? '-';
   const prevId = `el|${allianceId}|${page - 1}|${etSafe}`;
   const nextId = `el|${allianceId}|${page + 1}|${etSafe}`;
 
-  const content = `**Événements — Page ${page + 1}/${totalPages}**\n\n${lines.join('\n\n')}`;
+  const content = `**Events — Page ${page + 1}/${totalPages}**\n\n${lines.join('\n\n')}`;
   const components =
     totalPages > 1 ? [paginationRow(prevId, nextId, page, totalPages)] : [];
 

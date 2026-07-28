@@ -1,6 +1,6 @@
 -- 0006_at_fix_processing_status.sql
--- Ajoute 'unknown_event' aux valeurs autorisées pour at_screenshot_uploads.processing_status.
--- Le bot utilise ce statut quand l'OCR renvoie un type d'événement non reconnu.
+-- Adds 'unknown_event' to the allowed values for at_screenshot_uploads.processing_status.
+-- The bot uses this status when OCR returns an unrecognized event type.
 
 alter table at_screenshot_uploads
   drop constraint at_screenshot_uploads_processing_status_check;

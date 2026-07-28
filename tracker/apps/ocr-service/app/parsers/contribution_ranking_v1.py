@@ -213,8 +213,7 @@ _ASCII_RE = re.compile(r"^[A-Za-z0-9_|§\-\.]+$")
 
 
 def _words_from_data(data: dict[str, Any], min_conf: int = 20) -> str:
-    # Jointure avec espace (contrairement à polar) : les noms du classement de
-    # dons conservent leurs espaces.
+    # Space-joined (unlike polar): donation leaderboard names keep their spaces.
     return words_from_data(data, min_conf=min_conf, sep=" ")
 
 
@@ -900,9 +899,9 @@ class ContributionRankingV1Parser(BaseParser):
                 if len(wrap_name) >= 2:
                     name, data, crop_2x = wrap_name, wrap_data, wrap_2x
 
-        # Cyrillic-vs-Latin disambiguation — retourne name ET data de la passe
-        # gagnante, pour que la confiance calculée par l'appelant (et donc le
-        # déclenchement du fallback LLM) reflète le nom réellement retourné.
+        # Cyrillic-vs-Latin disambiguation — returns name AND data from the
+        # winning pass, so the confidence computed by the caller (and thus
+        # whether the LLM fallback triggers) reflects the name actually returned.
         name, data = disambiguate_cyrillic(crop_2x, name, data, sep=" ")
 
         return name, data

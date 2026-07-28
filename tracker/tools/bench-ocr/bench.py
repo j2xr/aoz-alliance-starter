@@ -407,8 +407,8 @@ def _bench_event_type(
 
         t0 = time.perf_counter()
         image = preprocess_image(str(image_path))
-        # event_code aligne le bench sur la production : le layout de header
-        # est choisi par code événement, pas deviné à l'OCR.
+        # event_code aligns the bench with production: the header layout
+        # is chosen by event code, not guessed from OCR.
         result = parser.parse(image, emit_trace=emit_trace, event_code=event_type)
         latency = time.perf_counter() - t0
         latencies.append(latency)

@@ -1,11 +1,11 @@
-"""Tests unitaires de tools/verify_honor_audit_cases.py.
+"""Unit tests for tools/verify_honor_audit_cases.py.
 
-Fonctions pures uniquement — aucune image, aucun I/O disque, aucun appel LLM.
-Construit des DonationMember à la main plutôt que de dépendre d'une vraie
-capture ; le comportement sur de vraies images est ce que l'outil lui-même
-sert à vérifier manuellement (voir docs/maintenance/2026-07-27-row11-honor-
-verification.md), pas quelque chose que pytest peut réévaluer de façon fiable
-(mode "full" appelle un vrai Ollama, non déterministe par nature).
+Pure functions only — no image, no disk I/O, no LLM call. Builds
+DonationMember by hand rather than depending on a real screenshot; behavior
+on real images is what the tool itself is meant to verify manually (see
+docs/maintenance/2026-07-27-row11-honor-verification.md), not something
+pytest can reliably re-evaluate ("full" mode calls a real Ollama, which is
+non-deterministic by nature).
 """
 
 from dataclasses import replace
@@ -35,14 +35,14 @@ def _member(**overrides: object) -> DonationMember:
     return DonationMember(**defaults)  # type: ignore[arg-type]
 
 
-# Les deux cas réels "Somethin_kool" : (92256/2385, une vraie rupture de
-# monotonicité, Test Alliance) et (955/255, un rejet de confiance-nom sans
-# rapport avec la monotonicité, SOD) — même label, deux joueurs différents.
-# Le repère par honor les discrimine dans le cas courant (voir
-# test_match_case_discriminates_different_named_cases_by_honor pour un
-# exemple à noms différents) mais PAS quand les deux partagent le même nom —
-# voir test_match_case_same_named_cases_can_still_cross_match, une limite
-# assumée, pas un bug.
+# The two real "Somethin_kool" cases: (92256/2385, a genuine monotonicity
+# break, Test Alliance) and (955/255, a name-confidence rejection unrelated
+# to monotonicity, SOD) — same label, two different players. The honor
+# marker discriminates them in the common case (see
+# test_match_case_discriminates_different_named_cases_by_honor for an
+# example with different names) but NOT when both share the same name —
+# see test_match_case_same_named_cases_can_still_cross_match, an accepted
+# limitation, not a bug.
 CASE_TEST_ALLIANCE = AuditCase(
     "Somethin_kool", 92256, 2385, "data-quality-report.md#1", message_id="msg-1"
 )

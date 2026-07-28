@@ -27,10 +27,10 @@ export const config = {
   ocrTimeoutMs: Number.parseInt(process.env['OCR_TIMEOUT_MS'] ?? '1800000', 10),
   ocrPollIntervalMs: Number.parseInt(process.env['OCR_POLL_INTERVAL_MS'] ?? '5000', 10),
   dataInboxDir: process.env['DATA_INBOX_DIR'] ?? '/data/inbox',
-  // Nombre de captures retraitées en parallèle par /reprocess-channel et
-  // /reprocess. 3 par défaut : la majeure partie du temps par image est de
-  // l'attente (download CDN + polling du job OCR), donc un petit pool
-  // pipeline sans saturer le service OCR.
+  // Number of screenshots reprocessed in parallel by /reprocess-channel and
+  // /reprocess. Defaults to 3: most of the time per image is spent waiting
+  // (CDN download + OCR job polling), so a small pool pipelines work
+  // without overloading the OCR service.
   reprocessConcurrency: Number.parseInt(process.env['REPROCESS_CONCURRENCY'] ?? '3', 10),
   logLevel: process.env['LOG_LEVEL'] ?? 'info',
   supabaseUrl: sanitizeSupabaseUrl(requireEnv('SUPABASE_URL')),

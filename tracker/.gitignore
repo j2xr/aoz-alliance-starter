@@ -53,7 +53,7 @@ supabase/.branches/
 coverage/
 *.lcov
 
-# Data (captures réelles)
+# Data (real screenshots)
 /data/
 apps/ocr-service/tests/fixtures/*.png
 apps/ocr-service/tests/fixtures/*.jpg
