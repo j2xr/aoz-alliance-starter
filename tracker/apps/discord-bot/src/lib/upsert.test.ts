@@ -302,7 +302,7 @@ describe('upsertEventResult', () => {
     ]);
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
-    // at_participations: chaîne capturée pour inspecter le payload de l'upsert
+    // at_participations: chain captured to inspect the upsert payload
     queueFrom([]); // existing at_participations fetch (correction-reversal check): none
     const participationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
@@ -355,10 +355,10 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'upload-1' }); // at_screenshot_uploads insert
     queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
     queueFrom({ id: 'event-1' }); // at_events upsert
-    // at_player_aliases : 'A1pha' → canonique p1 ('Alpha'), nom embarqué
+    // at_player_aliases: 'A1pha' → canonical p1 ('Alpha'), embedded name
     queueFrom([{ raw_name: 'A1pha', player_id: 'p1', at_players: { name: 'Alpha' } }]);
     queueFrom([]); // roster fetch for fuzzy name resolution: empty ('Alpha'/'Beta' still unaliased)
-    // at_players : chaîne capturée pour inspecter le payload de l'upsert unique
+    // at_players: chain captured to inspect the single upsert payload
     const playersChain = mkChain([
       { id: 'p1', name: 'Alpha' },
       { id: 'p2', name: 'Beta' },
@@ -378,8 +378,8 @@ describe('upsertEventResult', () => {
         ...BASE_EVENT_PARAMS.ocr,
         members: [
           { name: 'Alpha', rank: 'R5', power: 1_000_000, points: 50_000, confidence: 0.95 },
-          // Alias du même joueur canonique, confiance plus faible : sa ligne
-          // doit être repliée sur 'Alpha' et perdre le dédup par confiance.
+          // Alias of the same canonical player, lower confidence: its row
+          // should fold onto 'Alpha' and lose the confidence dedup.
           { name: 'A1pha', rank: 'R5', power: 1_100_000, points: 60_000, confidence: 0.5 },
           { name: 'Beta', rank: 'R4', power: 800_000, points: 40_000, confidence: 0.9 },
         ],
@@ -389,8 +389,8 @@ describe('upsertEventResult', () => {
     const result = await upsertEventResult(params);
     expect(result.status).toBe('processed');
 
-    // 2 appels à 'at_players' : la lecture roster pour la résolution floue,
-    // et un seul upsert batch (plus d'UPDATE par alias).
+    // 2 calls to 'at_players': the roster read for fuzzy resolution,
+    // and a single upsert batch (no more per-alias UPDATE).
     const playerCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_players');
     expect(playerCalls).toHaveLength(2);
     expect(playersChain['upsert']).toHaveBeenCalledTimes(1);
@@ -498,7 +498,7 @@ describe('upsertEventResult', () => {
       expect.stringContaining('Ambiguous'),
     );
 
-    // Aucun alias inséré pour ce nom
+    // No alias inserted for this name
     const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
     expect(aliasCalls).toHaveLength(1); // le seul appel est le lookup exact, pas un insert
   });
@@ -853,7 +853,7 @@ describe('upsertDonationResult', () => {
     queueFrom([{ id: 'p1', name: 'Alpha' }]); // at_players upsert
     queueFrom([]);  // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
-    // at_donations : chaîne capturée pour inspecter le payload de l'upsert
+    // at_donations: chain captured to inspect the upsert payload
     queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     const donationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
@@ -918,7 +918,7 @@ describe('upsertDonationResult', () => {
     ]); // at_players upsert
     queueFrom([]);   // at_alliance_memberships select: none existing
     queueFrom(null); // at_alliance_memberships upsert
-    // at_donations: chaîne capturée pour inspecter le payload de l'upsert
+    // at_donations: chain captured to inspect the upsert payload
     queueFrom([]); // existing at_donations fetch (correction-reversal check): none
     const donationsChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(

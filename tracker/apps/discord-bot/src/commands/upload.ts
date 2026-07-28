@@ -19,7 +19,7 @@ import { isImageAttachment } from '../lib/attachment.js';
 import { messages } from '../lib/messages.js';
 import { capDiscordContent } from '../lib/discord-limits.js';
 
-// Shared FR wording (B4), same object as messageCreate.ts's MESSAGES —
+// Shared wording (B4), same object as messageCreate.ts's MESSAGES —
 // `databaseError`'s second param (the raw error) is deliberately ignored:
 // the detail goes to logger.error only, never back to Discord.
 const OCR_ROUTING_MESSAGES: OcrRoutingMessages = {
@@ -33,28 +33,28 @@ const OCR_ROUTING_MESSAGES: OcrRoutingMessages = {
 const MESSAGE_URL_RE =
   /https?:\/\/(?:ptb\.|canary\.)?discord\.com\/channels\/\d+\/(\d+)\/(\d+)/;
 
-// Code attendu par le service OCR pour forcer le routage vers le parser de
-// dons (cf. apps/ocr-service/app/dispatcher.py: DONATION_CODE).
+// Code expected by the OCR service to force routing to the donation parser
+// (cf. apps/ocr-service/app/dispatcher.py: DONATION_CODE).
 const DONATION_OCR_CODE = 'contribution_ranking';
 
 export const data = new SlashCommandBuilder()
   .setName('upload')
   .setDescription(
-    "Retraiter une capture en forçant son type (événement/don) — /reprocess = re-run tel quel",
+    'Reprocess a screenshot, forcing its type (event/donation) — /reprocess = re-run as-is',
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('message_url')
       .setDescription(
-        'URL du message Discord contenant les captures à retraiter',
+        'URL of the Discord message containing the screenshots to reprocess',
       )
       .setRequired(true),
   )
   .addStringOption((opt) =>
     opt
       .setName('kind')
-      .setDescription("Type d'écran à forcer (par défaut : event)")
+      .setDescription('Screen type to force (default: event)')
       .setRequired(false)
       .addChoices(
         { name: 'event', value: 'event' },
@@ -64,13 +64,13 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName('event_type')
-      .setDescription("Code du type d'événement (requis si kind=event)")
+      .setDescription('Event type code (required if kind=event)')
       .setAutocomplete(true),
   )
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')
-      .setDescription('Forcer le LLM sur toutes les lignes (ignorer le seuil de confiance OCR)')
+      .setDescription('Force the LLM on every line (ignore the OCR confidence threshold)')
       .setRequired(false),
   );
 
@@ -117,7 +117,7 @@ export async function execute(
   const forceLlm = interaction.options.getBoolean('force_llm') ?? false;
   if (eventTypeCode !== null &&
       (eventTypeCode.trim().length === 0 || eventTypeCode.length > 50)) {
-    await interaction.editReply('❌ event_type doit faire entre 1 et 50 caractères.');
+    await interaction.editReply('❌ event_type must be between 1 and 50 characters.');
     return;
   }
 
@@ -129,7 +129,7 @@ export async function execute(
   } else {
     if (!eventTypeCode) {
       await interaction.editReply(
-        '❌ `event_type` est requis quand `kind=event`. Indiquez par exemple `event_type:polar_invasion`.',
+        '❌ `event_type` is required when `kind=event`. For example, specify `event_type:polar_invasion`.',
       );
       return;
     }
@@ -144,7 +144,7 @@ export async function execute(
     if (etError) throw etError;
     if (!et) {
       await interaction.editReply(
-        `❌ Type d'événement inconnu : \`${eventTypeCode}\`. Vérifiez les codes dans \`at_event_types\`.`,
+        `❌ Unknown event type: \`${eventTypeCode}\`. Check the codes in \`at_event_types\`.`,
       );
       return;
     }
@@ -156,7 +156,7 @@ export async function execute(
   const match = MESSAGE_URL_RE.exec(messageUrl);
   if (!match) {
     await interaction.editReply(
-      "❌ URL de message invalide. Format attendu : `https://discord.com/channels/<guild>/<channel>/<message>`",
+      '❌ Invalid message URL. Expected format: `https://discord.com/channels/<guild>/<channel>/<message>`',
     );
     return;
   }
@@ -168,7 +168,7 @@ export async function execute(
   try {
     const channel = await interaction.client.channels.fetch(channelId);
     if (!channel?.isTextBased()) {
-      await interaction.editReply('❌ Channel introuvable ou inaccessible.');
+      await interaction.editReply('❌ Channel not found or inaccessible.');
       return;
     }
     originalMessage = await channel.messages.fetch(messageId);
@@ -178,7 +178,7 @@ export async function execute(
       'Failed to fetch original message',
     );
     await interaction.editReply(
-      '❌ Message introuvable. Le bot doit avoir accès au channel.',
+      '❌ Message not found. The bot must have access to the channel.',
     );
     return;
   }
@@ -195,13 +195,13 @@ export async function execute(
   );
 
   if (images.size === 0) {
-    await interaction.editReply('❌ Aucune image trouvée dans ce message.');
+    await interaction.editReply('❌ No image found in this message.');
     return;
   }
 
   const plural = images.size > 1 ? 's' : '';
   const kindLabel = kind === 'donation' ? '(donations)' : `(${eventTypeDisplayName ?? eventTypeCode ?? 'event'})`;
-  const llmNote = forceLlm ? ' (LLM forcé sur toutes les lignes)' : '';
+  const llmNote = forceLlm ? ' (LLM forced on every line)' : '';
   await interaction.editReply(
     `⏳ Processing ${images.size} screenshot${plural} ${kindLabel}${llmNote}. This can take several minutes — **please do not upload again**.`,
   );
@@ -243,7 +243,7 @@ export async function execute(
       const typedKind = ensureKind(rawOcr).kind;
       if (typedKind !== kind) {
         lines.push(
-          `⚠️ **${filename}** — réponse OCR incohérente (kind=${typedKind}, attendu=${kind}). Service OCR à redéployer ?`,
+          `⚠️ **${filename}** — inconsistent OCR response (kind=${typedKind}, expected=${kind}). Does the OCR service need redeploying?`,
         );
         continue;
       }
@@ -270,7 +270,7 @@ export async function execute(
     });
   } else {
     await interaction.editReply(
-      lines.length > 0 ? capDiscordContent(lines.join('\n')) : '✅ Retraitement terminé.',
+      lines.length > 0 ? capDiscordContent(lines.join('\n')) : '✅ Reprocessing complete.',
     );
   }
 }

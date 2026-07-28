@@ -1,9 +1,9 @@
 /**
- * Exécute `fn` sur chaque élément avec au plus `limit` exécutions simultanées.
+ * Runs `fn` on each item with at most `limit` concurrent executions.
  *
- * Les résultats sont retournés dans l'ordre d'entrée (indépendamment de
- * l'ordre d'achèvement). Un rejet de `fn` interrompt l'ensemble, comme
- * Promise.all — les erreurs attendues doivent donc être gérées DANS `fn`.
+ * Results are returned in input order (regardless of completion order). A
+ * rejection from `fn` aborts the whole batch, like Promise.all — expected
+ * errors must therefore be handled INSIDE `fn`.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

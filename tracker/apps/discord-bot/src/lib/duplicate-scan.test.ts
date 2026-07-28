@@ -14,10 +14,10 @@ import {
   type NameProximity,
 } from './duplicate-scan.js';
 
-// ── Table de validation : les 4 vrais doublons confirmés + les faux positifs
-// confirmés distincts, tous issus des 3 audits du 2026-07-26
-// (docs/maintenance/2026-07-26-reprocess-channel-*.md). Chaque ligne cite sa
-// source pour qu'un futur lecteur puisse revérifier contre l'audit d'origine. ──
+// ── Validation table: the 4 confirmed real duplicates + the confirmed
+// distinct false positives, all drawn from the 3 audits of 2026-07-26
+// (docs/maintenance/2026-07-26-reprocess-channel-*.md). Each row cites its
+// source so a future reader can re-check against the original audit. ──
 
 const CONFIRMED_PAIRS: {
   label: string;
@@ -27,7 +27,7 @@ const CONFIRMED_PAIRS: {
   proximity: NameProximity;
   tier: DuplicateTier | null;
 }[] = [
-  // Vrais positifs — doublons confirmés par capture.
+  // True positives — duplicates confirmed by screenshot.
   {
     label: 'TP1 donation Big§teel/RigSteel (Test Alliance report, honor 6095)',
     a: 'Big§teelCurtain',
@@ -60,15 +60,15 @@ const CONFIRMED_PAIRS: {
     proximity: 'weak',
     tier: 'medium',
   },
-  // Faux positifs — confirmés DISTINCTS via capture (même valeur, coïncidence).
+  // False positives — confirmed DISTINCT via screenshot (same value, coincidence).
   {
-    label: 'FP1 jasmin décoré (Test Alliance report, honor 530) — le cas dangereux',
+    label: 'FP1 decorated jasmin (Test Alliance report, honor 530) — the dangerous case',
     a: 'jasmin',
     b: 'm| jasmin|o',
     sameValue: true,
     proximity: 'weak',
-    tier: 'medium', // non éliminé : voir le commentaire de compareNames — reste
-    // en dessous des deux vrais doublons HIGH une fois classé (voir plus bas).
+    tier: 'medium', // not eliminated: see compareNames' comment — stays
+    // below the two real HIGH-tier duplicates once ranked (see below).
   },
   {
     label: 'FP2 kotarou/Moud (SOD/Test Alliance reports, honor 600)',
@@ -157,7 +157,7 @@ describe('compareNames — validated against every known real example', () => {
   it('the containment demotion is load-bearing for the dangerous false positive', () => {
     const result = compareNames('jasmin', 'm| jasmin|o');
     expect(result.containment).toBe(true);
-    expect(result.reason).toContain("un nom contient l'autre");
+    expect(result.reason).toContain('one name contains the other');
   });
 
   it('a different-value weak-proximity pair is NOT reported (documented boundary)', () => {

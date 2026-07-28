@@ -84,7 +84,7 @@ describe('/find-duplicates execute', () => {
     const interaction = fakeInteraction();
     await execute(interaction);
     expect(interaction.editReply).toHaveBeenCalledWith(
-      "⚠️ Ce channel n'est pas associé à une alliance.",
+      '⚠️ This channel is not linked to an alliance.',
     );
     expect(vi.mocked(supabase.from)).toHaveBeenCalledTimes(1);
   });
@@ -116,7 +116,7 @@ describe('/find-duplicates execute', () => {
     const replyArg = vi.mocked(interaction.editReply).mock.calls[0]?.[0] as {
       embeds: { data: { description?: string } }[];
     };
-    expect(replyArg.embeds[0]?.data.description).toContain('Aucun doublon probable détecté');
+    expect(replyArg.embeds[0]?.data.description).toContain('No likely duplicate detected');
   });
 
   it('golden path: surfaces a HIGH-tier pair above a LOW-tier same-value coincidence', async () => {
@@ -165,7 +165,7 @@ describe('/find-duplicates execute', () => {
     const replyArg = vi.mocked(interaction.editReply).mock.calls[0]?.[0] as {
       embeds: { data: { description?: string } }[];
     };
-    expect(replyArg.embeds[0]?.data.description).toContain('Aucun doublon probable détecté');
+    expect(replyArg.embeds[0]?.data.description).toContain('No likely duplicate detected');
   });
 });
 

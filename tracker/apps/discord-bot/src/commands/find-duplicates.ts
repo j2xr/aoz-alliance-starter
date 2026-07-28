@@ -1,10 +1,10 @@
-// /find-duplicates — surface (jamais fusionner) les paires de joueurs
-// probablement dupliquées par un misread OCR entre deux captures déjà en
-// base (un même événement ou une même période de dons). Lecture seule de
-// bout en bout : voir lib/duplicate-scan.ts pour l'algorithme et sa
-// validation contre les 4 vrais doublons + faux positifs confirmés des
-// audits du 2026-07-26. `/merge` et `/player-alias` restent les seuls outils
-// qui écrivent en base, après vérification humaine de la capture source.
+// /find-duplicates — surfaces (never merges) player pairs likely duplicated
+// by an OCR misread between two screenshots already in the database (the
+// same event or the same donation period). Read-only end to end: see
+// lib/duplicate-scan.ts for the algorithm and its validation against the 4
+// real duplicates + confirmed false positives from the 2026-07-26 audits.
+// `/merge` and `/player-alias` remain the only tools that write to the
+// database, after a human checks the source screenshot.
 
 import {
   SlashCommandBuilder,
@@ -32,40 +32,40 @@ import { formatPeriodLabel } from './donation.js';
 import logger from '../logger.js';
 
 const PAGE_SIZE = 8;
-// Le plus grand contexte observé à ce jour est ~106 membres (donation period)
-// — cap headroom, pas une vraie limite. Borne le scan pour rester sous le
-// budget de réponse Discord (3s pour un deferReply, mais on veut aussi
-// borner le nombre de lignes PostgREST retournées, ~1000 par requête).
+// The largest context observed to date is ~106 members (donation period) —
+// that's headroom, not a real limit. Bounds the scan to stay under Discord's
+// response budget (3s for a deferReply, but we also want to bound the
+// number of PostgREST rows returned, ~1000 per query).
 const MAX_EVENTS_SCANNED = 40;
 const MAX_DONATION_PERIODS_SCANNED = 6;
 
 const TIER_RANK: Record<DuplicateTier, number> = { high: 0, medium: 1, low: 2 };
 const TIER_EMOJI: Record<DuplicateTier, string> = { high: '🔴', medium: '🟠', low: '🟡' };
 const TIER_HEADING: Record<DuplicateTier, string> = {
-  high: 'Probables',
-  medium: 'À vérifier',
-  low: 'Valeur identique, noms sans rapport (souvent une coïncidence)',
+  high: 'Likely',
+  medium: 'Worth checking',
+  low: 'Same value, unrelated names (often a coincidence)',
 };
 
 const HEADER =
-  "Analyse en lecture seule — aucune fusion n'est effectuée. Vérifiez la capture source avant tout `/merge`.";
+  'Read-only analysis — no merge is performed. Check the source screenshot before any `/merge`.';
 
 export const data = new SlashCommandBuilder()
   .setName('find-duplicates')
-  .setDescription('Lister les doublons de joueurs probables (lecture seule, aucune fusion)')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // même garde que /merge
+  .setDescription('List likely duplicate players (read-only, no merging)')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // same guard as /merge
   .addStringOption((opt) =>
     opt
       .setName('min_tier')
-      .setDescription('Seuil de confiance minimum (défaut : à vérifier)')
+      .setDescription('Minimum confidence threshold (default: worth checking)')
       .addChoices(
-        { name: 'Probables', value: 'high' },
-        { name: 'À vérifier', value: 'medium' },
-        { name: 'Tout', value: 'low' },
+        { name: 'Likely', value: 'high' },
+        { name: 'Worth checking', value: 'medium' },
+        { name: 'All', value: 'low' },
       ),
   );
 
-// ── Contextes : événements + périodes de dons ───────────────────────────────
+// ── Contexts: events + donation periods ─────────────────────────────────────
 
 type EventRow = {
   id: string;
@@ -99,7 +99,7 @@ function embeddedName(rel: { name: string } | { name: string }[] | null): string
 function formatEventLabel(row: EventRow): string {
   const typeRel = Array.isArray(row.at_event_types) ? row.at_event_types[0] : row.at_event_types;
   const typeName = typeRel?.display_name ?? '?';
-  const dt = new Date(row.event_datetime).toLocaleString('fr-FR', {
+  const dt = new Date(row.event_datetime).toLocaleString('en-GB', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -193,7 +193,7 @@ async function fetchDonationContexts(allianceId: string): Promise<ContextEntries
     context: {
       kind: 'donation_period',
       id: row.id,
-      label: `Semaine ${formatPeriodLabel(row.period_start, row.period_end)}`,
+      label: `Week ${formatPeriodLabel(row.period_start, row.period_end)}`,
       valueLabel: 'honor',
     },
     entries: byPeriod.get(row.id) ?? [],
@@ -228,18 +228,18 @@ async function scanAllContexts(
   };
 }
 
-// ── Rendu ─────────────────────────────────────────────────────────────────
+// ── Rendering ────────────────────────────────────────────────────────────
 
 function renderCandidateLine(c: DuplicateCandidate): string {
   const valueWord = c.context.valueLabel === 'honor' ? 'honor' : 'points';
   const valueNote = c.sameValue
-    ? `${valueWord} ${c.a.value} identique`
-    : `${valueWord} différents (${c.a.value} vs ${c.b.value})`;
+    ? `identical ${valueWord} ${c.a.value}`
+    : `different ${valueWord} (${c.a.value} vs ${c.b.value})`;
   const alsoNote =
-    c.alsoInContexts > 0 ? ` (+${c.alsoInContexts} autre${c.alsoInContexts > 1 ? 's' : ''} contexte${c.alsoInContexts > 1 ? 's' : ''})` : '';
+    c.alsoInContexts > 0 ? ` (+${c.alsoInContexts} other context${c.alsoInContexts > 1 ? 's' : ''})` : '';
 
   return (
-    `\`${c.a.playerName}\` ↔ \`${c.b.playerName}\` — ${valueNote} · similarité ${c.name.similarity.toFixed(2)}\n` +
+    `\`${c.a.playerName}\` ↔ \`${c.b.playerName}\` — ${valueNote} · similarity ${c.name.similarity.toFixed(2)}\n` +
     `   ${c.name.reason} · ${c.context.label}${alsoNote}`
   );
 }
@@ -270,13 +270,13 @@ export async function renderFindDuplicates(
   const { candidates, scannedEvents, scannedPeriods } = await scanAllContexts(allianceId);
   const filtered = candidates.filter((c) => TIER_RANK[c.tier] <= TIER_RANK[minTier]);
 
-  const scanNote = `${scannedEvents} événement${scannedEvents > 1 ? 's' : ''}, ${scannedPeriods} période${scannedPeriods > 1 ? 's' : ''} analysés`;
+  const scanNote = `${scannedEvents} event${scannedEvents > 1 ? 's' : ''}, ${scannedPeriods} period${scannedPeriods > 1 ? 's' : ''} scanned`;
 
   if (filtered.length === 0) {
     const embed = new EmbedBuilder()
       .setColor(0x9b59b6)
-      .setTitle('🔍 Doublons de joueurs probables')
-      .setDescription(`${HEADER}\n\nAucun doublon probable détecté (${scanNote}).`);
+      .setTitle('🔍 Likely duplicate players')
+      .setDescription(`${HEADER}\n\nNo likely duplicate detected (${scanNote}).`);
     return { embeds: [embed], components: [] };
   }
 
@@ -290,7 +290,7 @@ export async function renderFindDuplicates(
 
   const embed = new EmbedBuilder()
     .setColor(0x9b59b6)
-    .setTitle('🔍 Doublons de joueurs probables')
+    .setTitle('🔍 Likely duplicate players')
     .setDescription(description)
     .setFooter({ text: `Page ${clampedPage + 1}/${totalPages} · ${scanNote}` });
 
@@ -332,7 +332,7 @@ export async function handleButton(
   const alliance = await resolveAlliance(interaction.channelId);
   if (!alliance) {
     await interaction.editReply({
-      content: "⚠️ Ce channel n'est plus associé à une alliance.",
+      content: '⚠️ This channel is no longer linked to an alliance.',
       components: [],
     });
     return;

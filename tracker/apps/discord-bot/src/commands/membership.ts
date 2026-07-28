@@ -11,12 +11,12 @@ import logger from '../logger.js';
 
 export const data = new SlashCommandBuilder()
   .setName('membership')
-  .setDescription("Gérer manuellement l'appartenance d'un joueur à l'alliance")
+  .setDescription("Manually manage a player's alliance membership")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('player')
-      .setDescription('Nom exact du joueur')
+      .setDescription('Exact player name')
       .setRequired(true),
   )
   .addStringOption((opt) =>
@@ -25,15 +25,15 @@ export const data = new SlashCommandBuilder()
       .setDescription('Action')
       .setRequired(true)
       .addChoices(
-        { name: 'joined — enregistrer une arrivée', value: 'joined' },
-        { name: 'left — enregistrer un départ', value: 'left' },
+        { name: 'joined — record an arrival', value: 'joined' },
+        { name: 'left — record a departure', value: 'left' },
       ),
   )
   .addStringOption((opt) =>
     opt
       .setName('date')
       .setDescription(
-        'Date ISO (ex: 2026-04-24 ou 2026-04-24T15:00:00). Défaut : maintenant.',
+        'ISO date (e.g. 2026-04-24 or 2026-04-24T15:00:00). Default: now.',
       )
       .setRequired(false),
   );
@@ -56,7 +56,7 @@ export async function execute(
     const parsed = new Date(dateRaw);
     if (isNaN(parsed.getTime())) {
       await interaction.editReply(
-        `❌ Date invalide : \`${dateRaw}\`. Utilisez le format ISO (ex: 2026-04-24 ou 2026-04-24T15:00:00).`,
+        `❌ Invalid date: \`${dateRaw}\`. Use ISO format (e.g. 2026-04-24 or 2026-04-24T15:00:00).`,
       );
       return;
     }
@@ -70,21 +70,21 @@ export async function execute(
 
   if (lookup.status === 'none') {
     await interaction.editReply(
-      `❌ Joueur \`${playerName}\` introuvable dans l'alliance **${alliance.name}**.`,
+      `❌ Player \`${playerName}\` not found in alliance **${alliance.name}**.`,
     );
     return;
   }
 
   if (lookup.status === 'ambiguous') {
     await interaction.editReply(
-      `❌ Plusieurs joueurs correspondent à \`${playerName}\`. Utilisez le nom exact.`,
+      `❌ Multiple players match \`${playerName}\`. Use the exact name.`,
     );
     return;
   }
 
   const player = lookup.player;
 
-  const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle('✅ Membership mis à jour');
+  const embed = new EmbedBuilder().setColor(0x2ecc71).setTitle('✅ Membership updated');
 
   if (action === 'joined') {
     // Insert a new active membership
@@ -104,7 +104,7 @@ export async function execute(
       'Membership joined inserted',
     );
     embed.setDescription(
-      `**${player.name}** a rejoint l'alliance **${alliance.name}**.\nDate d'arrivée : \`${dateTs}\``,
+      `**${player.name}** joined alliance **${alliance.name}**.\nArrival date: \`${dateTs}\``,
     );
   } else {
     // Find the active membership (left_at IS NULL) and set left_at
@@ -122,7 +122,7 @@ export async function execute(
 
     if (!activeMembership) {
       await interaction.editReply(
-        `❌ Aucune appartenance active trouvée pour **${player.name}** dans l'alliance **${alliance.name}**.`,
+        `❌ No active membership found for **${player.name}** in alliance **${alliance.name}**.`,
       );
       return;
     }
@@ -141,7 +141,7 @@ export async function execute(
       'Membership left_at updated',
     );
     embed.setDescription(
-      `**${player.name}** a quitté l'alliance **${alliance.name}**.\nDate d'arrivée : \`${mem.joined_at}\`\nDate de départ : \`${dateTs}\``,
+      `**${player.name}** left alliance **${alliance.name}**.\nArrival date: \`${mem.joined_at}\`\nDeparture date: \`${dateTs}\``,
     );
   }
 

@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { isoWeekStartParis } from './period.js';
 
-// Vecteurs partagés avec le frontend (donationFormat.test.js) : les deux
-// implémentations du lundi ISO Europe/Paris doivent rester d'accord.
+// Vectors shared with the frontend (donationFormat.test.js): the two
+// ISO Monday Europe/Paris implementations must stay in agreement.
 const sharedVectors = JSON.parse(
   readFileSync(
     resolve(__dirname, '../../../../..', 'shared-test-vectors/paris-iso-week.json'),
@@ -12,7 +12,7 @@ const sharedVectors = JSON.parse(
   ),
 ) as { vectors: { label: string; input: string; expected: string }[] };
 
-describe('isoWeekStartParis — vecteurs partagés', () => {
+describe('isoWeekStartParis — shared vectors', () => {
   it.each(sharedVectors.vectors)('$label ($input → $expected)', ({ input, expected }) => {
     expect(isoWeekStartParis(new Date(input))).toBe(expected);
   });

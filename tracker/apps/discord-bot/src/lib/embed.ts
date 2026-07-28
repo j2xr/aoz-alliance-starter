@@ -15,10 +15,10 @@ export function buildEventEmbed(
   ocr: OcrEventResult,
   result: ProcessedUpsertResult,
 ): EmbedBuilder {
-  // event_datetime peut être null en théorie (en-tête illisible), mais
-  // upsertEventResult refuse ces résultats avant qu'on n'arrive ici.
+  // event_datetime can in theory be null (unreadable header), but
+  // upsertEventResult rejects such results before we ever get here.
   const eventDate = ocr.event_datetime
-    ? new Date(ocr.event_datetime).toLocaleString('fr-FR', {
+    ? new Date(ocr.event_datetime).toLocaleString('en-GB', {
         day: '2-digit',
         month: 'long',
         year: 'numeric',
@@ -26,28 +26,28 @@ export function buildEventEmbed(
         minute: '2-digit',
         timeZone: 'Europe/Paris',
       })
-    : 'date inconnue';
+    : 'unknown date';
 
   const medals = ['🥇', '🥈', '🥉'];
   const top3Lines = [...ocr.members]
     .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
     .slice(0, 3)
-    .map((m, i) => `${medals[i] ?? ''} **${m.name}** (${m.rank}) — ${m.points != null ? m.points.toLocaleString('fr-FR') + ' pts' : '— pts'}`)
+    .map((m, i) => `${medals[i] ?? ''} **${m.name}** (${m.rank}) — ${m.points != null ? m.points.toLocaleString('en-GB') + ' pts' : '— pts'}`)
     .join('\n');
 
   const embed = new EmbedBuilder()
     .setColor(0x0099ff)
     .setTitle(`${result.eventTypeDisplayName} — ${eventDate}`)
     .addFields(
-      { name: 'Rang alliance', value: `#${ocr.alliance_rank}`, inline: true },
+      { name: 'Alliance rank', value: `#${ocr.alliance_rank}`, inline: true },
       { name: 'Participants', value: String(ocr.total_battlers), inline: true },
-      { name: 'Points totaux', value: ocr.total_points != null ? ocr.total_points.toLocaleString('fr-FR') : '—', inline: true },
+      { name: 'Total points', value: ocr.total_points != null ? ocr.total_points.toLocaleString('en-GB') : '—', inline: true },
       { name: 'Top 3', value: top3Lines || '—' },
     )
     .setFooter({ text: filename });
 
   if (result.newMemberCount > 0) {
-    embed.addFields({ name: '🆕 Nouveaux membres', value: `+${result.newMemberCount}`, inline: true });
+    embed.addFields({ name: '🆕 New members', value: `+${result.newMemberCount}`, inline: true });
   }
 
   return embed;
@@ -58,10 +58,10 @@ export function buildDonationEmbed(
   ocr: OcrDonationResult,
   result: ProcessedDonationUpsertResult,
 ): EmbedBuilder {
-  // periodStart est une date calendaire (YYYY-MM-DD) : ancrage et affichage en
-  // UTC pour ne jamais glisser d'un jour, quel que soit l'offset (CET/CEST).
+  // periodStart is a calendar date (YYYY-MM-DD): anchor and display in UTC
+  // so it never slips by a day, regardless of offset (CET/CEST).
   const periodStartLabel = new Date(`${result.periodStart}T00:00:00Z`).toLocaleDateString(
-    'fr-FR',
+    'en-GB',
     { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' },
   );
 
@@ -72,22 +72,22 @@ export function buildDonationEmbed(
     .map((m, i) => {
       const tag = m.alliance_tag ? `(${m.alliance_tag}) ` : '';
       const rank = m.rank ? ` ${m.rank}` : '';
-      return `${medals[i] ?? ''} **${tag}${m.name}**${rank} — ${m.alliance_honor.toLocaleString('fr-FR')}`;
+      return `${medals[i] ?? ''} **${tag}${m.name}**${rank} — ${m.alliance_honor.toLocaleString('en-GB')}`;
     })
     .join('\n');
 
   const embed = new EmbedBuilder()
     .setColor(0xb59f3b)
-    .setTitle(`🎁 Dons Alliance Honor — semaine du ${periodStartLabel}`)
+    .setTitle(`🎁 Alliance Honor donations — week of ${periodStartLabel}`)
     .addFields(
-      { name: 'Membres extraits', value: String(result.memberCount), inline: true },
+      { name: 'Members extracted', value: String(result.memberCount), inline: true },
       { name: 'Top 3', value: top3Lines || '—' },
     )
     .setFooter({ text: filename });
 
   if (result.newMemberCount > 0) {
     embed.addFields({
-      name: '🆕 Nouveaux membres',
+      name: '🆕 New members',
       value: `+${result.newMemberCount}`,
       inline: true,
     });
@@ -101,7 +101,7 @@ export function buildPlayerStatsEmbed(
   ocr: OcrPlayerStatsResult,
   result: ProcessedPlayerStatsUpsertResult,
 ): EmbedBuilder {
-  const dateLabel = new Date(`${result.recordedDate}T00:00:00Z`).toLocaleDateString('fr-FR', {
+  const dateLabel = new Date(`${result.recordedDate}T00:00:00Z`).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -122,25 +122,25 @@ export function buildPlayerStatsEmbed(
 
   const embed = new EmbedBuilder()
     .setColor(0x8b0000)
-    .setTitle(`⚔️ Stats militaires — ${dateLabel}`)
+    .setTitle(`⚔️ Military stats — ${dateLabel}`)
     .addFields(
-      { name: 'Joueurs extraits', value: String(result.memberCount), inline: true },
-      { name: 'Top 5 Attaque', value: memberLines || '—' },
+      { name: 'Players extracted', value: String(result.memberCount), inline: true },
+      { name: 'Top 5 Attack', value: memberLines || '—' },
     )
     .setFooter({ text: filename });
 
   if (result.skippedCount > 0) {
     embed.addFields({
-      name: '⚠️ Joueurs inconnus ignorés',
-      value: `${result.skippedCount} (voir raw texts ci-dessous)`,
+      name: '⚠️ Unknown players ignored',
+      value: `${result.skippedCount} (see raw texts below)`,
       inline: true,
     });
   }
 
   if (result.lowConfidenceCount > 0) {
     embed.addFields({
-      name: '⚠️ Stats incomplètes',
-      value: `${result.lowConfidenceCount} joueur(s) avec moins de 2 stats parsées`,
+      name: '⚠️ Incomplete stats',
+      value: `${result.lowConfidenceCount} player(s) with fewer than 2 stats parsed`,
       inline: true,
     });
   }

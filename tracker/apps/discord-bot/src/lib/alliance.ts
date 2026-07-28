@@ -41,19 +41,19 @@ export function invalidateAllianceCache(channelId: string): void {
 }
 
 /**
- * Garde commune des commandes : résout l'alliance du channel de l'interaction
- * et, à défaut, répond le message standard puis retourne null. Toutes les
- * commandes ont déjà deferReply() au moment de l'appel — usage :
- * `const alliance = await requireAlliance(interaction); if (!alliance) return;`
- * (Le guard était copié-collé dans ~12 handlers, avec des variantes de
- * wording ; le comportement est désormais défini ici une seule fois.)
+ * Shared guard for commands: resolves the interaction channel's alliance
+ * and, failing that, replies with the standard message and returns null. All
+ * commands have already called deferReply() by the time this is called —
+ * usage: `const alliance = await requireAlliance(interaction); if (!alliance) return;`
+ * (The guard used to be copy-pasted across ~12 handlers, with wording
+ * variants; the behavior is now defined here once.)
  */
 export async function requireAlliance(
   interaction: ChatInputCommandInteraction,
 ): Promise<AllianceRow | null> {
   const alliance = await resolveAlliance(interaction.channelId);
   if (!alliance) {
-    await interaction.editReply("⚠️ Ce channel n'est pas associé à une alliance.");
+    await interaction.editReply('⚠️ This channel is not linked to an alliance.');
     return null;
   }
   return alliance;

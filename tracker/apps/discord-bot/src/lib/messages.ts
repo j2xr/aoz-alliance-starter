@@ -1,31 +1,31 @@
-// Centralized user-facing Discord strings (FR — the bot already speaks
-// mostly FR). Errors get a generic, actionable message here; the raw detail
-// (exception message, stack, etc.) must only ever go to `logger.error`, never
-// back to a Discord channel — see B4 in the master plan.
+// Centralized user-facing Discord strings. Errors get a generic, actionable
+// message here; the raw detail (exception message, stack, etc.) must only
+// ever go to `logger.error`, never back to a Discord channel — see B4 in the
+// master plan.
 
 export const messages = {
   screenUnrecognized: (filename: string, detail: string): string =>
-    `⚠️ **${filename}** — type d'écran non reconnu : \`${detail}\`. Utilisez \`/upload event:<type>\` ou \`/upload kind:donation\`.`,
+    `⚠️ **${filename}** — unrecognized screen type: \`${detail}\`. Use \`/upload event_type:<type>\` or \`/upload kind:donation\`.`,
 
   ocrError: (filename: string, error: string, detail: string | undefined): string =>
-    `⚠️ **${filename}** — OCR : ${error}${detail ? ` (${detail})` : ''}`,
+    `⚠️ **${filename}** — OCR: ${error}${detail ? ` (${detail})` : ''}`,
 
   databaseError: (filename: string): string =>
-    `❌ **${filename}** — erreur base de données. Détail dans les logs.`,
+    `❌ **${filename}** — database error. Details in the logs.`,
 
   unexpectedError: (filename: string): string =>
-    `❌ **${filename}** — erreur inattendue. Détail dans les logs.`,
+    `❌ **${filename}** — unexpected error. Details in the logs.`,
 
   unknownEventType: (filename: string, eventType: string): string =>
-    `⚠️ **${filename}** — type d'événement inconnu : \`${eventType}\`. Utilisez \`/upload event:<type>\`.`,
+    `⚠️ **${filename}** — unknown event type: \`${eventType}\`. Use \`/upload event_type:<type>\`.`,
 
   missingDatetime: (filename: string): string =>
-    `⚠️ **${filename}** — date/heure de l'événement illisible sur la capture. Recadrez l'écran (en-tête visible) et renvoyez-la.`,
+    `⚠️ **${filename}** — the event date/time is unreadable on the screenshot. Re-crop the screen (header visible) and resend it.`,
 
-  duplicate: (filename: string): string => `🔁 **${filename}** — capture déjà traitée (doublon).`,
+  duplicate: (filename: string): string => `🔁 **${filename}** — screenshot already processed (duplicate).`,
 
   unsupportedPeriodType: (filename: string, periodType: string): string =>
-    `⚠️ **${filename}** — onglet \`${periodType}\` non géré (V1 = Weekly uniquement).`,
+    `⚠️ **${filename}** — tab \`${periodType}\` is not handled (V1 = Weekly only).`,
 
   // Distinct from unsupportedPeriodType: 'unknown' means the tab band
   // (Daily/Weekly/History) couldn't be read at all, not that a real,
@@ -33,44 +33,44 @@ export const messages = {
   // failure mode they hit points them at a different fix (re-crop vs.
   // switch to the Weekly tab in-game).
   unreadableDonationTab: (filename: string): string =>
-    `⚠️ **${filename}** — onglet (Daily/Weekly/History) illisible sur cette capture. ` +
-    "Vérifiez que la bande d'onglets est visible et bien cadrée, puis renvoyez la capture.",
+    `⚠️ **${filename}** — the tab (Daily/Weekly/History) is unreadable on this screenshot. ` +
+    'Check that the tab strip is visible and well framed, then resend the screenshot.',
 
   noDonationMembers: (filename: string): string =>
-    `⚠️ **${filename}** — aucun membre extrait de la capture de dons.`,
+    `⚠️ **${filename}** — no members extracted from the donation screenshot.`,
 
   allianceResolutionError: (): string =>
-    "⚠️ Erreur lors de la résolution de l'alliance. Veuillez réessayer plus tard.",
+    '⚠️ Error while resolving the alliance. Please try again later.',
 
   allianceAlreadyLinked: (allianceName: string): string =>
-    `⚠️ Ce channel est déjà associé à l'alliance **${allianceName}**.`,
+    `⚠️ This channel is already linked to alliance **${allianceName}**.`,
 
   allianceNameTaken: (name: string): string =>
-    `⚠️ Une alliance nommée **${name}** existe déjà (liée à un autre channel). Choisissez un autre nom.`,
+    `⚠️ An alliance named **${name}** already exists (linked to another channel). Choose a different name.`,
 
   possibleTruncation: (filename: string): string =>
-    `⚠️ **${filename}** — lecture interrompue avant la fin possible de la liste ` +
-    '(plusieurs lignes illisibles à la suite). Des joueurs pourraient manquer : ' +
-    'vérifiez le classement complet.',
+    `⚠️ **${filename}** — reading stopped before the list possibly ended ` +
+    '(several unreadable lines in a row). Some players may be missing: ' +
+    'check the full ranking.',
 
   // Distinct from possibleTruncation above: that one is advisory (a warning
   // next to an otherwise-successful embed); this one is a hard rejection —
   // too little of the capture was read to trust as real data (e.g. 1 of 12
   // visible members), so nothing was written to the database at all.
   possibleTruncationRejected: (filename: string, memberCount: number, expectedRows: number): string =>
-    `❌ **${filename}** — lecture trop incomplète (${memberCount}/${expectedRows} lignes lues) : ` +
-    'capture rejetée, rien enregistré. Recadrez la capture (liste complète visible) et renvoyez-la.',
+    `❌ **${filename}** — reading too incomplete (${memberCount}/${expectedRows} lines read): ` +
+    'screenshot rejected, nothing recorded. Re-crop the screenshot (full list visible) and resend it.',
 
   correctionReverted: (filename: string, count: number): string =>
-    `⚠️ **${filename}** — ${count} correction${count > 1 ? 's' : ''} manuelle${count > 1 ? 's' : ''} ` +
-    `(\`/correct\`) écrasée${count > 1 ? 's' : ''} par cette capture. Historique conservé dans ` +
+    `⚠️ **${filename}** — ${count} manual correction${count > 1 ? 's' : ''} ` +
+    `(\`/correct\`) overwritten by this screenshot. History kept in ` +
     '`at_corrections`.',
 
   allianceCreated: (name: string): string =>
-    `Alliance **${name}** créée et liée à ce channel.\n\n` +
-    `⚠️ Pour que le bot traite les captures postées ici, ajoutez l'ID de ce ` +
-    `channel à la variable d'environnement \`DISCORD_ALLOWED_CHANNEL_IDS\` puis ` +
-    `redémarrez le bot.\n\n` +
-    `Pour donner accès au dashboard \`/tracking\` à un membre, suivez l'étape ` +
-    `« Lier un compte à l'alliance » de \`docs/SETUP.md\`.`,
+    `Alliance **${name}** created and linked to this channel.\n\n` +
+    `⚠️ For the bot to process screenshots posted here, add this ` +
+    `channel's ID to the \`DISCORD_ALLOWED_CHANNEL_IDS\` environment variable, ` +
+    `then restart the bot.\n\n` +
+    `To give a member access to the \`/tracking\` dashboard, follow step ` +
+    `"First login & link yourself to an alliance" in \`docs/SETUP.md\`.`,
 } as const;
