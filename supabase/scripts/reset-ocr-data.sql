@@ -6,6 +6,11 @@
 -- Usage :
 --   supabase db query --linked -f supabase/scripts/reset-ocr-data.sql
 --
+-- Si `supabase db query --linked` n'est pas utilisable (pas de token CLI
+-- login, pas de psql/DATABASE_URL en fallback), utiliser à la place
+-- reset-ocr-data.sh, qui fait le même nettoyage via l'API REST avec la
+-- service-role key.
+--
 -- Conservé (ne PAS toucher) :
 --   - at_alliances           : config des alliances
 --   - at_alliance_members    : jonction user Auth ↔ alliance (accès dashboard)
