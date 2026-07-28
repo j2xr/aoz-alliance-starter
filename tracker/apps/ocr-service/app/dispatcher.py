@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 
 HEADER_HEIGHT = 200
 
-# Fallback statique titre → code événement, utilisé quand la base n'est pas
-# joignable (pas de SUPABASE_URL/clé : tests hermétiques, déploiement sans
-# accès DB) ou tant que refresh_title_patterns_from_supabase n'a pas réussi.
-# La source de vérité est at_event_types.title_aliases (migrations 0004/0007,
-# alias de misreads OCR seedés par 0019) : un nouveau type d'événement ou un
-# nouvel alias s'ajoute en base, sans redéploiement du service.
+# Static title → event code fallback, used when the database is unreachable
+# (no SUPABASE_URL/key: hermetic tests, DB-less deployment) or until
+# refresh_title_patterns_from_supabase has succeeded. The source of truth is
+# at_event_types.title_aliases (migrations 0004/0007, OCR-misread aliases
+# seeded by 0019): a new event type or a new alias is added in the database,
+# without redeploying the service.
 _FALLBACK_TITLE_PATTERNS: list[tuple[str, str]] = [
     ("polar invasion", "polar_invasion"),
     ("invasion polaire", "polar_invasion"),
@@ -34,18 +34,18 @@ _title_patterns: list[tuple[str, str]] = list(_FALLBACK_TITLE_PATTERNS)
 
 
 def reset_title_patterns() -> None:
-    """Restaure la liste statique (teardown de tests)."""
+    """Restores the static list (test teardown)."""
     global _title_patterns
     _title_patterns = list(_FALLBACK_TITLE_PATTERNS)
 
 
 def refresh_title_patterns_from_supabase(timeout: float = 5.0) -> bool:
-    """Charge titre → code depuis at_event_types.title_aliases (PostgREST).
+    """Loads title → code from at_event_types.title_aliases (PostgREST).
 
-    No-op silencieux sans SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY (tests,
-    déploiement sans DB) ; la clé service est requise car la RLS de
-    at_event_types (0003) ne donne la lecture qu'au rôle authenticated.
-    Retourne True si la liste a été remplacée par les données de la base.
+    Silent no-op without SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY (tests,
+    DB-less deployment); the service key is required because at_event_types'
+    RLS (0003) only grants read access to the authenticated role.
+    Returns True if the list was replaced with data from the database.
     """
     global _title_patterns
     url = os.getenv("SUPABASE_URL", "").rstrip("/")

@@ -10,40 +10,40 @@ import logger from '../logger.js';
 
 export const data = new SlashCommandBuilder()
   .setName('player-alias')
-  .setDescription("Gestion des corrections de noms OCR → joueur canonique")
+  .setDescription('Manage OCR name corrections → canonical player')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName('add')
-      .setDescription('Associer un nom OCR mal reconnu à un joueur existant')
+      .setDescription('Link a misrecognized OCR name to an existing player')
       .addStringOption((opt) =>
         opt
           .setName('raw')
-          .setDescription('Nom brut tel que renvoyé par l\'OCR (à corriger)')
+          .setDescription('Raw name as returned by OCR (to be corrected)')
           .setRequired(true),
       )
       .addStringOption((opt) =>
         opt
           .setName('canonical')
-          .setDescription('Nom exact du joueur dans la base (utilisez /player pour le trouver)')
+          .setDescription('Exact player name in the database (use /player to find it)')
           .setRequired(true),
       ),
   )
   .addSubcommand((sub) =>
     sub
       .setName('remove')
-      .setDescription('Supprimer un alias de correction')
+      .setDescription('Remove a correction alias')
       .addStringOption((opt) =>
         opt
           .setName('raw')
-          .setDescription('Nom brut à désaliaser')
+          .setDescription('Raw name to unalias')
           .setRequired(true),
       ),
   )
   .addSubcommand((sub) =>
     sub
       .setName('list')
-      .setDescription('Lister tous les aliases de correction de cette alliance'),
+      .setDescription('List all correction aliases for this alliance'),
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -69,8 +69,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     if (!player) {
       await interaction.editReply(
-        `❌ Joueur \`${canonicalName}\` introuvable dans l'alliance **${alliance.name}**.\n` +
-        `Utilisez \`/player\` pour trouver le nom exact.`,
+        `❌ Player \`${canonicalName}\` not found in alliance **${alliance.name}**.\n` +
+        `Use \`/player\` to find the exact name.`,
       );
       return;
     }
@@ -94,8 +94,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     logger.info({ rawName, canonicalName, allianceId: alliance.id }, 'Player alias added');
 
     await interaction.editReply(
-      `✅ Alias ajouté : \`${rawName}\` → **${p.name}**\n` +
-      `Les prochaines captures contenant ce nom seront automatiquement corrigées.`,
+      `✅ Alias added: \`${rawName}\` → **${p.name}**\n` +
+      `Future screenshots containing this name will be automatically corrected.`,
     );
     return;
   }
@@ -112,12 +112,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     if (error) throw error;
 
     if (!count || count === 0) {
-      await interaction.editReply(`❌ Alias \`${rawName}\` introuvable.`);
+      await interaction.editReply(`❌ Alias \`${rawName}\` not found.`);
       return;
     }
 
     logger.info({ rawName, allianceId: alliance.id }, 'Player alias removed');
-    await interaction.editReply(`✅ Alias \`${rawName}\` supprimé.`);
+    await interaction.editReply(`✅ Alias \`${rawName}\` removed.`);
     return;
   }
 
@@ -135,7 +135,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   if (rows.length === 0) {
     await interaction.editReply(
-      `Aucun alias de correction défini pour l'alliance **${alliance.name}**.`,
+      `No correction alias defined for alliance **${alliance.name}**.`,
     );
     return;
   }
@@ -143,7 +143,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const lines = rows.map((r) => `\`${r.raw_name}\` → **${r.at_players?.name ?? '?'}**`);
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`🔤 Aliases OCR — ${alliance.name}`)
+    .setTitle(`🔤 OCR aliases — ${alliance.name}`)
     .setDescription(lines.join('\n'));
 
   await interaction.editReply({ embeds: [embed] });

@@ -11,18 +11,18 @@ import logger from '../logger.js';
 
 export const data = new SlashCommandBuilder()
   .setName('merge')
-  .setDescription('Fusionner un doublon OCR vers un joueur canonique et enregistrer son alias')
+  .setDescription('Merge an OCR duplicate into a canonical player and record its alias')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('alias')
-      .setDescription('Nom du joueur doublon à supprimer (nom OCR erroné)')
+      .setDescription('Name of the duplicate player to remove (incorrect OCR name)')
       .setRequired(true),
   )
   .addStringOption((opt) =>
     opt
       .setName('into')
-      .setDescription('Nom du joueur canonique (le "vrai" joueur)')
+      .setDescription('Name of the canonical player (the "real" player)')
       .setRequired(true),
   );
 
@@ -36,11 +36,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const canonicalName = interaction.options.getString('into', true);
 
   if (aliasName.toLowerCase() === canonicalName.toLowerCase()) {
-    await interaction.editReply('❌ Le nom alias et le nom canonique sont identiques.');
+    await interaction.editReply('❌ The alias name and the canonical name are identical.');
     return;
   }
 
-  // Resolve both players in parallel (exact : l'ambiguïté bloque la fusion)
+  // Resolve both players in parallel (exact match: ambiguity blocks the merge)
   const [aliasLookup, canonicalLookup] = await Promise.all([
     resolvePlayerByName(alliance.id, aliasName, { match: 'exact' }),
     resolvePlayerByName(alliance.id, canonicalName, { match: 'exact' }),
@@ -48,25 +48,25 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   if (aliasLookup.status === 'none') {
     await interaction.editReply(
-      `❌ Joueur alias \`${aliasName}\` introuvable dans l'alliance **${alliance.name}**.`,
+      `❌ Alias player \`${aliasName}\` not found in alliance **${alliance.name}**.`,
     );
     return;
   }
   if (aliasLookup.status === 'ambiguous') {
     await interaction.editReply(
-      `❌ Plusieurs joueurs correspondent à \`${aliasName}\`. Utilisez le nom exact.`,
+      `❌ Multiple players match \`${aliasName}\`. Use the exact name.`,
     );
     return;
   }
   if (canonicalLookup.status === 'none') {
     await interaction.editReply(
-      `❌ Joueur canonique \`${canonicalName}\` introuvable dans l'alliance **${alliance.name}**.`,
+      `❌ Canonical player \`${canonicalName}\` not found in alliance **${alliance.name}**.`,
     );
     return;
   }
   if (canonicalLookup.status === 'ambiguous') {
     await interaction.editReply(
-      `❌ Plusieurs joueurs correspondent à \`${canonicalName}\`. Utilisez le nom exact.`,
+      `❌ Multiple players match \`${canonicalName}\`. Use the exact name.`,
     );
     return;
   }
@@ -75,7 +75,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const canonicalPlayer = canonicalLookup.player;
 
   if (aliasPlayer.id === canonicalPlayer.id) {
-    await interaction.editReply('❌ Les deux noms pointent vers le même joueur.');
+    await interaction.editReply('❌ Both names point to the same player.');
     return;
   }
 
@@ -229,24 +229,24 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   const embed = new EmbedBuilder()
     .setColor(0x2ecc71)
-    .setTitle('✅ Fusion effectuée')
+    .setTitle('✅ Merge completed')
     .setDescription(
-      `**\`${aliasPlayer.name}\`** → **\`${canonicalPlayer.name}\`** dans l'alliance **${alliance.name}**`,
+      `**\`${aliasPlayer.name}\`** → **\`${canonicalPlayer.name}\`** in alliance **${alliance.name}**`,
     )
     .addFields(
       {
-        name: 'Participations réattribuées',
+        name: 'Participations reassigned',
         value: String(reassignablePartIds.length),
         inline: true,
       },
       {
-        name: 'Participations en conflit (supprimées)',
+        name: 'Conflicting participations (deleted)',
         value: String(conflictingPartIds.length),
         inline: true,
       },
       {
-        name: 'Alias enregistré',
-        value: `\`${aliasPlayer.name}\` sera automatiquement reconnu à la prochaine capture.`,
+        name: 'Alias recorded',
+        value: `\`${aliasPlayer.name}\` will be automatically recognized on the next screenshot.`,
       },
     );
 

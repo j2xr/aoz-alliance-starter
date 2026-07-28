@@ -1,32 +1,32 @@
-// Détection (jamais fusion automatique) de doublons de joueurs probables dans
-// un contexte déjà en base (un événement ou une période de dons) — par
-// opposition à name-resolve.ts, qui ne compare qu'un NOUVEAU nom OCR contre le
-// roster existant, une seule fois, pour décider s'il faut créer une ligne
-// at_players ou en réutiliser une. Les quatre doublons réels confirmés lors
-// des audits du 2026-07-26 sont tous apparus ENTRE deux captures déjà
-// upsertées (deux événements/périodes distincts), pas à l'intérieur d'une
-// seule capture — ce module comble exactement ce trou, en lecture seule.
+// Detection (never automatic merging) of likely duplicate players within a
+// context that's already in the database (an event or a donation period) —
+// as opposed to name-resolve.ts, which only compares a NEW OCR name against
+// the existing roster, once, to decide whether to create an at_players row
+// or reuse one. The four real duplicates confirmed during the 2026-07-26
+// audits all showed up BETWEEN two already-upserted screenshots (two
+// distinct events/periods), not within a single screenshot — this module
+// fills exactly that gap, read-only.
 //
-// Rien ici n'écrit jamais en base : voir commands/find-duplicates.ts, qui
-// affiche les candidats et laisse un humain lancer /merge après vérification
-// de la capture source.
+// Nothing here ever writes to the database: see commands/find-duplicates.ts,
+// which displays the candidates and lets a human trigger /merge after
+// checking the source screenshot.
 
 import { normalizeOcrName, levenshtein } from './name-resolve.js';
 
-// ── Clé de comparaison : pliage des homoglyphes ─────────────────────────────
+// ── Comparison key: homoglyph folding ───────────────────────────────────────
 //
-// Un Levenshtein brut sur normalizeOcrName() échoue sur 3 des 4 doublons réels
-// confirmés : ce sont des confusions Cyrillique/Latin (le pipeline OCR fait
-// tourner à la fois une passe ASCII rapide et une passe multilingue complète —
-// voir OCR_NAME_ASCII_FAST_PATH_ENABLED — qui peuvent lire le même glyphe
-// physique comme deux points de code Unicode différents d'une capture à
-// l'autre). Aucun seuil de distance sur les points de code bruts ne peut
-// attraper ça ; un pliage des homoglyphes est indispensable.
+// A raw Levenshtein on normalizeOcrName() fails on 3 of the 4 confirmed real
+// duplicates: these are Cyrillic/Latin confusions (the OCR pipeline runs both
+// a fast ASCII pass and a full multilingual pass — see
+// OCR_NAME_ASCII_FAST_PATH_ENABLED — which can read the same physical glyph
+// as two different Unicode code points from one screenshot to the next). No
+// distance threshold on the raw code points can catch that; homoglyph folding
+// is required.
 //
-// Table dérivée de AMBIGUOUS_CYRILLIC (ocr-service/app/parsers/name_ocr.py) :
-// exactement les lettres cyrilliques dont le glyphe est identique à une
-// latine à la résolution des captures. En minuscules car normalizeOcrName a
-// déjà mis en minuscules.
+// Table derived from AMBIGUOUS_CYRILLIC (ocr-service/app/parsers/name_ocr.py):
+// exactly the Cyrillic letters whose glyph is identical to a Latin one at
+// screenshot resolution. Lowercase, since normalizeOcrName has already
+// lowercased.
 const CONFUSABLE_FOLD: Record<string, string> = {
   а: 'a',
   в: 'b',
@@ -43,36 +43,36 @@ const CONFUSABLE_FOLD: Record<string, string> = {
 };
 
 /**
- * NFD + suppression des marques combinantes (diacritiques) puis pliage des
- * homoglyphes cyrilliques ci-dessus. `Mjölnir` ≡ `Mjolnir`, `LEÓN` ≡ `LEON` —
- * deux dégradations OCR déjà observées en production — et `Аня` se rapproche
- * de `aha` plutôt que de rester à distance maximale de `AHA`.
+ * NFD + stripping combining marks (diacritics), then folding the Cyrillic
+ * homoglyphs above. `Mjölnir` ≡ `Mjolnir`, `LEÓN` ≡ `LEON` — two OCR
+ * degradations already observed in production — and `Аня` ends up close to
+ * `aha` instead of staying at maximum distance from `AHA`.
  */
 export function foldConfusables(key: string): string {
   const stripped = key.normalize('NFD').replace(/\p{Mn}/gu, '');
   return [...stripped].map((ch) => CONFUSABLE_FOLD[ch] ?? ch).join('');
 }
 
-/** normalizeOcrName (name-resolve.ts) puis foldConfusables — la clé utilisée
- * partout dans ce module. Ne remplace PAS normalizeOcrName : ce module a un
- * usage différent (comparer deux joueurs DÉJÀ existants, avec un seuil plus
- * large, jamais pour fusionner automatiquement) — voir le commentaire d'en-tête. */
+/** normalizeOcrName (name-resolve.ts) then foldConfusables — the key used
+ * everywhere in this module. Does NOT replace normalizeOcrName: this module
+ * has a different use case (comparing two ALREADY existing players, with a
+ * wider threshold, never to auto-merge) — see the header comment. */
 export function duplicateKey(raw: string): string {
   return foldConfusables(normalizeOcrName(raw));
 }
 
-// ── Comparaison de deux noms ─────────────────────────────────────────────────
+// ── Comparing two names ──────────────────────────────────────────────────────
 
 export const SIM_STRONG = 0.8;
 export const SIM_WEAK = 0.6;
-// Même raison que MIN_KEY_LENGTH_FOR_FUZZY dans name-resolve.ts : sous cette
-// longueur, une distance de 1 est trop souvent un hasard (JANI/DANI) pour
-// être un signal fiable au ratio — mais elle reste worth surfacing (tier
-// 'weak'), car c'est exactement le cas Аня/AHA.
+// Same reason as MIN_KEY_LENGTH_FOR_FUZZY in name-resolve.ts: below this
+// length, a distance of 1 is too often a coincidence (JANI/DANI) to be a
+// reliable ratio signal — but it's still worth surfacing (tier 'weak'),
+// since that's exactly the Аня/AHA case.
 export const MIN_KEY_LEN_FOR_RATIO = 5;
 export const SHORT_KEY_MAX_DISTANCE = 1;
-// Longueur minimale de l'écart pour qu'un « nom contenu dans l'autre » soit
-// traité comme une décoration (deux vrais joueurs), pas une variante OCR.
+// Minimum length of the gap for a "name contained in the other" to be
+// treated as decoration (two real players), not an OCR variant.
 export const CONTAINMENT_MIN_LEN_DIFF = 2;
 
 export type NameProximity = 'exact-key' | 'strong' | 'weak' | 'none';
@@ -84,25 +84,25 @@ export type NameComparison = {
   similarity: number;
   containment: boolean;
   proximity: NameProximity;
-  /** Libellé FR affiché au relecteur humain — explique POURQUOI la paire est
-   * remontée, pas juste le score brut. */
+  /** Label shown to the human reviewer — explains WHY the pair surfaced,
+   * not just the raw score. */
   reason: string;
 };
 
 /**
- * Compare deux noms OCR pour un usage de SURFACE uniquement (jamais de
- * fusion automatique — voir findFuzzyMatch dans name-resolve.ts pour ce
- * cas-là, volontairement plus strict).
+ * Compares two OCR names for SURFACING purposes only (never automatic
+ * merging — see findFuzzyMatch in name-resolve.ts for that case, which is
+ * deliberately stricter).
  *
- * Une paire "contenue" (le plus court est une sous-chaîne contiguë du plus
- * long, avec un écart de longueur suffisant) est délibérément DÉGRADÉE même à
- * similarité élevée : un nom décoré (`m| jasmin|o`) normalise vers le nom de
- * base PLUS des caractères aux extrémités, alors qu'un vrai misread OCR
- * substitue des caractères en place. C'est la règle qui sauve le faux positif
- * le plus dangereux confirmé (jasmin / m| jasmin|o, honor 530 identique,
- * deux joueurs bien réels) — voir duplicate-scan.test.ts pour la table de
- * validation complète contre les 4 vrais doublons + les faux positifs
- * confirmés des audits du 2026-07-26.
+ * A "contained" pair (the shorter one is a contiguous substring of the
+ * longer one, with a sufficient length gap) is deliberately DOWNGRADED even
+ * at high similarity: a decorated name (`m| jasmin|o`) normalizes to the
+ * base name PLUS characters at the ends, whereas a real OCR misread
+ * substitutes characters in place. This is the rule that saves the most
+ * dangerous confirmed false positive (jasmin / m| jasmin|o, identical honor
+ * 530, two very real players) — see duplicate-scan.test.ts for the full
+ * validation table against the 4 real duplicates plus the confirmed false
+ * positives from the 2026-07-26 audits.
  */
 export function compareNames(rawA: string, rawB: string): NameComparison {
   const keyA = duplicateKey(rawA);
@@ -124,7 +124,7 @@ export function compareNames(rawA: string, rawB: string): NameComparison {
       similarity,
       containment: false,
       proximity: 'exact-key',
-      reason: 'même clé normalisée (accents/casse/homoglyphes mis à part)',
+      reason: 'same normalized key (aside from accents/case/homoglyphs)',
     };
   }
 
@@ -140,8 +140,8 @@ export function compareNames(rawA: string, rawB: string): NameComparison {
       proximity,
       reason:
         proximity === 'weak'
-          ? 'noms courts, distance 1 (signal faible mais réel — voir Аня/AHA)'
-          : 'noms courts, aucune ressemblance',
+          ? 'short names, distance 1 (weak but real signal — see Аня/AHA)'
+          : 'short names, no resemblance',
     };
   }
 
@@ -156,33 +156,33 @@ export function compareNames(rawA: string, rawB: string): NameComparison {
       proximity,
       reason:
         proximity === 'weak'
-          ? "un nom contient l'autre — souvent deux vrais joueurs aux pseudos décorés"
-          : 'un nom contient l’autre, mais trop peu de ressemblance par ailleurs',
+          ? 'one name contains the other — often two real players with decorated handles'
+          : 'one name contains the other, but too little resemblance otherwise',
     };
   }
 
   if (similarity >= SIM_STRONG) {
-    return { keyA, keyB, distance, similarity, containment, proximity: 'strong', reason: 'noms très proches' };
+    return { keyA, keyB, distance, similarity, containment, proximity: 'strong', reason: 'very close names' };
   }
   if (similarity >= SIM_WEAK) {
-    return { keyA, keyB, distance, similarity, containment, proximity: 'weak', reason: 'noms assez proches' };
+    return { keyA, keyB, distance, similarity, containment, proximity: 'weak', reason: 'fairly close names' };
   }
-  return { keyA, keyB, distance, similarity, containment, proximity: 'none', reason: 'noms sans rapport' };
+  return { keyA, keyB, distance, similarity, containment, proximity: 'none', reason: 'unrelated names' };
 }
 
-// ── Regroupement par contexte (événement ou période de dons) ───────────────
+// ── Grouping by context (event or donation period) ──────────────────────────
 
 export type ScanEntry = {
   playerId: string;
   playerName: string;
-  value: number; // points (événement) ou alliance_honor (dons)
+  value: number; // points (event) or alliance_honor (donations)
   confidence: number | null;
 };
 
 export type ScanContext = {
   kind: 'event' | 'donation_period';
   id: string;
-  label: string; // ex. "Elite Wars — 2026-04-06 13:30" | "Semaine du 2026-05-04"
+  label: string; // e.g. "Elite Wars — 2026-04-06 13:30" | "Week of 2026-05-04"
   valueLabel: 'points' | 'honor';
 };
 
@@ -195,15 +195,15 @@ export type DuplicateCandidate = {
   sameValue: boolean;
   name: NameComparison;
   tier: DuplicateTier;
-  /** Nombre d'autres contextes où cette même paire de joueurs apparaît
-   * également — rempli par rankCandidates, pas par classifyPair. */
+  /** Number of other contexts where this same pair of players also appears —
+   * filled in by rankCandidates, not by classifyPair. */
   alsoInContexts: number;
 };
 
-// Garde-fou : le plus grand contexte observé aujourd'hui compte ~106 membres
-// (donation period), ce qui donne <=6k paires — trivial. 500 est de la marge,
-// pas une vraie limite ; au-delà, on saute le contexte plutôt que de risquer
-// de bloquer le budget de 3s de Discord sur un cas pathologique.
+// Safety valve: the largest context observed today has ~106 members
+// (donation period), giving <=6k pairs — trivial. 500 is headroom, not a
+// real limit; beyond that, skip the context rather than risk blowing
+// Discord's 3s budget on a pathological case.
 export const MAX_ENTRIES_PER_CONTEXT = 500;
 
 function tierFor(proximity: NameProximity, sameValue: boolean): DuplicateTier | null {
@@ -215,7 +215,7 @@ function tierFor(proximity: NameProximity, sameValue: boolean): DuplicateTier | 
   return sameValue ? 'low' : null;
 }
 
-/** null = paire non pertinente (même joueur, ou ni valeur identique ni nom proche). */
+/** null = irrelevant pair (same player, or neither identical value nor close name). */
 export function classifyPair(a: ScanEntry, b: ScanEntry, context: ScanContext): DuplicateCandidate | null {
   if (a.playerId === b.playerId) return null;
 
@@ -228,9 +228,9 @@ export function classifyPair(a: ScanEntry, b: ScanEntry, context: ScanContext): 
 }
 
 /**
- * Toutes les paires pertinentes au sein d'un même contexte (O(n²), voir
- * MAX_ENTRIES_PER_CONTEXT). Les entrées au-delà de la limite sont ignorées
- * (avec un log côté appelant), pas silencieusement tronquées sans signal.
+ * All relevant pairs within a single context (O(n²), see
+ * MAX_ENTRIES_PER_CONTEXT). Entries beyond the limit are skipped (with a log
+ * on the caller side), not silently truncated without any signal.
  */
 export function scanContext(entries: ScanEntry[], context: ScanContext): DuplicateCandidate[] {
   if (entries.length > MAX_ENTRIES_PER_CONTEXT) return [];
@@ -248,11 +248,11 @@ export function scanContext(entries: ScanEntry[], context: ScanContext): Duplica
 const TIER_ORDER: Record<DuplicateTier, number> = { high: 0, medium: 1, low: 2 };
 
 /**
- * Trie par tier puis par similarité de nom décroissante, puis dédoublonne la
- * MÊME paire de joueurs apparue dans plusieurs contextes (garde l'occurrence
- * au tier le plus élevé, incrémente alsoInContexts) — sans ça, un vrai
- * doublon qui traîne sur plusieurs événements inonderait le rapport de la
- * même paire répétée.
+ * Sorts by tier then by decreasing name similarity, then deduplicates the
+ * SAME pair of players appearing across multiple contexts (keeps the
+ * occurrence at the highest tier, increments alsoInContexts) — without this,
+ * a real duplicate lingering across several events would flood the report
+ * with the same pair repeated.
  */
 export function rankCandidates(candidates: DuplicateCandidate[]): DuplicateCandidate[] {
   const byPair = new Map<string, DuplicateCandidate>();

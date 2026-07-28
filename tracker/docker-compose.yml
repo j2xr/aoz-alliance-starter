@@ -31,9 +31,9 @@ services:
       # connection error (silently swallowed: OCR keeps the raw result).
       - ollama_net
     healthcheck:
-      # python:…-slim n'embarque pas curl : la sonde utilise l'interpréteur
-      # déjà présent dans l'image (un healthcheck curl échouait toujours et
-      # marquait le conteneur unhealthy en permanence).
+      # python:…-slim doesn't ship curl: the probe uses the interpreter
+      # already present in the image (a curl healthcheck always failed and
+      # permanently marked the container unhealthy).
       test:
         [
           "CMD",

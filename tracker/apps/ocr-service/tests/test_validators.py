@@ -85,7 +85,7 @@ def test_swap_fires_on_inverted_columns() -> None:
 
 
 def test_swap_skips_when_points_not_power_like() -> None:
-    # points < MIN_POWER : le swap produirait une ligne invalide de toute façon.
+    # points < MIN_POWER: the swap would produce an invalid row anyway.
     member, swapped = maybe_swap_power_points(_member(power=500, points=50_000))
     assert swapped is False
     assert member.power == 500

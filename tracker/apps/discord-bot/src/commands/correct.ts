@@ -42,19 +42,19 @@ function parseWeekInput(input: string): string | null {
 
 export const data = new SlashCommandBuilder()
   .setName('correct')
-  .setDescription("Corriger manuellement un score mal lu par l'OCR")
+  .setDescription('Manually correct a score misread by OCR')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('player')
-      .setDescription('Joueur à corriger')
+      .setDescription('Player to correct')
       .setRequired(true)
       .setAutocomplete(true),
   )
   .addStringOption((opt) =>
     opt
       .setName('field')
-      .setDescription('Champ à corriger')
+      .setDescription('Field to correct')
       .setRequired(true)
       .addChoices(
         { name: 'points', value: 'points' },
@@ -65,7 +65,7 @@ export const data = new SlashCommandBuilder()
   .addIntegerOption((opt) =>
     opt
       .setName('value')
-      .setDescription('Nouvelle valeur')
+      .setDescription('New value')
       .setRequired(true)
       .setMinValue(0)
       // at_participations.points is a Postgres int4 (max 2147483647); power/honor are
@@ -76,7 +76,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName('event_id')
-      .setDescription('Événement concerné (requis pour points/power)')
+      .setDescription('Event concerned (required for points/power)')
       .setRequired(false)
       .setAutocomplete(true),
   )
@@ -84,7 +84,7 @@ export const data = new SlashCommandBuilder()
     opt
       .setName('week')
       .setDescription(
-        'Semaine concernée, lundi ISO (YYYY-MM-DD) — requis pour honor, défaut : semaine en cours',
+        'Week concerned, ISO Monday (YYYY-MM-DD) — required for honor, defaults to the current week',
       )
       .setRequired(false),
   );
@@ -210,7 +210,7 @@ async function resolveCorrectionTarget(
   if (field === 'points' || field === 'power') {
     if (!eventId) {
       await interaction.editReply(
-        '❌ `event_id` est requis pour corriger `points` ou `power`. Choisissez un événement dans les suggestions.',
+        '❌ `event_id` is required to correct `points` or `power`. Choose an event from the suggestions.',
       );
       return null;
     }
@@ -222,7 +222,7 @@ async function resolveCorrectionTarget(
   }
   const snapped = parseWeekInput(weekInput);
   if (!snapped) {
-    await interaction.editReply("❌ Format `week` attendu : `YYYY-MM-DD` (lundi de la semaine).");
+    await interaction.editReply('❌ Expected `week` format: `YYYY-MM-DD` (Monday of the week).');
     return null;
   }
   return { kind: 'donation', week: snapped };
@@ -245,7 +245,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   const player = await findPlayer(playerId, alliance.id);
   if (!player) {
-    await interaction.editReply('❌ Joueur introuvable dans cette alliance. Utilisez les suggestions proposées.');
+    await interaction.editReply('❌ Player not found in this alliance. Use the suggestions provided.');
     return;
   }
 
@@ -319,12 +319,12 @@ async function correctParticipation(
   ]);
 
   if (!event) {
-    await interaction.editReply('❌ Événement introuvable dans cette alliance. Utilisez les suggestions proposées.');
+    await interaction.editReply('❌ Event not found in this alliance. Use the suggestions provided.');
     return;
   }
   if (!participation) {
     await interaction.editReply(
-      `❌ Aucune participation enregistrée pour **${player.name}** sur cet événement.`,
+      `❌ No participation recorded for **${player.name}** on this event.`,
     );
     return;
   }
@@ -375,7 +375,7 @@ async function correctDonation(
 
   if (periodError) throw periodError;
   if (!periodRow) {
-    await interaction.editReply(`❌ Aucune période de dons \`${week}\` enregistrée pour cette alliance.`);
+    await interaction.editReply(`❌ No donation period \`${week}\` recorded for this alliance.`);
     return;
   }
   const period = periodRow as { id: string };
@@ -390,7 +390,7 @@ async function correctDonation(
   if (donationError) throw donationError;
   if (!donationRow) {
     await interaction.editReply(
-      `❌ Aucun don enregistré pour **${player.name}** sur la semaine \`${week}\`.`,
+      `❌ No donation recorded for **${player.name}** for week \`${week}\`.`,
     );
     return;
   }
@@ -418,7 +418,7 @@ async function correctDonation(
         'honor',
         oldValue,
         newValue,
-        `Semaine ${week}`,
+        `Week ${week}`,
         interaction.user.id,
       ),
     ],
@@ -433,7 +433,7 @@ async function correctDonation(
  * window where the score changed but the audit insert could still fail,
  * leaving the correction applied-but-unaudited and poisoning old_value on
  * retry. The row-existence checks in correctParticipation/correctDonation
- * still run first so a genuinely missing target gets the friendly French
+ * still run first so a genuinely missing target gets the friendly
  * message instead of this function's generic "not found" error (P0002),
  * which is only reachable via a TOCTOU race (row deleted between that check
  * and this call) — rare enough not to special-case here.
@@ -474,16 +474,16 @@ function buildCorrectionEmbed(
 ): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0xf39c12)
-    .setTitle('✏️ Correction appliquée')
+    .setTitle('✏️ Correction applied')
     .setDescription(contextLabel)
     .addFields(
-      { name: 'Joueur', value: playerName, inline: true },
-      { name: 'Champ', value: field, inline: true },
+      { name: 'Player', value: playerName, inline: true },
+      { name: 'Field', value: field, inline: true },
       {
-        name: 'Ancien → Nouveau',
-        value: `${oldValue?.toLocaleString('fr-FR') ?? '—'} → **${newValue.toLocaleString('fr-FR')}**`,
+        name: 'Old → New',
+        value: `${oldValue?.toLocaleString('en-GB') ?? '—'} → **${newValue.toLocaleString('en-GB')}**`,
       },
-      { name: 'Par', value: `<@${correctedByUserId}>`, inline: true },
+      { name: 'By', value: `<@${correctedByUserId}>`, inline: true },
     )
     .setTimestamp();
 }

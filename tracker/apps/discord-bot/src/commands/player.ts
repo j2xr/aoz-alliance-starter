@@ -9,11 +9,11 @@ import { resolvePlayerByName } from '../lib/players.js';
 
 export const data = new SlashCommandBuilder()
   .setName('player')
-  .setDescription("Fiche d'un joueur : taux de participation, puissance, historique")
+  .setDescription("A player's profile: participation rate, power, history")
   .addStringOption((opt) =>
     opt
       .setName('name')
-      .setDescription('Nom du joueur (partiel accepté, insensible à la casse)')
+      .setDescription('Player name (partial accepted, case-insensitive)')
       .setRequired(true),
   );
 
@@ -51,7 +51,7 @@ export async function execute(
 
   const name = interaction.options.getString('name', true);
   if (name.trim().length === 0 || name.length > 50) {
-    await interaction.editReply('❌ Le nom doit faire entre 1 et 50 caractères.');
+    await interaction.editReply('❌ The name must be between 1 and 50 characters.');
     return;
   }
 
@@ -60,7 +60,7 @@ export async function execute(
 
   if (lookup.status === 'none') {
     await interaction.editReply(
-      `❌ Aucun joueur trouvé pour \`${name}\` dans l'alliance **${alliance.name}**.`,
+      `❌ No player found for \`${name}\` in alliance **${alliance.name}**.`,
     );
     return;
   }
@@ -68,7 +68,7 @@ export async function execute(
   if (lookup.status === 'ambiguous') {
     const list = lookup.candidates.map((p) => `• ${p.name}`).join('\n');
     await interaction.editReply(
-      `Plusieurs joueurs correspondent à \`${name}\`. Précisez le nom :\n${list}`,
+      `Multiple players match \`${name}\`. Specify the name:\n${list}`,
     );
     return;
   }
@@ -102,7 +102,7 @@ export async function execute(
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`👤 ${player.name}`)
-    .setDescription(`Alliance : **${alliance.name}**`);
+    .setDescription(`Alliance: **${alliance.name}**`);
 
   if (s) {
     const rate =
@@ -110,34 +110,34 @@ export async function execute(
         ? `${s.participation_rate_pct}%`
         : 'N/A';
     const power =
-      s.last_power != null ? s.last_power.toLocaleString('fr-FR') : '—';
+      s.last_power != null ? s.last_power.toLocaleString('en-GB') : '—';
     const totalPts =
-      s.total_points != null ? s.total_points.toLocaleString('fr-FR') : '—';
+      s.total_points != null ? s.total_points.toLocaleString('en-GB') : '—';
     const avgPts = s.avg_points_per_event != null ? String(s.avg_points_per_event) : '—';
     const best =
-      s.best_score != null ? s.best_score.toLocaleString('fr-FR') : '—';
+      s.best_score != null ? s.best_score.toLocaleString('en-GB') : '—';
 
     embed.addFields(
-      { name: 'Taux de participation', value: rate, inline: true },
+      { name: 'Participation rate', value: rate, inline: true },
       {
-        name: 'Événements',
+        name: 'Events',
         value: `${s.events_participated}/${s.eligible_events}`,
         inline: true,
       },
-      { name: 'Rang', value: s.last_rank ?? '—', inline: true },
-      { name: 'Puissance', value: power, inline: true },
-      { name: 'Points totaux', value: totalPts, inline: true },
-      { name: 'Moy. / événement', value: avgPts, inline: true },
-      { name: 'Meilleur score', value: best, inline: true },
+      { name: 'Rank', value: s.last_rank ?? '—', inline: true },
+      { name: 'Power', value: power, inline: true },
+      { name: 'Total points', value: totalPts, inline: true },
+      { name: 'Avg. / event', value: avgPts, inline: true },
+      { name: 'Best score', value: best, inline: true },
     );
   } else {
-    embed.addFields({ name: 'Statistiques', value: 'Aucune donnée.' });
+    embed.addFields({ name: 'Statistics', value: 'No data.' });
   }
 
   if (recentRows.length > 0) {
     const lines = recentRows.map((r) => {
       const dt = r.at_events
-        ? new Date(r.at_events.event_datetime).toLocaleDateString('fr-FR', {
+        ? new Date(r.at_events.event_datetime).toLocaleDateString('en-GB', {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
@@ -145,13 +145,13 @@ export async function execute(
           })
         : '?';
       const typeName = r.at_events?.at_event_types?.display_name ?? '?';
-      const pts = r.points != null ? r.points.toLocaleString('fr-FR') : '—';
+      const pts = r.points != null ? r.points.toLocaleString('en-GB') : '—';
       const pwr =
-        r.power != null ? ` · ${r.power.toLocaleString('fr-FR')}` : '';
+        r.power != null ? ` · ${r.power.toLocaleString('en-GB')}` : '';
       const rank = r.player_rank ? ` (${r.player_rank})` : '';
-      return `${dt} — ${typeName}${rank} : **${pts} pts**${pwr}`;
+      return `${dt} — ${typeName}${rank}: **${pts} pts**${pwr}`;
     });
-    embed.addFields({ name: '📅 5 dernières participations', value: lines.join('\n') });
+    embed.addFields({ name: '📅 Last 5 participations', value: lines.join('\n') });
   }
 
   await interaction.editReply({ embeds: [embed] });

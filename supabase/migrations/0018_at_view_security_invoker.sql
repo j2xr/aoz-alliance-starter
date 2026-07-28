@@ -1,13 +1,13 @@
 -- 0018_at_view_security_invoker.sql
--- 1) Toutes les vues at_v_* passent en security_invoker : elles s'exécutent
---    avec les droits de l'utilisateur appelant, donc l'isolation RLS par
---    alliance (0017) s'applique aussi aux lectures faites via les vues.
---    Sans cela, une vue s'exécute avec les droits de son propriétaire et
---    contourne les policies des tables sous-jacentes (fuite inter-alliances).
---    Le bot n'est pas impacté : service_role bypasse RLS dans tous les cas.
--- 2) Redéfinit at_v_player_participation_rate pour exposer les colonnes
---    réellement consommées par le dashboard (player_name, eligible_events,
---    participation_rate_pct, avg_points), absentes de la définition de 0002.
+-- 1) All at_v_* views switch to security_invoker: they now run with the
+--    calling user's privileges, so the per-alliance RLS isolation (0017)
+--    also applies to reads made through the views. Without this, a view
+--    runs with its owner's privileges and bypasses the underlying tables'
+--    policies (cross-alliance leak). The bot is unaffected: service_role
+--    bypasses RLS in every case.
+-- 2) Redefines at_v_player_participation_rate to expose the columns
+--    actually consumed by the dashboard (player_name, eligible_events,
+--    participation_rate_pct, avg_points), missing from 0002's definition.
 
 alter view at_v_event_leaderboard      set (security_invoker = true);
 alter view at_v_donation_leaderboard   set (security_invoker = true);
@@ -17,9 +17,9 @@ alter view at_v_player_stats_history   set (security_invoker = true);
 alter view at_v_probable_leavers       set (security_invoker = true);
 
 -- ─── at_v_player_participation_rate ──────────────────────────────────────────
--- eligible_events = nombre d'événements de l'alliance survenus depuis la
--- première apparition du joueur (premier membership connu ou première
--- participation, le plus ancien des deux).
+-- eligible_events = number of the alliance's events that occurred since the
+-- player's first appearance (earliest of their first known membership or
+-- first participation).
 -- participation_rate_pct = events_participated / eligible_events * 100.
 
 drop view at_v_player_participation_rate;
@@ -72,7 +72,7 @@ cross join lateral (
   select count(*)::int as eligible_events
   from at_events e2
   where e2.alliance_id = b.alliance_id
-    -- least() ignore les NULL ; NULL seulement si le joueur n'a ni
-    -- membership ni participation → 0 événement éligible.
+    -- least() ignores NULLs; NULL only if the player has neither a
+    -- membership nor a participation → 0 eligible events.
     and e2.event_datetime >= least(b.first_seen, fj.first_joined)
 ) el;

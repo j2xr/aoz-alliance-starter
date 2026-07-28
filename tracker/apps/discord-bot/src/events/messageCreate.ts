@@ -9,7 +9,7 @@ import { safeProgressEdit } from '../lib/progress-reply.js';
 import { messages } from '../lib/messages.js';
 import { capDiscordContent } from '../lib/discord-limits.js';
 
-// Shared FR wording (B4) — see lib/messages.ts. `databaseError`'s second
+// Shared wording (B4) — see lib/messages.ts. `databaseError`'s second
 // param (the raw error) is deliberately ignored: the detail goes to
 // logger.error only, never back to Discord.
 const MESSAGES: OcrRoutingMessages = {
@@ -48,7 +48,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
 
   if (!alliance) {
     logger.warn({ channelId: message.channelId }, 'No alliance mapped to this channel');
-    await ackReply.edit('⚠️ Ce channel n\'est pas associé à une alliance. Configurez `discord_channel_id` dans `at_alliances`.');
+    await ackReply.edit('⚠️ This channel is not linked to an alliance. Configure `discord_channel_id` in `at_alliances`.');
     return;
   }
   // Rebind as a const: `alliance` is narrowed to non-null here, but a `let`
@@ -131,7 +131,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   // Send raw texts of rejected members (unknown players skipped during stats upsert).
   // Each entry is wrapped in a code block. Chunks are kept under Discord's 2000-char limit.
   if (allRejectedRawTexts.length > 0) {
-    const header = `📋 **Raw texts rejetés (${allRejectedRawTexts.length} joueur(s) inconnu(s)) :**`;
+    const header = `📋 **Rejected raw texts (${allRejectedRawTexts.length} unknown player(s)):**`;
     const chunks = _buildRejectedRawChunks(header, allRejectedRawTexts);
     for (const chunk of chunks) {
       await channel.send(chunk);

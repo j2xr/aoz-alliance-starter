@@ -70,7 +70,7 @@ export function PlayerDetailPage() {
             </h2>
             {player?.game_id && (
               <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                ID : {player.game_id}
+                ID: {player.game_id}
               </div>
             )}
           </div>

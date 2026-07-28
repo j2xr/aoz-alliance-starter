@@ -16,7 +16,7 @@ export function LeaderboardTable({ rows }) {
   const [sortKey, setSortKey] = useState('position');
   const [sortAsc, setSortAsc] = useState(true);
 
-  // Mémoïsé : chaque re-render (hover compris) re-triait tout le classement.
+  // Memoized: every re-render (including hover) used to re-sort the whole leaderboard.
   const sorted = useMemo(() => [...rows].sort((a, b) => {
     const av = a[sortKey] ?? (sortAsc ? Infinity : -Infinity);
     const bv = b[sortKey] ?? (sortAsc ? Infinity : -Infinity);

@@ -1,6 +1,6 @@
-// Helpers de calcul de période pour les dons d'alliance.
-// La période hebdomadaire est calée sur le lundi ISO de la semaine, calculé
-// dans le fuseau Europe/Paris (langue de jeu et fuseau de référence du projet).
+// Period-calculation helpers for alliance donations.
+// The weekly period is anchored on the ISO Monday of the week, computed
+// in the Europe/Paris timezone (the project's reference timezone).
 
 const PARIS_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Paris',
@@ -19,11 +19,11 @@ function pad2(n: number): string {
  *
  * Example: Thursday 2026-04-30 18:00 Europe/Paris → "2026-04-27".
  *
- * IMPORTANT : le frontend possède une implémentation jumelle
+ * IMPORTANT: the frontend has a twin implementation
  * (frontend/src/features/tracking/utils/donationFormat.js,
- * getCurrentParisIsoWeekMondayString) qui DOIT rester d'accord avec
- * celle-ci — le bot écrit period_start, le frontend dérive la clé de la
- * période courante. Les deux sont testées contre les mêmes vecteurs :
+ * getCurrentParisIsoWeekMondayString) that MUST stay in agreement with
+ * this one — the bot writes period_start, the frontend derives the
+ * current period's key. Both are tested against the same vectors:
  * shared-test-vectors/paris-iso-week.json.
  */
 export function isoWeekStartParis(date: Date): string {

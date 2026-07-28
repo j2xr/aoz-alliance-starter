@@ -9,17 +9,17 @@ export type PlayerLookup =
   | { status: 'none' };
 
 /**
- * Recherche un joueur par nom dans une alliance — logique commune aux
- * commandes (elle était re-implémentée dans merge/membership/player/donation
- * avec des variantes involontaires).
+ * Looks up a player by name within an alliance — logic shared across
+ * commands (it used to be re-implemented in merge/membership/player/donation
+ * with unintentional variants).
  *
- * - match 'exact'   : ilike strict (casse ignorée), limite 2 — pour les
- *   commandes destructives (merge, membership) où l'ambiguïté doit bloquer.
- * - match 'partial' : %nom%, limite 5 — pour les commandes de consultation
- *   (player, donation) qui listent les candidats en cas d'ambiguïté.
+ * - match 'exact'   : strict ilike (case-insensitive), limit 2 — for
+ *   destructive commands (merge, membership) where ambiguity must block.
+ * - match 'partial' : %name%, limit 5 — for lookup commands (player,
+ *   donation) that list candidates when ambiguous.
  *
- * Les métacaractères LIKE de l'entrée utilisateur sont échappés ; les
- * libellés de réponse restent dans chaque commande.
+ * LIKE metacharacters in user input are escaped; reply wording stays in
+ * each command.
  */
 export async function resolvePlayerByName(
   allianceId: string,

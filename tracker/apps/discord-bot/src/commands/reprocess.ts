@@ -10,17 +10,17 @@ const MESSAGE_URL_RE =
 
 export const data = new SlashCommandBuilder()
   .setName('reprocess')
-  .setDescription("Relancer l'OCR d'une capture telle quelle — voir /upload pour forcer son type")
+  .setDescription('Re-run OCR on a screenshot as-is — see /upload to force its type')
   .addStringOption((opt) =>
     opt
       .setName('message_url')
-      .setDescription('URL du message Discord contenant les captures')
+      .setDescription('URL of the Discord message containing the screenshots')
       .setRequired(true),
   )
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')
-      .setDescription('Forcer le LLM sur toutes les lignes (ignorer le seuil de confiance OCR)')
+      .setDescription('Force the LLM on every line (ignore the OCR confidence threshold)')
       .setRequired(false),
   );
 
@@ -35,7 +35,7 @@ export async function execute(
   const match = MESSAGE_URL_RE.exec(messageUrl);
   if (!match) {
     await interaction.editReply(
-      '❌ URL de message invalide. Format attendu : `https://discord.com/channels/<guild>/<channel>/<message>`',
+      '❌ Invalid message URL. Expected format: `https://discord.com/channels/<guild>/<channel>/<message>`',
     );
     return;
   }
@@ -43,12 +43,12 @@ export async function execute(
   const channelId = match[1]!;
   const messageId = match[2]!;
 
-  // Alliance du channel CIBLE (extrait de l'URL du message), pas celui de
-  // l'interaction — requireAlliance ne s'applique volontairement pas ici.
+  // Alliance of the TARGET channel (extracted from the message URL), not the
+  // interaction's — requireAlliance deliberately doesn't apply here.
   const alliance = await resolveAlliance(channelId);
   if (!alliance) {
     await interaction.editReply(
-      "⚠️ Ce channel n'est pas associé à une alliance.",
+      '⚠️ This channel is not linked to an alliance.',
     );
     return;
   }
@@ -57,7 +57,7 @@ export async function execute(
   try {
     const channel = await interaction.client.channels.fetch(channelId);
     if (!channel?.isTextBased()) {
-      await interaction.editReply('❌ Channel introuvable ou inaccessible.');
+      await interaction.editReply('❌ Channel not found or inaccessible.');
       return;
     }
     originalMessage = await channel.messages.fetch(messageId);
@@ -67,7 +67,7 @@ export async function execute(
       'Failed to fetch original message',
     );
     await interaction.editReply(
-      "❌ Message introuvable. Le bot doit avoir acces au channel.",
+      '❌ Message not found. The bot must have access to the channel.',
     );
     return;
   }
@@ -77,12 +77,12 @@ export async function execute(
   ).size;
 
   if (imageCount === 0) {
-    await interaction.editReply('❌ Aucune image trouvee dans ce message.');
+    await interaction.editReply('❌ No image found in this message.');
     return;
   }
 
   const plural = imageCount > 1 ? 's' : '';
-  const llmNote = forceLlm ? ' (LLM force sur toutes les lignes)' : '';
+  const llmNote = forceLlm ? ' (LLM forced on every line)' : '';
   await interaction.editReply(
     `⏳ Processing ${imageCount} screenshot${plural}${llmNote}. This can take several minutes - please do not upload again.`,
   );
@@ -99,11 +99,11 @@ export async function execute(
       embeds,
     });
   } else {
-    await interaction.editReply(lines.join('\n') || '✅ Retraitement termine.');
+    await interaction.editReply(lines.join('\n') || '✅ Reprocessing complete.');
   }
 
   if (rejectedRawTexts.length > 0) {
-    const header = `📋 **Raw texts rejetés (${rejectedRawTexts.length} joueur(s) inconnu(s)) :**`;
+    const header = `📋 **Rejected raw texts (${rejectedRawTexts.length} unknown player(s)):**`;
     const chunks = _buildRejectedRawChunks(header, rejectedRawTexts);
     for (const chunk of chunks) {
       await interaction.followUp({ content: chunk, ephemeral: false });

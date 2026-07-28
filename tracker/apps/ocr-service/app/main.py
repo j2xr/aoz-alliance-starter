@@ -82,8 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("Job store ready (%s)", db_path)
 
-    # Alias de titres pilotés par la base (at_event_types.title_aliases) ;
-    # fallback statique si la base est injoignable ou non configurée.
+    # Title aliases driven by the database (at_event_types.title_aliases);
+    # static fallback if the database is unreachable or not configured.
     try:
         refreshed = await asyncio.to_thread(refresh_title_patterns_from_supabase)
         logger.info(

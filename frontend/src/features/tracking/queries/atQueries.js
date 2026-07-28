@@ -56,8 +56,8 @@ export async function fetchEventLeaderboard(eventId) {
 }
 
 export async function fetchParticipationRate(allianceId, playerId) {
-  // Ligne unique pour la page détail joueur : charger toute la vue de
-  // l'alliance pour n'en garder qu'une ligne transférait N lignes pour rien.
+  // Single row for the player detail page: loading the whole alliance view
+  // just to keep one row would transfer N rows for nothing.
   const { data, error } = await supabase
     .from('at_v_player_participation_rate')
     .select('*')
@@ -65,7 +65,7 @@ export async function fetchParticipationRate(allianceId, playerId) {
     .eq('player_id', playerId)
     .maybeSingle();
   if (error) throw error;
-  return data; // null quand le joueur n'a aucune ligne
+  return data; // null when the player has no row
 }
 
 export async function fetchParticipationRates(allianceId) {

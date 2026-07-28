@@ -1,11 +1,10 @@
-"""Helpers OCR partagés pour la lecture des pseudos.
+"""Shared OCR helpers for reading nicknames.
 
-Historiquement dupliqués entre ``polar_invasion_v1.py`` et
-``contribution_ranking_v1.py`` (le second annonçait « reused verbatim » tout
-en re-déclarant les fonctions, et les copies avaient divergé : séparateur de
-jointure des mots et restauration des flèches). Source unique désormais ; le
-séparateur est paramétrable (polar joint sans espace, contribution avec
-espace).
+Historically duplicated between ``polar_invasion_v1.py`` and
+``contribution_ranking_v1.py`` (the latter claimed "reused verbatim" while
+re-declaring the functions, and the copies had diverged: word-join separator
+and arrow restoration). Single source now; the separator is parameterized
+(polar joins with no space, contribution with a space).
 """
 
 from __future__ import annotations
@@ -39,21 +38,21 @@ _MULTI_SPACE_RE = re.compile(r" {2,}")
 
 
 def normalize_name(name: str) -> str:
-    """Normalise l'encodage d'un pseudo OCR pour tarir les doublons NFC/mojibake.
+    """Normalizes an OCR nickname's encoding to stem NFC/mojibake duplicates.
 
-    Traite uniquement les classes de corruption d'*encodage* observées dans le
-    runbook ``docs/maintenance/0014-player-duplicates-merge.md`` — les
-    misreads OCR (rn→rl, chiffres parasites…) restent du ressort des alias et
-    de ``/merge`` :
+    Only handles the *encoding*-corruption classes observed in the
+    ``docs/maintenance/0014-player-duplicates-merge.md`` runbook — OCR
+    misreads (rn→rl, stray digits…) remain the job of aliases and
+    ``/merge``:
 
-      * mojibake latin-1/UTF-8 (``MjÃ¶lnir`` → ``Mjölnir``,
-        ``Ð¡ÐºÐ°Ð·ÐºÐ°`` → ``Сказка``) via ``ftfy.fix_encoding`` — pas
-        ``fix_text``, qui toucherait aussi guillemets et sauts de ligne ;
-      * formes composées/décomposées (NFD → NFC) ;
-      * ponctuation pleine chasse → ASCII (``（LOL）`` → ``(LOL)``), pour que
-        ``_ALLIANCE_TAG_RE`` reconnaisse le tag — pas de NFKC global, trop
-        agressif pour des pseudos stylisés ;
-      * caractères zero-width supprimés, espaces multiples repliés, trim.
+      * latin-1/UTF-8 mojibake (``MjÃ¶lnir`` → ``Mjölnir``,
+        ``Ð¡ÐºÐ°Ð·ÐºÐ°`` → ``Сказка``) via ``ftfy.fix_encoding`` — not
+        ``fix_text``, which would also touch quotes and line breaks;
+      * composed/decomposed forms (NFD → NFC);
+      * fullwidth punctuation → ASCII (``（LOL）`` → ``(LOL)``), so
+        ``_ALLIANCE_TAG_RE`` recognizes the tag — not a global NFKC, too
+        aggressive for stylized nicknames;
+      * zero-width characters removed, multiple spaces collapsed, trimmed.
     """
     name = ftfy.fix_encoding(name)
     name = unicodedata.normalize("NFC", name)
@@ -130,9 +129,9 @@ def fix_name_substitutions(name: str) -> str:
        lacks ←/→ in its character set. ← (U+2190) becomes "«=" or "«-", and →
        (U+2192) becomes ">" or "=>". When these patterns sit at the start or
        end of a name we can confidently restore the arrows — they're too
-       distinctive to appear in legitimate ASCII pseudos. (La migration 0014
-       montre que ces pseudos à flèches apparaissent aussi sur les écrans de
-       dons, d'où l'application des deux corrections aux deux parsers.)
+       distinctive to appear in legitimate ASCII pseudos. (Migration 0014
+       shows these arrow-decorated pseudos also appear on donation screens,
+       hence applying both corrections in both parsers.)
     """
     # Arrow normalization: bracket-then-equals at start → left arrow,
     # equals-then-bracket at end → right arrow. Trim adjacent whitespace
@@ -187,10 +186,10 @@ def mean_word_conf(data: dict[str, Any], min_conf: int = 10) -> float:
 def ocr_name_pass(
     crop: np.ndarray, lang: str, *, sep: str = "", min_conf: int = 10
 ) -> tuple[str, dict[str, Any]]:
-    """Une passe OCR de nom : retourne (nom joint, dict image_to_data).
+    """A single name OCR pass: returns (joined name, image_to_data dict).
 
-    Contrairement à ``image_to_string``, la passe expose ses confidences —
-    l'appelant peut donc recalculer ``confidence`` depuis la passe gagnante.
+    Unlike ``image_to_string``, this pass exposes its confidences — so the
+    caller can recompute ``confidence`` from the winning pass.
     """
     data = pytesseract.image_to_data(crop, config=f"--psm 7 -l {lang}", output_type=Output.DICT)
     return words_from_data(data, min_conf=min_conf, sep=sep), data
@@ -199,26 +198,27 @@ def ocr_name_pass(
 def disambiguate_cyrillic(
     crop: np.ndarray, name: str, name_data: dict[str, Any], *, sep: str = ""
 ) -> tuple[str, dict[str, Any]]:
-    """Désambiguïse un nom composé uniquement de sosies cyrilliques/latins.
+    """Disambiguates a name made only of Cyrillic/Latin lookalikes.
 
-    Deux cas quand la passe multilingue ne produit que des lettres cyrilliques
-    identiques à des latines (А/Н/О/…) :
-      1. Vrai pseudo russe dont les lettres distinctives ont été manquées
-         (« Аня » → « АНА ») : une passe russe seule les retrouve souvent.
-      2. Pseudo latin mal classé (« KANHA_ » → « КАМНА_ ») : repli sur une
-         passe anglaise seule.
+    Two cases when the multilingual pass produces only Cyrillic letters
+    identical to Latin ones (А/Н/О/…):
+      1. A genuine Russian pseudo whose distinctive letters were missed
+         ("Аня" → "АНА"): a Russian-only pass often recovers them.
+      2. A misclassified Latin pseudo ("KANHA_" → "КАМНА_"): fall back to
+         an English-only pass.
 
-    Retourne (nom, data) de la passe GAGNANTE — historiquement le nom était
-    remplacé via ``image_to_string`` mais ``name_data`` restait celui de la
-    passe multilingue, et la confiance (donc le déclenchement du fallback LLM)
-    était calculée sur des données périmées.
+    Returns (name, data) from the WINNING pass — historically the name was
+    replaced via ``image_to_string`` but ``name_data`` stayed that of the
+    multilingual pass, and the confidence (hence whether the LLM fallback
+    triggered) was computed on stale data.
 
-    Ne se déclenche que si le cyrillique *domine* le pseudo. Un pseudo latin
-    avec un seul sosie cyrillique parasite (bave d'avatar « Е (SOD) Momoa », ou
-    un « у » collé au tag) déclenchait à tort la passe russe, qui rendait alors
-    un mot tout cyrillique (« Мотоа ») porteur d'une lettre distinctive issue
-    d'un misread — écrasant le latin correct. Exiger la majorité cyrillique
-    protège ce cas sans gêner « Аня » / « КАМНА_ » (100 % cyrillique).
+    Only triggers if Cyrillic *dominates* the pseudo. A Latin pseudo with a
+    single stray Cyrillic lookalike (avatar bleed "Е (SOD) Momoa", or a "у"
+    stuck to the tag) used to wrongly trigger the Russian pass, which then
+    rendered an all-Cyrillic word ("Мотоа") carrying a distinctive letter
+    from a misread — overwriting the correct Latin form. Requiring a
+    Cyrillic majority protects against this without hindering "Аня" /
+    "КАМНА_" (100% Cyrillic).
     """
     cyrillic = sum(1 for c in name if 0x0400 <= ord(c) <= 0x04FF)
     latin = sum(1 for c in name if c.isascii() and c.isalpha())

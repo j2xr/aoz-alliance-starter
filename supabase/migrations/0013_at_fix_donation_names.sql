@@ -1,25 +1,27 @@
 -- 0013_at_fix_donation_names.sql
--- Correctif des noms de joueurs mal enregistrés par le parser donation (OCR).
+-- Fix for player names misrecorded by the donation (OCR) parser.
 --
--- Deux formes de noms incorrects corrigées :
---   (a) préfixe de classement + tag : "6 (LOL) CATFIGHT"  → name="CATFIGHT",  tag="LOL"
---   (b) tag non strippé seul        : "(LOL) RageX_"       → name="RageX_",    tag="LOL"
+-- Two forms of incorrect names fixed:
+--   (a) ranking prefix + tag: "6 (LOL) CATFIGHT"  → name="CATFIGHT",  tag="LOL"
+--   (b) unstripped tag alone: "(LOL) RageX_"       → name="RageX_",    tag="LOL"
 --
--- NOTE : une troisième règle (préfixe numérique seul, ex. "9 Медвежонок")
--- a été retirée : un nom légitime commençant par 1-2 chiffres + espace
--- (ex. "12 Monkeys") aurait été tronqué puis fusionné/supprimé. Ces cas
--- résiduels se traitent via /player-alias ou /merge, avec validation humaine.
+-- NOTE: a third rule (numeric prefix alone, e.g. "9 Медвежонок") was
+-- removed: a legitimate name starting with 1-2 digits + a space (e.g.
+-- "12 Monkeys") would have been truncated then merged/deleted. These
+-- residual cases are handled via /player-alias or /merge, with human
+-- validation.
 --
--- Pour chaque nom défectueux :
---   • Si aucun joueur canonique n'existe sous le bon nom → renommage en place.
---   • Si un joueur canonique existe déjà             → fusion : les références
---     (participations, donations, memberships) sont réaffectées au canonique,
---     l'ancien nom est enregistré comme alias, le doublon est supprimé.
+-- For each defective name:
+--   • If no canonical player exists under the correct name → in-place rename.
+--   • If a canonical player already exists              → merge: references
+--     (participations, donations, memberships) are reassigned to the
+--     canonical player, the old name is recorded as an alias, the duplicate
+--     is deleted.
 --
--- Les patterns regex reproduisent exactement la logique de
--- contribution_ranking_v1.py après le correctif OCR.
+-- The regex patterns exactly reproduce contribution_ranking_v1.py's logic
+-- after the OCR fix.
 
--- ─── Étape 1 : calcul des corrections ────────────────────────────────────────
+-- ─── Step 1: computing the corrections ───────────────────────────────────────
 
 create temp table _at_name_fixes as
 select
@@ -27,8 +29,8 @@ select
   p.alliance_id,
   p.name          as old_name,
   case
-    -- (a)+(b) : le nom contient un tag d'alliance "(TAG)" (avec éventuels
-    -- caractères parasites avant la parenthèse, ou espace à l'intérieur)
+    -- (a)+(b): the name contains an alliance tag "(TAG)" (with possible
+    -- stray characters before the parenthesis, or a space inside)
     when p.name ~ '[^A-Za-z(]*\(\s*[A-Za-z0-9]{1,5}\s*\)\s+\S'
     then trim(
            (regexp_match(p.name, '\(\s*[A-Za-z0-9]{1,5}\s*\)\s+(.+)$'))[1]
@@ -39,13 +41,13 @@ from at_players p
 where
   p.name ~ '[^A-Za-z(]*\(\s*[A-Za-z0-9]{1,5}\s*\)\s+\S';
 
--- Supprimer les lignes où l'extraction aurait produit un résultat vide
+-- Remove rows where extraction would have produced an empty result
 delete from _at_name_fixes
 where new_name is null or trim(new_name) = '';
 
--- ─── Étape 2 : fusion des doublons (conflit avec joueur canonique existant) ──
+-- ─── Step 2: merging duplicates (conflict with an existing canonical player) ─
 
--- 2a. Participations : réaffecter au canonique, ignorer si déjà présent
+-- 2a. Participations: reassign to the canonical player, skip if already present
 insert into at_participations
   (event_id, player_id, player_rank, power, points, ocr_confidence, raw_ocr, created_at)
 select
@@ -73,7 +75,7 @@ join at_players p2
   and p2.id         <> f.player_id
 where ap.player_id = f.player_id;
 
--- 2b. Donations : réaffecter au canonique, latest-wins sur conflit de période
+-- 2b. Donations: reassign to the canonical player, latest-wins on a period conflict
 insert into at_donations
   (donation_period_id, player_id, alliance_honor, player_rank, alliance_tag,
    ocr_confidence, raw_ocr, source_message_id, source_upload_id, updated_at, created_at)
@@ -108,7 +110,7 @@ join at_players p2
   and p2.id         <> f.player_id
 where ad.player_id = f.player_id;
 
--- 2c. Memberships : réaffecter, ignorer les conflits de date d'entrée
+-- 2c. Memberships: reassign, skip join-date conflicts
 insert into at_alliance_memberships (alliance_id, player_id, joined_at, left_at)
 select am.alliance_id, p2.id, am.joined_at, am.left_at
 from _at_name_fixes f
@@ -128,8 +130,8 @@ join at_players p2
 where am.player_id   = f.player_id
   and am.alliance_id = f.alliance_id;
 
--- 2d. Enregistrer l'ancien nom défectueux comme alias du canonique
---     (filet de sécurité si de vieilles captures sont re-traitées)
+-- 2d. Record the old defective name as an alias of the canonical player
+--     (safety net in case old screenshots get reprocessed)
 insert into at_player_aliases (alliance_id, raw_name, player_id, created_by)
 select f.alliance_id, f.old_name, p2.id, 'migration_0013'
 from _at_name_fixes f
@@ -139,7 +141,7 @@ join at_players p2
   and p2.id         <> f.player_id
 on conflict (alliance_id, raw_name) do nothing;
 
--- 2e. Supprimer le joueur doublon (le CASCADE gère les éventuels enfants restants)
+-- 2e. Delete the duplicate player (CASCADE handles any remaining children)
 delete from at_players p
 using _at_name_fixes f
 join at_players p2
@@ -148,7 +150,7 @@ join at_players p2
   and p2.id         <> f.player_id
 where p.id = f.player_id;
 
--- ─── Étape 3 : renommage simple (pas de joueur canonique existant) ────────────
+-- ─── Step 3: simple rename (no existing canonical player) ────────────────────
 
 update at_players p
 set    name = f.new_name
@@ -161,9 +163,9 @@ where  p.id = f.player_id
       and p2.id         <> f.player_id
   );
 
--- ─── Étape 4 : rétro-remplissage de alliance_tag dans at_donations ────────────
--- Seuls les renommages simples restent ici (les cas de fusion ont été traités
--- en 2b). Le player_id est inchangé pour les renommages simples.
+-- ─── Step 4: backfilling alliance_tag in at_donations ─────────────────────────
+-- Only simple renames remain here (merge cases were handled in 2b). The
+-- player_id is unchanged for simple renames.
 
 update at_donations d
 set    alliance_tag = f.extracted_tag

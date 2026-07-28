@@ -1,17 +1,17 @@
 -- 0005_at_alliance_members.sql
--- Ajoute at_alliance_memberships (périodes de présence joueur)
--- et at_alliance_members (jonction user ↔ alliance pour le dashboard / RLS).
+-- Adds at_alliance_memberships (player presence periods)
+-- and at_alliance_members (user ↔ alliance join for the dashboard / RLS).
 
 -- ─── at_alliance_memberships ──────────────────────────────────────────────────
--- Périodes d'appartenance d'un joueur à une alliance.
--- Gérées automatiquement par le bot au moment des insertions de participation.
+-- Periods of a player's membership in an alliance.
+-- Managed automatically by the bot when participations are inserted.
 
 create table at_alliance_memberships (
   id          uuid primary key default gen_random_uuid(),
   alliance_id uuid not null references at_alliances(id) on delete cascade,
   player_id   uuid not null references at_players(id)   on delete cascade,
   joined_at   timestamptz not null default now(),
-  left_at     timestamptz,  -- null si toujours membre
+  left_at     timestamptz,  -- null if still a member
   created_at  timestamptz not null default now(),
   unique (alliance_id, player_id, joined_at)
 );
@@ -28,8 +28,8 @@ create policy "at_alliance_memberships: authenticated read"
   using (true);
 
 -- ─── at_alliance_members ──────────────────────────────────────────────────────
--- Jonction user Auth ↔ alliance : détermine quelles alliances un utilisateur
--- du dashboard est autorisé à consulter.
+-- Auth user ↔ alliance join: determines which alliances a dashboard user
+-- is allowed to view.
 
 create table at_alliance_members (
   alliance_id uuid not null references at_alliances(id) on delete cascade,
@@ -43,15 +43,15 @@ create table at_alliance_members (
 
 alter table at_alliance_members enable row level security;
 
--- Un utilisateur peut lire ses propres lignes
+-- A user can read their own rows
 create policy "at_alliance_members: read own rows"
   on at_alliance_members for select
   to authenticated
   using (user_id = auth.uid());
 
--- ─── Vue : joueurs probablement partis ────────────────────────────────────────
--- Joueurs absents des 3 derniers événements de leur alliance et encore
--- enregistrés comme membres actifs dans at_alliance_memberships.
+-- ─── View: players who likely left ────────────────────────────────────────────
+-- Players absent from their alliance's last 3 events and still recorded as
+-- active members in at_alliance_memberships.
 
 create view at_v_probable_leavers as
 select

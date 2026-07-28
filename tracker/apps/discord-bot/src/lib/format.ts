@@ -1,9 +1,9 @@
-// Shared fr-FR / Europe/Paris event-datetime formatting for Discord embeds
+// Shared en-GB / Europe/Paris event-datetime formatting for Discord embeds
 // and autocomplete choices. A module-scope Intl.DateTimeFormat instance
 // (same pattern as lib/period.ts's PARIS_DATE_FMT) avoids reconstructing the
 // formatter on every call — correct.ts's event_id autocomplete formats up
 // to 50 rows per keystroke.
-const EVENT_DATETIME_FMT = new Intl.DateTimeFormat('fr-FR', {
+const EVENT_DATETIME_FMT = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: 'short',
   year: 'numeric',

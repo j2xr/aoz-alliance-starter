@@ -726,11 +726,11 @@ def test_parser_strips_alliance_tag_in_member_output() -> None:
 
 
 def test_parser_normalizes_fullwidth_tag_before_stripping() -> None:
-    """Le repli pleine chasse → ASCII doit précéder _strip_alliance_tag.
+    """The fullwidth → ASCII fold must happen before _strip_alliance_tag.
 
-    "ï¼ˆSODï¼‰" est le mojibake de "（SOD）" (parenthèses pleine chasse) : sans
-    normalize_name avant le strip, _ALLIANCE_TAG_RE ne reconnaît pas les
-    parenthèses pleine chasse et le tag reste collé au nom.
+    "ï¼ˆSODï¼‰" is the mojibake of "（SOD）" (fullwidth parentheses): without
+    normalize_name before the strip, _ALLIANCE_TAG_RE doesn't recognize
+    fullwidth parentheses and the tag stays stuck to the name.
     """
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()

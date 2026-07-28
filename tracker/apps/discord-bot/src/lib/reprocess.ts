@@ -11,7 +11,7 @@ import {
 } from './ingestion.js';
 import { messages } from './messages.js';
 
-// Shared FR wording (B4) — see lib/messages.ts. `databaseError`'s second
+// Shared wording (B4) — see lib/messages.ts. `databaseError`'s second
 // param (the raw error) is deliberately ignored: the detail goes to
 // logger.error only, never back to Discord.
 const MESSAGES: OcrRoutingMessages = {
@@ -49,10 +49,10 @@ export async function reprocessMessageScreenshots(
     isImageAttachment(att.contentType ?? null, att.name),
   );
 
-  // Les pièces jointes indépendantes sont traitées en parallèle (pool borné) :
-  // l'essentiel du temps par image est de l'attente (download + polling OCR).
-  // Les upserts concurrents sont sûrs (onConflict / ignoreDuplicates / 23505).
-  // Les résultats sont repliés dans l'ordre d'origine des pièces jointes.
+  // Independent attachments are processed in parallel (bounded pool): most
+  // of the time per image is spent waiting (download + OCR polling).
+  // Concurrent upserts are safe (onConflict / ignoreDuplicates / 23505).
+  // Results are folded back in the attachments' original order.
   const outcomes = await mapWithConcurrency(
     [...images.values()],
     config.reprocessConcurrency,
@@ -134,10 +134,10 @@ async function processOneAttachment(
   });
 }
 
-// Bufferise volontairement tous les messages à images du canal : le total est
-// nécessaire d'emblée pour le dénominateur de progression et le récapitulatif,
-// et quelques milliers d'objets Message tiennent largement en mémoire. Un
-// streaming imposerait deux passes ou une progression sans dénominateur.
+// Deliberately buffers every image message in the channel: the total is
+// needed upfront for the progress denominator and the summary, and a few
+// thousand Message objects comfortably fit in memory. Streaming would
+// require either two passes or progress without a denominator.
 export async function fetchChannelImageMessages(
   channel: TextBasedChannel,
 ): Promise<Message<boolean>[]> {

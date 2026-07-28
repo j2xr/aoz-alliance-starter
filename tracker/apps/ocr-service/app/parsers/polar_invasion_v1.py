@@ -49,13 +49,12 @@ _TOTAL_POINTS_X = (720, 925)
 _BATTLERS_X_2COL = (350, 500)
 _TOTAL_POINTS_X_2COL = (550, 800)
 
-# Layout de header par code événement (vérifié sur les fixtures : ironblood
-# est 3 colonnes — avec battlers/points parfois illisibles — et battle_frenzy
-# 2 colonnes). Quand le code est connu, le layout est choisi ici de façon
-# déterministe ; l'ancienne heuristique « un chiffre lu dans la cellule rang
-# → 3 colonnes » reste en fallback, mais un chiffre parasite pouvait forcer
-# les mauvaises colonnes sur un écran 2 colonnes (les plages 2 colonnes
-# chevauchent x=480-595).
+# Header layout per event code (verified on the fixtures: ironblood is
+# 3 columns — with battlers/points sometimes unreadable — and battle_frenzy
+# 2 columns). When the code is known, the layout is chosen here
+# deterministically; the old heuristic ("a digit read in the rank cell →
+# 3 columns") remains as a fallback, but a stray digit could force the
+# wrong columns on a 2-column screen (the 2-column ranges overlap x=480-595).
 _THREE_COL_EVENTS = frozenset({"polar_invasion", "elite_wars", "ironblood_battlefield"})
 _TWO_COL_EVENTS = frozenset({"wasteland_showdown", "battle_frenzy", "void_war"})
 
@@ -204,12 +203,12 @@ def _parse_datetime(text: str) -> str | None:
 
 
 def _paris_isoformat(dt: str) -> str | None:
-    """'YYYY-MM-DDTHH:MM' (heure murale Europe/Paris) → ISO 8601 avec le bon offset.
+    """'YYYY-MM-DDTHH:MM' (Europe/Paris wall-clock time) → ISO 8601 with the right offset.
 
-    L'offset dépend de la date (CET +01:00 l'hiver, CEST +02:00 l'été) : un
-    +02:00 codé en dur décalait d'une heure l'instant stocké pour tous les
-    événements d'hiver. Retourne None si l'OCR a produit une date invalide
-    (ex. mois 13), traitée en aval comme un en-tête illisible.
+    The offset depends on the date (CET +01:00 in winter, CEST +02:00 in
+    summer): a hardcoded +02:00 used to shift the stored instant by an hour
+    for every winter event. Returns None if OCR produced an invalid date
+    (e.g. month 13), handled downstream as an unreadable header.
     """
     try:
         parsed = datetime.fromisoformat(f"{dt}:00")
@@ -299,8 +298,8 @@ class PolarInvasionV1Parser(BaseParser):
             )
             if member is None:
                 continue
-            # Répare l'inversion power ↔ points à la source (ex-migration 0009) :
-            # sans cela validate_member rejetait la ligne et le membre était perdu.
+            # Fixes the power ↔ points inversion at the source (ex-migration 0009):
+            # without this, validate_member would reject the row and the member would be lost.
             member, _ = maybe_swap_power_points(member)
             if validate_member(member):
                 members.append(member)
@@ -421,9 +420,9 @@ class PolarInvasionV1Parser(BaseParser):
                 ).strip()
             )
 
-        # Layout connu de façon déterministe quand le code événement est fourni
-        # (production : dispatcher ou override). On ne lit jamais la cellule
-        # rang sur un écran 2 colonnes — elle chevauche les colonnes réelles.
+        # Layout known deterministically when the event code is provided
+        # (production: dispatcher or override). The rank cell is never read
+        # on a 2-column screen — it overlaps the real columns.
         if event_code in _THREE_COL_EVENTS:
             return (
                 dt,
@@ -465,21 +464,21 @@ class PolarInvasionV1Parser(BaseParser):
     ) -> MemberResult | None:
         """Parse one member row. Returns None when the row appears empty.
 
-        Masquage de l'icône épées croisées (⚔) par template matching avant OCR du nom et du power.
-        Sprite source : fixture 20260407T1500_001.png, event-1, Polar Invasion, ligne 1,
-        crop power, x≈210–270, y_off≈115–160, prétraité avec preprocess().
+        Masks the crossed-swords icon (⚔) via template matching before OCR of the name and power.
+        Sprite source: fixture 20260407T1500_001.png, event-1, Polar Invasion, row 1,
+        power crop, x≈210–270, y_off≈115–160, preprocessed with preprocess().
         """
-        # Copie locale de la bande de la ligne (mask_sword_icon dessine dedans).
-        # Limitée à x < _POINTS_X[0] : tout ce qui lit row_img (badge de rang
-        # x=38-90, nom x=220-680, power x<720, bande de recherche de l'icône
-        # x=180-320) reste sous cette borne ; la colonne points est lue plus
-        # bas directement sur `image`. Copier toute la largeur gaspillait ~33%.
+        # Local copy of the row band (mask_sword_icon draws into it). Limited
+        # to x < _POINTS_X[0]: everything that reads row_img (rank badge
+        # x=38-90, name x=220-680, power x<720, icon search band x=180-320)
+        # stays under this bound; the points column is read further down
+        # directly on `image`. Copying the full width wasted ~33%.
         row_img = image[y : y + row_h, : _POINTS_X[0]].copy()
-        # Masque l'icône épées croisées si présente
+        # Mask the crossed-swords icon if present
         row_img = mask_sword_icon(row_img, 1.0)
 
-        # Les fonctions de détection utilisent les coordonnées relatives à la ligne
-        # Adapter les appels pour utiliser row_img au lieu de image, et y=0
+        # Detection functions use row-relative coordinates
+        # Adapt calls to use row_img instead of image, and y=0
         rank = self._detect_rank(row_img, 0, rank_cache=rank_cache)
 
         # Detect power before name so we can strip it from the name string when
@@ -551,9 +550,9 @@ class PolarInvasionV1Parser(BaseParser):
             )
             name = _words_from_data(name_data, min_conf=10)
 
-        # Cyrillic-lookalike disambiguation — name AND name_data viennent de la
-        # passe gagnante, pour que la confiance calculée plus bas (et donc le
-        # déclenchement du fallback LLM) reflète le nom réellement retourné.
+        # Cyrillic-lookalike disambiguation — name AND name_data come from the
+        # winning pass, so the confidence computed further down (and thus
+        # whether the LLM fallback triggers) reflects the name actually returned.
         name, name_data = disambiguate_cyrillic(crop_2x, name, name_data)
         name = normalize_name(name)
 

@@ -1,7 +1,7 @@
-"""Génère les fixtures JSON de référence pour le parseur Polar Invasion.
+"""Generates the reference JSON fixtures for the Polar Invasion parser.
 
-Les données ont été extraites manuellement depuis 8 captures d'écran Android.
-Ces fichiers servent de ground truth pour les tests du parseur OCR.
+The data was manually extracted from 8 Android screenshots.
+These files serve as ground truth for the OCR parser tests.
 """
 
 import json
@@ -11,9 +11,9 @@ OUTPUT_DIR = Path(__file__).parent / "polar_invasion"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
-# Événement 1 : Polar Invasion 2026-04-07 15:00
+# Event 1: Polar Invasion 2026-04-07 15:00
 # Alliance rank 1, 43 battlers, 21,955 points
-# 5 captures à différentes positions de scroll
+# 5 screenshots at different scroll positions
 # ============================================================================
 
 EVENT_01_HEADER = {
@@ -24,8 +24,8 @@ EVENT_01_HEADER = {
     "total_points": 21955,
 }
 
-# Capture 001 : haut de liste (scores les plus élevés)
-# Source : 1000006342.jpg
+# Screenshot 001: top of the list (highest scores)
+# Source: 1000006342.jpg
 EVENT_01_SCROLL_001 = {
     **EVENT_01_HEADER,
     "source_file": "1000006342.jpg",
@@ -44,8 +44,8 @@ EVENT_01_SCROLL_001 = {
     ],
 }
 
-# Capture 002
-# Source : 1000006341.jpg
+# Screenshot 002
+# Source: 1000006341.jpg
 EVENT_01_SCROLL_002 = {
     **EVENT_01_HEADER,
     "source_file": "1000006341.jpg",
@@ -64,8 +64,8 @@ EVENT_01_SCROLL_002 = {
     ],
 }
 
-# Capture 003
-# Source : 1000006340.jpg
+# Screenshot 003
+# Source: 1000006340.jpg
 EVENT_01_SCROLL_003 = {
     **EVENT_01_HEADER,
     "source_file": "1000006340.jpg",
@@ -84,8 +84,8 @@ EVENT_01_SCROLL_003 = {
     ],
 }
 
-# Capture 004
-# Source : 1000006339.jpg
+# Screenshot 004
+# Source: 1000006339.jpg
 EVENT_01_SCROLL_004 = {
     **EVENT_01_HEADER,
     "source_file": "1000006339.jpg",
@@ -104,8 +104,8 @@ EVENT_01_SCROLL_004 = {
     ],
 }
 
-# Capture 005 : bas de liste (scores les plus bas, inclut des 0)
-# Source : 1000006338.jpg
+# Screenshot 005: bottom of the list (lowest scores, includes some 0s)
+# Source: 1000006338.jpg
 EVENT_01_SCROLL_005 = {
     **EVENT_01_HEADER,
     "source_file": "1000006338.jpg",
@@ -125,9 +125,9 @@ EVENT_01_SCROLL_005 = {
 }
 
 # ============================================================================
-# Événement 2 : Polar Invasion 2026-04-14 23:00
+# Event 2: Polar Invasion 2026-04-14 23:00
 # Alliance rank 2, 26 battlers, 11,630 points
-# 3 captures à différentes positions de scroll
+# 3 screenshots at different scroll positions
 # ============================================================================
 
 EVENT_02_HEADER = {
@@ -138,8 +138,8 @@ EVENT_02_HEADER = {
     "total_points": 11630,
 }
 
-# Capture 001 : haut de liste
-# Source : 1000006345.jpg
+# Screenshot 001: top of the list
+# Source: 1000006345.jpg
 EVENT_02_SCROLL_001 = {
     **EVENT_02_HEADER,
     "source_file": "1000006345.jpg",
@@ -158,8 +158,8 @@ EVENT_02_SCROLL_001 = {
     ],
 }
 
-# Capture 002
-# Source : 1000006344.jpg
+# Screenshot 002
+# Source: 1000006344.jpg
 EVENT_02_SCROLL_002 = {
     **EVENT_02_HEADER,
     "source_file": "1000006344.jpg",
@@ -178,8 +178,8 @@ EVENT_02_SCROLL_002 = {
     ],
 }
 
-# Capture 003 : bas de liste (inclut un 0)
-# Source : 1000006343.jpg
+# Screenshot 003: bottom of the list (includes a 0)
+# Source: 1000006343.jpg
 EVENT_02_SCROLL_003 = {
     **EVENT_02_HEADER,
     "source_file": "1000006343.jpg",
@@ -199,7 +199,7 @@ EVENT_02_SCROLL_003 = {
 }
 
 # ============================================================================
-# Écriture des fichiers
+# Writing the files
 # ============================================================================
 
 FIXTURES = [
