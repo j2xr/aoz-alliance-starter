@@ -21,7 +21,13 @@ const MESSAGES: OcrRoutingMessages = {
 };
 
 export async function handleMessageCreate(message: Message): Promise<void> {
-  if (message.author.bot) return;
+  // Incoming webhooks post with author.bot === true; allowlisted ones (the
+  // automated capture agent) are let through, every other bot is not.
+  // webhookId is `string | null`, so narrow before the Set lookup.
+  if (message.author.bot) {
+    const { webhookId } = message;
+    if (!webhookId || !config.allowedWebhookIds.has(webhookId)) return;
+  }
   if (!config.allowedChannelIds.has(message.channelId)) return;
 
   const images = message.attachments.filter((att) => isImageAttachment(att.contentType, att.name));

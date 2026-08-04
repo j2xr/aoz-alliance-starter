@@ -23,6 +23,15 @@ export const config = {
       .map((s) => s.trim())
       .filter(Boolean),
   ),
+  // Incoming-webhook IDs allowed to bypass the `author.bot` filter in
+  // messageCreate. Webhook posts have author.bot === true, so an automated
+  // capture agent needs an explicit opt-in here. Empty = no webhook allowed.
+  allowedWebhookIds: new Set(
+    (process.env['DISCORD_ALLOWED_WEBHOOK_IDS'] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
   ocrServiceUrl: process.env['OCR_SERVICE_URL'] ?? 'http://ocr-service:8000',
   ocrTimeoutMs: Number.parseInt(process.env['OCR_TIMEOUT_MS'] ?? '1800000', 10),
   ocrPollIntervalMs: Number.parseInt(process.env['OCR_POLL_INTERVAL_MS'] ?? '5000', 10),
