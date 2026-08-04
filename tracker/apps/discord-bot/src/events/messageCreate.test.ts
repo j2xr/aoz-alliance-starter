@@ -11,7 +11,10 @@ import { buildEventEmbed } from '../lib/embed.js';
 // ---------------------------------------------------------------------------
 
 vi.mock('../config.js', () => ({
-  config: { allowedChannelIds: new Set(['allowed-channel']) },
+  config: {
+    allowedChannelIds: new Set(['allowed-channel']),
+    allowedWebhookIds: new Set(['allowed-webhook']),
+  },
 }));
 vi.mock('../logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -47,14 +50,21 @@ type FakeAttachment = {
 function buildMessage(overrides: {
   authorBot?: boolean;
   channelId?: string;
+  webhookId?: string | null;
   attachments?: FakeAttachment[];
 } = {}) {
-  const { authorBot = false, channelId = 'allowed-channel', attachments = [] } = overrides;
+  const {
+    authorBot = false,
+    channelId = 'allowed-channel',
+    webhookId = null,
+    attachments = [],
+  } = overrides;
   const ackMsg = { edit: vi.fn().mockResolvedValue(undefined) };
   const attMap = new Map(attachments.map((a) => [a.id, a]));
   const msg = {
     author: { bot: authorBot, id: 'user-123' },
     channelId,
+    webhookId,
     id: 'msg-123',
     createdAt: new Date('2026-05-21T10:00:00Z'),
     channel: { send: vi.fn().mockResolvedValue(undefined) },
@@ -94,6 +104,33 @@ beforeEach(() => {
 describe('handleMessageCreate', () => {
   it('ignores messages from bots (early return, no DB calls)', async () => {
     const { msg } = buildMessage({ authorBot: true, attachments: [IMAGE_ATT] });
+
+    await handleMessageCreate(msg as unknown as Message<boolean>);
+
+    expect(vi.mocked(resolveAlliance)).not.toHaveBeenCalled();
+    expect(msg.reply).not.toHaveBeenCalled();
+  });
+
+  it('allows an allowlisted webhook past the bot filter', async () => {
+    vi.mocked(resolveAlliance).mockResolvedValue(ALLIANCE);
+    vi.mocked(processImageAttachment).mockRejectedValue(new Error('network timeout'));
+    const { msg } = buildMessage({
+      authorBot: true,
+      webhookId: 'allowed-webhook',
+      attachments: [IMAGE_ATT],
+    });
+
+    await handleMessageCreate(msg as unknown as Message<boolean>);
+
+    expect(vi.mocked(resolveAlliance)).toHaveBeenCalled();
+  });
+
+  it('ignores a non-allowlisted webhook (early return, no DB calls)', async () => {
+    const { msg } = buildMessage({
+      authorBot: true,
+      webhookId: 'other-webhook',
+      attachments: [IMAGE_ATT],
+    });
 
     await handleMessageCreate(msg as unknown as Message<boolean>);
 
