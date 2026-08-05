@@ -1,6 +1,10 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { Message } from 'discord.js';
-import { resolveAlliance } from '../lib/alliance.js';
+import { requireAlliance, resolveAlliance } from '../lib/alliance.js';
 import { isImageAttachment } from '../lib/attachment.js';
 import { reprocessMessageScreenshots } from '../lib/reprocess.js';
 import logger from '../logger.js';
@@ -11,6 +15,7 @@ const MESSAGE_URL_RE =
 export const data = new SlashCommandBuilder()
   .setName('reprocess')
   .setDescription('Re-run OCR on a screenshot as-is — see /upload to force its type')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addStringOption((opt) =>
     opt
       .setName('message_url')
@@ -43,12 +48,24 @@ export async function execute(
   const channelId = match[1]!;
   const messageId = match[2]!;
 
-  // Alliance of the TARGET channel (extracted from the message URL), not the
-  // interaction's — requireAlliance deliberately doesn't apply here.
+  const invokingAlliance = await requireAlliance(interaction);
+  if (!invokingAlliance) return;
+
+  // Alliance of the TARGET channel (extracted from the message URL), which
+  // must match the invoking channel's — otherwise a member could reprocess
+  // (and read back the results of) another alliance's screenshots just by
+  // pasting a message URL from a channel the bot can see.
   const alliance = await resolveAlliance(channelId);
   if (!alliance) {
     await interaction.editReply(
       '⚠️ This channel is not linked to an alliance.',
+    );
+    return;
+  }
+
+  if (alliance.id !== invokingAlliance.id) {
+    await interaction.editReply(
+      '❌ That message is not in an alliance channel you can reprocess from.',
     );
     return;
   }
