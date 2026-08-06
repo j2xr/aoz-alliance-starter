@@ -33,6 +33,14 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null); // null = all, or event type id
   const [editingEvent, setEditingEvent] = useState(null);
+  const [formDirty, setFormDirty] = useState(false);
+
+  // Wraps AddEventForm's onClose (Cancel button, Modal backdrop-click, Escape)
+  // so unsaved input isn't silently discarded.
+  const confirmDiscard = useCallback((close) => {
+    if (formDirty && !window.confirm("Discard unsaved changes?")) return;
+    close();
+  }, [formDirty]);
 
   // ── Load events from Supabase ─────────────────────────────────────────────
   const fetchEvents = useCallback(async () => {
@@ -68,13 +76,32 @@ export default function App() {
 
   // ── Delete event ──────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id) => {
+    const original = events.find(e => e.id === id);
     setDeleting(true);
     const { error } = await supabase.from("events").delete().eq("id", id);
     setDeleting(false);
     if (error) { toast.error("Error deleting event: " + error.message); return; }
     await fetchEvents();
     setSelectedEvent(null);
-  }, [fetchEvents, toast]);
+    if (original) {
+      toast.info("Event deleted.", 8000, {
+        label: "Undo",
+        onClick: async () => {
+          // Re-insert generates a new id — the deleted row's id/created_at
+          // aren't recoverable via the REST API, an acceptable tradeoff for
+          // an "oops" undo window rather than a true restore.
+          const { error: undoError } = await supabase.from("events").insert([{
+            title: original.title, date: original.date, time: original.time,
+            type: original.type, description: original.description,
+            author: original.author, recurrence: original.recurrence,
+            recurrence_end: original.recurrence_end,
+          }]);
+          if (undoError) { toast.error("Couldn't restore event: " + undoError.message); return; }
+          await fetchEvents();
+        },
+      });
+    }
+  }, [events, fetchEvents, toast]);
 
   // ── Edit event ──────────────────────────────────────────────────────────
   const handleEditEvent = useCallback(async (form) => {
@@ -114,6 +141,8 @@ export default function App() {
 
   const prevMonth = () => month===0 ? (setMonth(11),setYear(y=>y-1)) : setMonth(m=>m-1);
   const nextMonth = () => month===11? (setMonth(0), setYear(y=>y+1)) : setMonth(m=>m+1);
+  const isCurrentMonth = year === today.getUTCFullYear() && month === today.getUTCMonth();
+  const goToCurrentMonth = () => { setYear(today.getUTCFullYear()); setMonth(today.getUTCMonth()); };
 
   // ── Week view ─────────────────────────────────────────────────────────────
   const [weekStart, setWeekStart] = useState(() => getMonday(today));
@@ -141,6 +170,8 @@ export default function App() {
 
   const prevWeek = () => setWeekStart(ws => { const d = new Date(ws); d.setUTCDate(d.getUTCDate() - 7); return d; });
   const nextWeek = () => setWeekStart(ws => { const d = new Date(ws); d.setUTCDate(d.getUTCDate() + 7); return d; });
+  const isCurrentWeek = weekDays[0] === getMonday(today).toISOString().split("T")[0];
+  const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
 
   const weekLabel = useMemo(() => {
     const s = weekDays[0].split("-").map(Number);
@@ -349,6 +380,13 @@ export default function App() {
                 {MONTHS[month].toUpperCase()} {year}
               </span>
               <div style={{ display:"flex",gap:"0.4rem",alignItems:"center" }}>
+                {!isCurrentMonth && (
+                  <button onClick={goToCurrentMonth} className="nav-btn" title="Jump to the current month"
+                    style={{ background:"transparent",border:"1px solid var(--border-strong)",
+                      borderRadius:"7px",color:"var(--text-muted)",padding:"0 0.6rem",height:"32px",
+                      cursor:"pointer",fontSize:"0.62rem",fontFamily:"'Orbitron',sans-serif",
+                      letterSpacing:"0.05em" }}>TODAY</button>
+                )}
                 <button onClick={nextMonth} className="nav-btn" style={{ background:"transparent",
                   border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>›</button>
@@ -426,6 +464,13 @@ export default function App() {
               <span style={{ fontFamily:"'Orbitron',sans-serif",fontSize:"0.82rem",
                 color:"var(--text)",letterSpacing:"0.06em" }}>{weekLabel}</span>
               <div style={{ display:"flex",gap:"0.4rem",alignItems:"center" }}>
+                {!isCurrentWeek && (
+                  <button onClick={goToCurrentWeek} className="nav-btn" title="Jump to the current week"
+                    style={{ background:"transparent",border:"1px solid var(--border-strong)",
+                      borderRadius:"7px",color:"var(--text-muted)",padding:"0 0.6rem",height:"32px",
+                      cursor:"pointer",fontSize:"0.62rem",fontFamily:"'Orbitron',sans-serif",
+                      letterSpacing:"0.05em" }}>TODAY</button>
+                )}
                 <button onClick={nextWeek} className="nav-btn" style={{ background:"transparent",
                   border:"1px solid var(--border-strong)",borderRadius:"7px",color:"var(--text-muted)",
                   width:"32px",height:"32px",cursor:"pointer",fontSize:"1rem" }}>›</button>
@@ -551,9 +596,10 @@ export default function App() {
 
       {/* ── Modals ── */}
       {showAdd && (
-        <Modal onClose={() => { setShowAdd(false); setSelectedDate(null); }}>
+        <Modal onClose={() => confirmDiscard(() => { setShowAdd(false); setSelectedDate(null); })}>
           <AddEventForm defaultDate={selectedDate} onSave={handleAddEvent}
-            onClose={() => { setShowAdd(false); setSelectedDate(null); }} loading={saving} />
+            onClose={() => confirmDiscard(() => { setShowAdd(false); setSelectedDate(null); })}
+            loading={saving} onDirtyChange={setFormDirty} />
         </Modal>
       )}
       {selectedEvent && !showAdd && (
@@ -565,9 +611,10 @@ export default function App() {
         </Modal>
       )}
       {editingEvent && (
-        <Modal onClose={() => setEditingEvent(null)}>
+        <Modal onClose={() => confirmDiscard(() => setEditingEvent(null))}>
           <AddEventForm editingEvent={editingEvent} onSave={handleEditEvent}
-            onClose={() => setEditingEvent(null)} loading={saving} />
+            onClose={() => confirmDiscard(() => setEditingEvent(null))}
+            loading={saving} onDirtyChange={setFormDirty} />
         </Modal>
       )}
       {dayListDay && (

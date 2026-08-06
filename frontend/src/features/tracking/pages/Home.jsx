@@ -1,11 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { useUserAlliances } from '../hooks/useUserAlliances';
 import { useAuth } from '../hooks/useAuth';
+import { CopyButton } from '@/components/CopyButton.jsx';
 
 export function TrackingHome() {
   const navigate = useNavigate();
   const session = useAuth();
   const { data: alliances = [], isLoading, error } = useUserAlliances();
+  const sqlCommand = session?.user?.id
+    ? `insert into at_alliance_members\n(alliance_id, user_id, role)\nvalues ('<alliance_id>', '${session.user.id}', 'viewer');`
+    : '';
 
   if (isLoading) {
     return (
@@ -42,22 +46,28 @@ export function TrackingHome() {
           <div style={{ marginTop: '1.5rem', background: 'var(--bg-panel)', border: '1px solid var(--border)',
             borderRadius: '10px', padding: '1rem', maxWidth: '440px', margin: '1.5rem auto 0',
             textAlign: 'left' }}>
-            <div style={{ fontSize: '0.68rem', fontFamily: "'Orbitron',sans-serif",
-              color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
-              YOUR USER ID (share with your admin)
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.68rem', fontFamily: "'Orbitron',sans-serif",
+                color: 'var(--text-faint)', letterSpacing: '0.06em' }}>
+                YOUR USER ID (share with your admin)
+              </div>
+              <CopyButton text={session.user.id} />
             </div>
             <code style={{ fontSize: '0.72rem', color: 'var(--accent)', display: 'block',
               fontFamily: 'monospace', lineHeight: 1.6, wordBreak: 'break-all' }}>
               {session.user.id}
             </code>
-            <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem',
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
+              marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem',
               fontSize: '0.68rem', fontFamily: "'Orbitron',sans-serif",
               color: 'var(--text-faint)', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
-              SQL COMMAND (Supabase admin)
+              <span>SQL COMMAND (Supabase admin)</span>
+              <CopyButton text={sqlCommand} />
             </div>
             <code style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block',
               fontFamily: 'monospace', lineHeight: 1.6 }}>
-              {`insert into at_alliance_members\n(alliance_id, user_id, role)\nvalues ('<alliance_id>', '${session.user.id}', 'viewer');`}
+              {sqlCommand}
             </code>
           </div>
         )}

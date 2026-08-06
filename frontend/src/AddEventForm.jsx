@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { normaliseTime, EVENT_TYPES, RECURRENCE_OPTIONS, parseCountdown, input, label } from "./helpers";
+import { useState, useRef, useEffect } from "react";
+import { normaliseTime, EVENT_TYPES, RECURRENCE_OPTIONS, DAYS_SHORT, parseCountdown, getSavedNickname, saveNickname, input, label } from "./helpers";
 import { useToast } from "./components/Toast.jsx";
 
-function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
+const DESCRIPTION_MAX_LENGTH = 500;
+
+function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent, onDirtyChange }) {
   const toast = useToast();
-  const [form, setForm] = useState(editingEvent ? {
+  const initialForm = useRef(editingEvent ? {
     title: editingEvent.title, date: editingEvent.date,
     time: normaliseTime(editingEvent.time), type: editingEvent.type || "event",
     description: editingEvent.description || "", author: editingEvent.author,
@@ -12,10 +14,19 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
     recurrence_end: editingEvent.recurrence_end || "",
   } : {
     title: "", date: defaultDate || new Date().toISOString().split("T")[0],
-    time: "00:00", type: "event", description: "", author: "",
+    time: "00:00", type: "event", description: "", author: getSavedNickname(),
     recurrence: "none", recurrence_end: "",
   });
+  const [form, setForm] = useState(initialForm.current);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Report unsaved-changes status to the parent so it can confirm before
+  // discarding the modal on backdrop-click / Escape / Cancel.
+  useEffect(() => {
+    const dirty = Object.keys(initialForm.current).some(k => form[k] !== initialForm.current[k]);
+    onDirtyChange?.(dirty);
+  }, [form, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   const [countdownMode, setCountdownMode] = useState(false);
   const [countdownInput, setCountdownInput] = useState("");
   const [countdownPreview, setCountdownPreview] = useState(null);
@@ -30,6 +41,7 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
     if (!form.title || !form.date || !form.time || !form.author) {
       toast.error("Please fill in all required fields."); return;
     }
+    saveNickname(form.author);
     onSave({ ...form, recurrence_end: form.recurrence_end || null });
   };
 
@@ -84,7 +96,9 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
         </>) : (<>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.8rem" }}>
             <div>
-              <label style={label}>Date * (UTC)</label>
+              <label style={label}>Date * (UTC){form.date && (
+                <span style={{ color:"var(--text-faint)" }}> · {DAYS_SHORT[(new Date(form.date+"T00:00:00Z").getUTCDay()+6)%7]}</span>
+              )}</label>
               <input type="date" style={input} value={form.date} onChange={e => set("date",e.target.value)} />
             </div>
             <div>
@@ -139,8 +153,12 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent }) {
         <div>
           <label style={label}>Description</label>
           <textarea style={{ ...input,resize:"vertical",minHeight:"65px" }}
-            value={form.description} onChange={e => set("description",e.target.value)}
+            value={form.description} maxLength={DESCRIPTION_MAX_LENGTH}
+            onChange={e => set("description",e.target.value)}
             placeholder="Details, rules, requirements..." />
+          <div style={{ textAlign:"right",fontSize:"0.68rem",color:"var(--text-faint)",marginTop:"0.2rem" }}>
+            {form.description.length}/{DESCRIPTION_MAX_LENGTH}
+          </div>
         </div>
         <div>
           <label style={label}>Your nickname *</label>

@@ -23,9 +23,9 @@ export function ToastProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const push = useCallback((message, type = "info", duration = DEFAULT_DURATION_MS) => {
+  const push = useCallback((message, type = "info", duration = DEFAULT_DURATION_MS, action = null) => {
     const id = ++nextId.current;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
     if (duration > 0) {
       setTimeout(() => dismiss(id), duration);
     }
@@ -38,9 +38,9 @@ export function ToastProvider({ children }) {
   }, [push]);
 
   const api = useRef({
-    success: (message, duration) => push(message, "success", duration),
-    error: (message, duration) => push(message, "error", duration),
-    info: (message, duration) => push(message, "info", duration),
+    success: (message, duration, action) => push(message, "success", duration, action),
+    error: (message, duration, action) => push(message, "error", duration, action),
+    info: (message, duration, action) => push(message, "info", duration, action),
   }).current;
 
   return (
@@ -53,6 +53,15 @@ export function ToastProvider({ children }) {
             <div key={t.id} role="status" style={{ ...styles.toast, borderLeftColor: typeStyle.color }}>
               <span style={{ color: typeStyle.color, fontWeight: 700 }}>{typeStyle.icon}</span>
               <span style={styles.message}>{t.message}</span>
+              {t.action && (
+                <button
+                  type="button"
+                  style={styles.action}
+                  onClick={() => { t.action.onClick(); dismiss(t.id); }}
+                >
+                  {t.action.label}
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="Dismiss"
@@ -107,6 +116,17 @@ const styles = {
     boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
   },
   message: { flex: 1 },
+  action: {
+    background: "none",
+    border: "1px solid var(--border-strong)",
+    borderRadius: "6px",
+    color: "var(--text)",
+    cursor: "pointer",
+    fontSize: "0.75rem",
+    fontWeight: 700,
+    padding: "0.15rem 0.5rem",
+    whiteSpace: "nowrap",
+  },
   close: {
     background: "none",
     border: "none",

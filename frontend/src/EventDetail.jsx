@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getTypeColor, EVENT_TYPES, RECURRENCE_OPTIONS, localTime, toGoogleCalLink, downloadICS, input } from "./helpers";
+import { getTypeColor, EVENT_TYPES, RECURRENCE_OPTIONS, localTime, toGoogleCalLink, downloadICS, getSavedNickname, saveNickname, input } from "./helpers";
 import { useToast } from "./components/Toast.jsx";
 
 function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdit }) {
@@ -18,6 +18,7 @@ function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdi
       toast.error("Nickname doesn't match. Only the event creator can delete it.");
       return;
     }
+    saveNickname(deleteNick);
     onDelete(event.id);
   };
 
@@ -79,7 +80,7 @@ function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdi
 
       {/* ── Delete with ownership check ── */}
       {deleteNick === null ? (
-        <button onClick={() => setDeleteNick("")} style={{
+        <button onClick={() => setDeleteNick(getSavedNickname())} style={{
           width:"100%",padding:"0.6rem",borderRadius:"8px",background:"transparent",
           border:"1px solid #ff4d4d33",color:"#ff4d4d66",cursor:"pointer",fontSize:"0.8rem" }}>
           Delete event
