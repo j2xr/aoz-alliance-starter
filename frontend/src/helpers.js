@@ -18,6 +18,7 @@ export const RECURRENCE_OPTIONS = [
   { id: "weekly",    label: "Every week" },
   { id: "4weekly",   label: "Every 4 weeks" },
   { id: "monthly",   label: "Every month" },
+  { id: "yearly",    label: "Every year" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -81,11 +82,17 @@ export function expandRecurrences(event, rangeStart, rangeEnd) {
       const maxDay = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0)).getUTCDate();
       current.setUTCDate(Math.min(originalDay, maxDay));
     }
+    if (event.recurrence === "yearly") {
+      current.setUTCDate(1); // avoid a Feb 29 base overflowing into March before clamping below
+      current.setUTCFullYear(current.getUTCFullYear() + 1);
+      const maxDay = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0)).getUTCDate();
+      current.setUTCDate(Math.min(originalDay, maxDay));
+    }
   }
   return occurrences;
 }
 
-const RECURRENCE_FREQ = { daily: "DAILY", weekly: "WEEKLY", "4weekly": "WEEKLY", monthly: "MONTHLY" };
+const RECURRENCE_FREQ = { daily: "DAILY", weekly: "WEEKLY", "4weekly": "WEEKLY", monthly: "MONTHLY", yearly: "YEARLY" };
 
 /** Start/end instants of an event as real Date objects (end = start + 1h),
  * so a 23:30 event correctly rolls over into the next UTC day instead of
