@@ -4,7 +4,7 @@ import { useToast } from "./components/Toast.jsx";
 
 const DESCRIPTION_MAX_LENGTH = 500;
 
-function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent, onDirtyChange }) {
+function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent, duplicateFrom, onDirtyChange }) {
   const toast = useToast();
   const initialForm = useRef(editingEvent ? {
     title: editingEvent.title, date: editingEvent.date,
@@ -12,6 +12,14 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent, onD
     description: editingEvent.description || "", author: editingEvent.author,
     recurrence: editingEvent.recurrence || "none",
     recurrence_end: editingEvent.recurrence_end || "",
+  } : duplicateFrom ? {
+    title: duplicateFrom.title, date: duplicateFrom.date,
+    time: normaliseTime(duplicateFrom.time), type: duplicateFrom.type || "event",
+    description: duplicateFrom.description || "", author: duplicateFrom.author || getSavedNickname(),
+    // Deliberately not copying the recurrence pattern: duplicating one
+    // occurrence of a recurring event shouldn't silently spawn a second
+    // whole recurring series.
+    recurrence: "none", recurrence_end: "",
   } : {
     title: "", date: defaultDate || new Date().toISOString().split("T")[0],
     time: "00:00", type: "event", description: "", author: getSavedNickname(),
@@ -48,7 +56,7 @@ function AddEventForm({ onSave, onClose, defaultDate, loading, editingEvent, onD
   return (
     <div>
       <h2 style={{ color:"var(--gold)",fontFamily:"'Orbitron',sans-serif",fontSize:"1rem",
-        marginBottom:"1.5rem",letterSpacing:"0.05em" }}>{editingEvent ? "✦ Edit Event" : "✦ New Event"}</h2>
+        marginBottom:"1.5rem",letterSpacing:"0.05em" }}>{editingEvent ? "✦ Edit Event" : duplicateFrom ? "✦ Duplicate Event" : "✦ New Event"}</h2>
       <div style={{ display:"grid",gap:"1rem" }}>
         <div>
           <label style={label}>Title *</label>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { getTypeColor, EVENT_TYPES, RECURRENCE_OPTIONS, localTime, toGoogleCalLink, downloadICS, getSavedNickname, saveNickname, input } from "./helpers";
 import { useToast } from "./components/Toast.jsx";
 
-function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdit }) {
+function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdit, onDuplicate }) {
   const toast = useToast();
   const [deleteNick, setDeleteNick] = useState(null); // null = hidden, string = asking
   const color = getTypeColor(event.type);
@@ -71,12 +71,19 @@ function EventDetail({ event, occurrenceDate, onClose, onDelete, deleting, onEdi
         </button>
       </div>
 
-      {/* ── Edit button ── */}
-      <button onClick={() => onEdit(event)} style={{
-        width:"100%",padding:"0.6rem",borderRadius:"8px",background:"transparent",
-        border:"1px solid #ffd70044",color:"var(--gold)",cursor:"pointer",fontSize:"0.8rem",marginBottom:"0.5rem" }}>
-        Edit event
-      </button>
+      {/* ── Edit / duplicate ── */}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.5rem" }}>
+        <button onClick={() => onEdit(event)} style={{
+          padding:"0.6rem",borderRadius:"8px",background:"transparent",
+          border:"1px solid #ffd70044",color:"var(--gold)",cursor:"pointer",fontSize:"0.8rem" }}>
+          Edit event
+        </button>
+        <button onClick={() => onDuplicate(event, d)} style={{
+          padding:"0.6rem",borderRadius:"8px",background:"transparent",
+          border:"1px solid var(--border-strong)",color:"var(--text-muted)",cursor:"pointer",fontSize:"0.8rem" }}>
+          Duplicate event
+        </button>
+      </div>
 
       {/* ── Delete with ownership check ── */}
       {deleteNick === null ? (
