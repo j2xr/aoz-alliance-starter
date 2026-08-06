@@ -48,7 +48,7 @@ export function AllianceSwitcher() {
           >
             <div style={{ fontSize: '0.82rem', fontWeight: '600',
               color: isActive ? 'var(--accent)' : 'var(--text)' }}>
-              {alliance.tag ? `[${alliance.tag}] ` : ''}{alliance.name}
+              {alliance.name}
             </div>
             <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)', marginTop: '0.1rem',
               fontFamily: "'Orbitron',sans-serif", letterSpacing: '0.04em' }}>
