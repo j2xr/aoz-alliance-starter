@@ -23,6 +23,7 @@ export default function App() {
   const [month, setMonth] = useState(today.getUTCMonth());
   const [events, setEvents]           = useState([]);
   const [dbStatus, setDbStatus]       = useState("loading"); // loading | ok | error
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting"); // connecting | live | error
   const [showAdd, setShowAdd]         = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [dayListDay, setDayListDay] = useState(null);
@@ -56,7 +57,9 @@ export default function App() {
     const channel = supabase
       .channel('events-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => fetchEvents())
-      .subscribe();
+      .subscribe((status) => {
+        setRealtimeStatus(status === 'SUBSCRIBED' ? 'live' : 'error');
+      });
     return () => { supabase.removeChannel(channel); };
   }, [fetchEvents]);
 
@@ -619,6 +622,24 @@ export default function App() {
         <div style={{ textAlign:"center",marginTop:"1.5rem",fontSize:"0.6rem",
           color:"var(--border)",letterSpacing:"0.12em" }}>
           AOZ ORIGINS · EVENTS CALENDAR · ALL TIMES IN UTC
+        </div>
+
+        {/* ── Realtime status + manual refresh ── */}
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem",
+          marginTop:"0.5rem",fontSize:"0.62rem",color:"var(--text-faint)" }}>
+          <span title={realtimeStatus} style={{ width:"6px",height:"6px",borderRadius:"50%",
+            display:"inline-block",
+            background: realtimeStatus==="live" ? "var(--success)"
+              : realtimeStatus==="error" ? "var(--danger)" : "var(--text-faint)" }} />
+          <span>
+            {realtimeStatus==="live" ? "Live updates"
+              : realtimeStatus==="error" ? "Live updates unavailable" : "Connecting…"}
+          </span>
+          <button onClick={() => fetchEvents()} title="Refresh now" style={{
+            background:"transparent",border:"none",color:"var(--text-faint)",cursor:"pointer",
+            fontSize:"0.75rem",padding:"0 0.2rem",lineHeight:1 }}>
+            ⟳
+          </button>
         </div>
       </div>
 
