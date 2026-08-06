@@ -33,6 +33,7 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [activeFilter, setActiveFilter] = useState(null); // null = all, or event type id
   const [editingEvent, setEditingEvent] = useState(null);
+  const [duplicatingEvent, setDuplicatingEvent] = useState(null);
   const [formDirty, setFormDirty] = useState(false);
 
   // Wraps AddEventForm's onClose (Cancel button, Modal backdrop-click, Escape)
@@ -71,7 +72,7 @@ export default function App() {
     setSaving(false);
     if (error) { toast.error("Error saving event: " + error.message); return; }
     await fetchEvents();
-    setShowAdd(false); setSelectedDate(null);
+    setShowAdd(false); setSelectedDate(null); setDuplicatingEvent(null);
   }, [fetchEvents, toast]);
 
   // ── Delete event ──────────────────────────────────────────────────────────
@@ -174,7 +175,7 @@ export default function App() {
   const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
 
   // ── Keyboard shortcuts: ←/→ (prev/next month or week), T (today), N (new event) ──
-  const anyModalOpen = showAdd || !!selectedEvent || !!editingEvent || !!dayListDay;
+  const anyModalOpen = showAdd || !!selectedEvent || !!editingEvent || !!duplicatingEvent || !!dayListDay;
   useEffect(() => {
     if (anyModalOpen) return;
     const onKeyDown = (e) => {
@@ -634,13 +635,24 @@ export default function App() {
           <EventDetail event={selectedEvent} occurrenceDate={selectedOccDate}
             onClose={() => { setSelectedEvent(null); setSelectedOccDate(null); }}
             onDelete={handleDelete} deleting={deleting}
-            onEdit={(evt) => { setEditingEvent(evt); setSelectedEvent(null); setSelectedOccDate(null); }} />
+            onEdit={(evt) => { setEditingEvent(evt); setSelectedEvent(null); setSelectedOccDate(null); }}
+            onDuplicate={(evt, occDate) => {
+              setDuplicatingEvent({ ...evt, date: occDate || evt.date });
+              setSelectedEvent(null); setSelectedOccDate(null);
+            }} />
         </Modal>
       )}
       {editingEvent && (
         <Modal onClose={() => confirmDiscard(() => setEditingEvent(null))}>
           <AddEventForm editingEvent={editingEvent} onSave={handleEditEvent}
             onClose={() => confirmDiscard(() => setEditingEvent(null))}
+            loading={saving} onDirtyChange={setFormDirty} />
+        </Modal>
+      )}
+      {duplicatingEvent && (
+        <Modal onClose={() => confirmDiscard(() => setDuplicatingEvent(null))}>
+          <AddEventForm duplicateFrom={duplicatingEvent} onSave={handleAddEvent}
+            onClose={() => confirmDiscard(() => setDuplicatingEvent(null))}
             loading={saving} onDirtyChange={setFormDirty} />
         </Modal>
       )}
