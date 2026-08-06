@@ -113,7 +113,7 @@ export function TrackingHome() {
               marginBottom: '0.5rem' }}>
               <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
                 fontWeight: '900', color: 'var(--accent)', lineHeight: 1 }}>
-                {alliance.tag ? `[${alliance.tag}]` : '🏰'}
+                🏰
               </div>
             </div>
             <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text)',

@@ -19,7 +19,6 @@ export async function fetchUserAlliances() {
   return (data ?? []).map(row => ({
     id: row.at_alliances.id,
     name: row.at_alliances.name,
-    tag: null,
     role: row.role,
   }));
 }

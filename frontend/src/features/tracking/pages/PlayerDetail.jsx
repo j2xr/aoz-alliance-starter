@@ -68,11 +68,6 @@ export function PlayerDetailPage() {
               fontWeight: '900', color: 'var(--text)', marginBottom: '0.2rem' }}>
               {player?.name ?? '—'}
             </h2>
-            {player?.game_id && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-                ID: {player.game_id}
-              </div>
-            )}
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             {participation?.participation_rate_pct != null && (
