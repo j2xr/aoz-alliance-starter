@@ -173,6 +173,33 @@ export default function App() {
   const isCurrentWeek = weekDays[0] === getMonday(today).toISOString().split("T")[0];
   const goToCurrentWeek = () => setWeekStart(getMonday(new Date()));
 
+  // ── Keyboard shortcuts: ←/→ (prev/next month or week), T (today), N (new event) ──
+  const anyModalOpen = showAdd || !!selectedEvent || !!editingEvent || !!dayListDay;
+  useEffect(() => {
+    if (anyModalOpen) return;
+    const onKeyDown = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return;
+
+      if (e.key === "ArrowLeft") {
+        if (view === "calendar") prevMonth();
+        else if (view === "week") prevWeek();
+      } else if (e.key === "ArrowRight") {
+        if (view === "calendar") nextMonth();
+        else if (view === "week") nextWeek();
+      } else if (e.key === "t" || e.key === "T") {
+        if (view === "calendar") goToCurrentMonth();
+        else if (view === "week") goToCurrentWeek();
+      } else if (e.key === "n" || e.key === "N") {
+        setSelectedDate(null);
+        setShowAdd(true);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [anyModalOpen, view, month, year, weekStart]);
+
   const weekLabel = useMemo(() => {
     const s = weekDays[0].split("-").map(Number);
     const e = weekDays[6].split("-").map(Number);
