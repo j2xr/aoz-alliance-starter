@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { onEnterOrSpace } from '@/lib/a11y';
+import { useMediaQuery } from '@/lib/useMediaQuery';
+
+const MOBILE_BREAKPOINT = '(max-width: 640px)';
 
 function fmtPct(v) {
   if (v == null) return '—';
@@ -31,10 +34,28 @@ const COLS = [
   { key: 'defense_pct', label: 'DEF %', align: 'right', numeric: true },
   { key: 'recorded_date', label: 'DATE', align: 'right', numeric: false },
 ];
+const COL_BY_KEY = Object.fromEntries(COLS.map(c => [c.key, c]));
+
+const PCT_COLOR = { attack_pct: 'var(--accent)', hp_pct: 'var(--success)', defense_pct: '#fb923c' };
+
+// Shared by the <table> cells and the mobile card rows.
+function renderValue(col, row) {
+  switch (col.key) {
+    case 'last_rank':
+      return <span style={{ color: 'var(--gold)', fontFamily: "'Orbitron',sans-serif" }}>{row.last_rank ?? '—'}</span>;
+    case 'attack_pct': case 'hp_pct': case 'defense_pct':
+      return <span style={{ color: PCT_COLOR[col.key], fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>{fmtPct(row[col.key])}</span>;
+    case 'recorded_date':
+      return fmtDate(row.recorded_date);
+    default:
+      return row[col.key] ?? '—';
+  }
+}
 
 export function PlayerStatsTable({ rows }) {
   const navigate = useNavigate();
   const { allianceId } = useParams();
+  const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
   const [sortKey, setSortKey] = useState('attack_pct');
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -61,6 +82,34 @@ export function PlayerStatsTable({ rows }) {
       <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-faint)',
         fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>
         No data
+      </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div style={{ display: 'grid', gap: '0.6rem' }}>
+        {sorted.map((row, i) => (
+          <div key={row.player_id}
+            onClick={() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`)}
+            role="button" tabIndex={0}
+            onKeyDown={onEnterOrSpace(() => navigate(`/tracking/alliances/${allianceId}/players/${row.player_id}`))}
+            style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: '10px',
+              padding: '0.75rem 0.9rem', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.45rem' }}>
+              <span style={{ color: 'var(--text-faint)', fontFamily: "'Orbitron',sans-serif", fontSize: '0.75rem' }}>#{i + 1}</span>
+              <span style={{ fontWeight: '600', color: 'var(--text)', fontSize: '0.85rem' }}>{row.player_name ?? '—'}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.78rem' }}>
+              {COLS.filter(c => c.key !== 'player_name').map(col => (
+                <div key={col.key} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-faint)' }}>{col.label}</span>
+                  <span>{renderValue(col, row)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -107,22 +156,20 @@ export function PlayerStatsTable({ rows }) {
               fontSize: '0.78rem', fontFamily: "'Orbitron',sans-serif" }}>{i + 1}</td>
             <td style={{ padding: '0.65rem 1rem', color: 'var(--text)', fontSize: '0.85rem',
               fontWeight: '600' }}>{row.player_name ?? '—'}</td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: 'var(--gold)',
-              fontSize: '0.8rem', fontFamily: "'Orbitron',sans-serif" }}>{row.last_rank ?? '—'}</td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--accent)',
-              fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif", fontWeight: '700' }}>
-              {fmtPct(row.attack_pct)}
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'center', fontSize: '0.8rem' }}>
+              {renderValue(COL_BY_KEY.last_rank, row)}
             </td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--success)',
-              fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif" }}>
-              {fmtPct(row.hp_pct)}
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontSize: '0.82rem' }}>
+              {renderValue(COL_BY_KEY.attack_pct, row)}
             </td>
-            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: '#fb923c',
-              fontSize: '0.82rem', fontFamily: "'Orbitron',sans-serif" }}>
-              {fmtPct(row.defense_pct)}
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontSize: '0.82rem' }}>
+              {renderValue(COL_BY_KEY.hp_pct, row)}
+            </td>
+            <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontSize: '0.82rem' }}>
+              {renderValue(COL_BY_KEY.defense_pct, row)}
             </td>
             <td style={{ padding: '0.65rem 1rem', textAlign: 'right', color: 'var(--text-dim)',
-              fontSize: '0.75rem' }}>{fmtDate(row.recorded_date)}</td>
+              fontSize: '0.75rem' }}>{renderValue(COL_BY_KEY.recorded_date, row)}</td>
           </tr>
         ))}
       </tbody>

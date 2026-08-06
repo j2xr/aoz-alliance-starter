@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchUserAlliances } from '../queries/atQueries';
 
-export function useUserAlliances() {
+export function useUserAlliances(options = {}) {
   return useQuery({
     queryKey: ['at', 'my-alliances'],
     queryFn: fetchUserAlliances,
     staleTime: 1000 * 60 * 10,
+    ...options,
   });
 }

@@ -221,6 +221,23 @@ export function downloadWeekICS(weekEvents, weekLabel) {
   );
 }
 
+// ─── Nickname memory (localStorage) ────────────────────────────────────────
+const NICKNAME_KEY = "aoz_nickname";
+
+/** Last nickname this visitor used, or "" if none saved / storage unavailable. */
+export function getSavedNickname() {
+  try { return localStorage.getItem(NICKNAME_KEY) || ""; }
+  catch { return ""; }
+}
+
+/** Remember a nickname for next time. No-ops on blank input or when storage
+ * is unavailable (e.g. private browsing in some browsers throws on access). */
+export function saveNickname(name) {
+  if (!name) return;
+  try { localStorage.setItem(NICKNAME_KEY, name); }
+  catch { /* storage unavailable */ }
+}
+
 // ─── Shared styles ───────────────────────────────────────────────────────────
 export const input = {
   width: "100%", background: "var(--bg-hover)", border: "1px solid var(--border-strong)",

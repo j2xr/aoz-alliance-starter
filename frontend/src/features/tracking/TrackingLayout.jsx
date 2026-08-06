@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { AllianceSwitcher } from './components/AllianceSwitcher';
 import { LoginPage } from './components/LoginPage';
 import { useAuth } from './hooks/useAuth';
@@ -11,10 +12,10 @@ import { useUserAlliances } from './hooks/useUserAlliances';
 const MOBILE_BREAKPOINT = '(max-width: 720px)';
 
 const NAV_TABS = [
-  { path: 'events', label: '📋 Events' },
-  { path: 'players', label: '👥 Players' },
-  { path: 'donations', label: '💰 Donations' },
-  { path: 'stats', label: '⚔️ Stats' },
+  { path: 'events', label: '📋 Events', title: 'Events' },
+  { path: 'players', label: '👥 Players', title: 'Players' },
+  { path: 'donations', label: '💰 Donations', title: 'Donations' },
+  { path: 'stats', label: '⚔️ Stats', title: 'Stats' },
 ];
 
 function detectActiveTab(pathname) {
@@ -33,6 +34,7 @@ export function TrackingLayout() {
   const prevUserIdRef = useRef(undefined);
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { data: alliances = [] } = useUserAlliances({ enabled: !!session?.user?.id });
 
   // Close the mobile sidebar drawer on navigation
   useEffect(() => {
@@ -49,6 +51,12 @@ export function TrackingLayout() {
   }, [session, queryClient]);
 
   const activeTab = detectActiveTab(location.pathname);
+  const activeTabMeta = NAV_TABS.find(t => t.path === activeTab);
+  const currentAlliance = allianceId ? alliances.find(a => a.id === allianceId) : null;
+
+  useDocumentTitle(
+    currentAlliance ? `${currentAlliance.name} · ${activeTabMeta?.title} — AOZ Tracker` : 'AOZ Tracker',
+  );
 
   // Still resolving session
   if (session === undefined) {
@@ -118,6 +126,16 @@ export function TrackingLayout() {
               AOZ ORIGINS
             </div>
           </div>
+
+          {currentAlliance && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem',
+              color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--border-strong)' }}>/</span>
+              <span style={{ color: 'var(--text-muted)' }}>{currentAlliance.name}</span>
+              <span style={{ color: 'var(--border-strong)' }}>/</span>
+              <span>{activeTabMeta?.title}</span>
+            </div>
+          )}
 
           {/* Spacer */}
           <div style={{ flex: 1 }} />
