@@ -1,0 +1,158 @@
+name: deploy-gate
+
+# Deployment gate. The per-PR `frontend` and `tracker` workflows already run the
+# unit suites fast; this one is heavier and only runs when something actually
+# ships to the default branch. It proves the *deployed artifact* — the real
+# Docker images and a freshly-migrated database — not just that source-tree tests
+# pass. Two independent jobs so a database problem and an image problem surface
+# separately.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    name: images (build + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build both images exactly as docker-compose.yml does (same contexts and
+      # Dockerfiles), so what we smoke is byte-for-byte what the host runs.
+      - name: Build ocr-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: tracker/apps/ocr-service
+          load: true
+          tags: ocr:ci
+          cache-from: type=gha,scope=ocr
+          cache-to: type=gha,mode=min,scope=ocr
+
+      - name: Build discord-bot image
+        uses: docker/build-push-action@v6
+        with:
+          context: tracker
+          file: tracker/apps/discord-bot/Dockerfile
+          load: true
+          tags: bot:ci
+          cache-from: type=gha,scope=bot
+          cache-to: type=gha,mode=min,scope=bot
+
+      # The production image is built --no-dev: pytest and the OCR bench run on a
+      # host `uv sync`, never inside the shipped image. This is the only check
+      # that the image itself has every runtime dependency (Tesseract, the
+      # language packs, OpenCV libs, the compiled tesserocr bindings) by running
+      # a real extraction through it.
+      - name: Smoke — ocr-service (/health + real extraction)
+        run: |
+          set -euo pipefail
+          docker run -d --name ocr -p 8000:8000 ocr:ci
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/health >/dev/null && break
+            if [ "$i" -eq 60 ]; then echo "ocr /health never came up"; docker logs ocr; exit 1; fi
+            sleep 1
+          done
+          curl -sf http://localhost:8000/health | grep -q '"tesseract":true'
+          curl -sf http://localhost:8000/health | grep -q '"db":true'
+
+          FIX=tracker/apps/ocr-service/tests/fixtures/polar_invasion/20260407T1500_001.jpg
+          JOB=$(curl -sf -X POST -F "file=@${FIX}" \
+                 "http://localhost:8000/extract?event_type=polar_invasion" \
+                 | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+          echo "extract job=$JOB"
+          for i in $(seq 1 90); do
+            J=$(curl -sf "http://localhost:8000/jobs/$JOB")
+            ST=$(printf '%s' "$J" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            if [ "$ST" = done ]; then
+              N=$(printf '%s' "$J" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['result'].get('members',[])))")
+              echo "extract done, members=$N"
+              [ "$N" -gt 0 ] || { echo "extraction produced 0 rows"; exit 1; }
+              break
+            fi
+            [ "$ST" = error ] && { echo "extraction errored: $J"; docker logs ocr; exit 1; }
+            if [ "$i" -eq 90 ]; then echo "extraction never finished"; docker logs ocr; exit 1; fi
+            sleep 1
+          done
+          docker rm -f ocr
+
+      # The bot image runs `tsx` directly (no compiled entrypoint), so this is
+      # the check that the whole module graph loads, config validation runs, the
+      # health server binds, and an invalid token fails *closed* (exit 1) rather
+      # than hanging.
+      - name: Smoke — discord-bot (loads, binds health, fails closed)
+        run: |
+          set -euo pipefail
+          out=$(docker run --rm \
+            -e DISCORD_BOT_TOKEN=deadbeef.invalid.token \
+            -e DISCORD_ALLOWED_CHANNEL_IDS=123 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_SERVICE_ROLE_KEY=fake \
+            bot:ci 2>&1) && rc=0 || rc=$?
+          echo "$out"
+          echo "$out" | grep -q "Health server listening on port 3001" || { echo "health server did not bind"; exit 1; }
+          echo "$out" | grep -q "Failed to login to Discord"           || { echo "did not reach Discord login"; exit 1; }
+          [ "${rc:-0}" -ne 0 ] || { echo "bot should exit non-zero on invalid token"; exit 1; }
+
+          out=$(docker run --rm \
+            -e DISCORD_ALLOWED_CHANNEL_IDS=123 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_SERVICE_ROLE_KEY=fake \
+            bot:ci 2>&1) && rc=0 || rc=$?
+          echo "$out"
+          echo "$out" | grep -q "Missing required env var" || { echo "missing-env validation did not fire"; exit 1; }
+          [ "${rc:-0}" -ne 0 ] || { echo "bot should exit non-zero on missing env"; exit 1; }
+
+      # Reproduces docker-compose.yml's wiring: the bot reaches the OCR service by
+      # container name over a shared network, at the exact OCR_SERVICE_URL compose
+      # sets. Uses the bot image's own Node runtime (alpine, no curl) as the client.
+      - name: Smoke — bot ↔ ocr connectivity (compose wiring)
+        run: |
+          set -euo pipefail
+          docker network create tracker-ci
+          docker run -d --name ocr-service --network tracker-ci ocr:ci
+          docker run --rm --network tracker-ci \
+            -e OCR_SERVICE_URL=http://ocr-service:8000 \
+            --entrypoint node bot:ci -e '
+              const url = process.env.OCR_SERVICE_URL + "/health";
+              (async () => {
+                for (let i = 0; i < 60; i++) {
+                  try { const r = await fetch(url); if (r.ok) { console.log("ocr reachable:", await r.text()); process.exit(0); } }
+                  catch (e) { /* not up yet */ }
+                  await new Promise(s => setTimeout(s, 1000));
+                }
+                console.error("ocr never reachable at", url); process.exit(1);
+              })();
+            '
+          docker rm -f ocr-service
+          docker network rm tracker-ci
+
+  database:
+    name: database (migrations + RLS pgTAP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.109.1
+
+      # `db start` applies all supabase/migrations in order onto a fresh
+      # database — the same thing `supabase db push` does against production,
+      # so a migration that no longer applies cleanly fails here.
+      - name: Start local database (applies every migration)
+        run: supabase db start
+
+      # pgTAP: per-alliance RLS isolation (0017), the at_apply_correction
+      # execute-grant lockdown (0024), and structural invariants the dashboard
+      # depends on. See supabase/tests/*.sql.
+      - name: Run pgTAP tests
+        run: supabase test db --local

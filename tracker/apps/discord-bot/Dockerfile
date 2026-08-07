@@ -20,6 +20,12 @@ COPY apps/discord-bot/tsconfig.json ./apps/discord-bot/
 
 WORKDIR /app/apps/discord-bot
 
+# Fail the build on a type error. The container runs `tsx`, which strips types
+# without checking them, so without this a type error the CI rejects could still
+# be shipped to the host. `build` is `tsc --noEmit` (typescript is installed
+# because this image is not built --prod).
+RUN pnpm run build
+
 RUN mkdir -p /data/inbox
 
 CMD ["node_modules/.bin/tsx", "src/index.ts"]

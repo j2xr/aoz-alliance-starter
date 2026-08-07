@@ -16,6 +16,7 @@ Contents:
 5. [Frontend: run locally & deploy to Vercel](#5-frontend-run-locally--deploy-to-vercel)
 6. [Tracker: run the bot & OCR service](#6-tracker-run-the-bot--ocr-service)
 7. [First login & link yourself to an alliance](#7-first-login--link-yourself-to-an-alliance)
+8. [Continuous integration & the deployment gate](#8-continuous-integration--the-deployment-gate)
 
 ---
 
@@ -294,6 +295,51 @@ row linking that account to an alliance.
 5. Open `/tracking` on your site, log in, and you should now see your alliance,
    its events, players, donations, stats, and any low-confidence rows on the
    Review page as the bot ingests screenshots.
+
+---
+
+## 8. Continuous integration & the deployment gate
+
+Three GitHub Actions workflows guard the three things you deploy. On every pull
+request, **`frontend`** and **`tracker`** run the unit suites, type-checks, and
+linters fast. On every push to the default branch — i.e. every deploy — two more
+run:
+
+- **`deploy-gate`** builds the *real* Docker images (same contexts as
+  `docker-compose.yml`) and smoke-tests them: the OCR service runs an actual
+  extraction through the shipped image, and the bot proves it loads, binds its
+  health server, and fails closed on a bad token. A second job spins up a fresh
+  database, applies **every** migration, and runs the pgTAP tests in
+  `supabase/tests/` — including the per-alliance RLS isolation and the
+  `at_apply_correction` execute-grant lockdown. This is the surface with no unit
+  tests otherwise.
+- **`smoke-frontend`** fires when Vercel reports a successful deployment and
+  probes the live URL: root loads, the `/tracking` deep link resolves through
+  the SPA rewrite, the PWA manifest and the hashed JS bundle are served.
+
+**Make the checks blocking.** By default a red check does *not* stop a merge or a
+Vercel redeploy. Protect the default branch so it does (run once, with the
+GitHub CLI authenticated as the repo owner):
+
+```bash
+gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
+  -H "Accept: application/vnd.github+json" \
+  -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[contexts][]=build + test' \
+  -f 'required_status_checks[contexts][]=discord-bot (tsc + eslint + vitest)' \
+  -f 'required_status_checks[contexts][]=ocr-service (ruff + mypy + pytest + bench)' \
+  -F 'enforce_admins=false' -F 'required_pull_request_reviews=null' \
+  -F 'restrictions=null'
+```
+
+**Run the database gate locally** before pushing (needs Docker + the Supabase
+CLI):
+
+```bash
+supabase db start          # applies every migration onto a fresh database
+supabase test db --local   # runs supabase/tests/*.sql
+supabase stop
+```
 
 ---
 

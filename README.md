@@ -2,6 +2,7 @@
 
 [![tracker](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/tracker.yml/badge.svg)](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/tracker.yml)
 [![frontend](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/frontend.yml/badge.svg)](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/frontend.yml)
+[![deploy-gate](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/deploy-gate.yml/badge.svg)](https://github.com/j2xr/aoz-alliance-starter/actions/workflows/deploy-gate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A clone-and-go template for running an **alliance management + events** stack
