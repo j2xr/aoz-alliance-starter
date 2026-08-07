@@ -8,6 +8,7 @@ import { AllianceSwitcher } from './components/AllianceSwitcher';
 import { LoginPage } from './components/LoginPage';
 import { useAuth } from './hooks/useAuth';
 import { useUserAlliances } from './hooks/useUserAlliances';
+import { useNeedsReviewCount } from './hooks/useNeedsReview';
 
 const MOBILE_BREAKPOINT = '(max-width: 720px)';
 
@@ -16,9 +17,11 @@ const NAV_TABS = [
   { path: 'players', label: '👥 Players', title: 'Players' },
   { path: 'donations', label: '💰 Donations', title: 'Donations' },
   { path: 'stats', label: '⚔️ Stats', title: 'Stats' },
+  { path: 'review', label: '🔍 Review', title: 'Review' },
 ];
 
 function detectActiveTab(pathname) {
+  if (pathname.includes('/review')) return 'review';
   if (pathname.includes('/stats')) return 'stats';
   if (pathname.includes('/donations')) return 'donations';
   if (pathname.includes('/players')) return 'players';
@@ -35,6 +38,7 @@ export function TrackingLayout() {
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: alliances = [] } = useUserAlliances({ enabled: !!session?.user?.id });
+  const { data: reviewCount = 0 } = useNeedsReviewCount(allianceId);
 
   // Close the mobile sidebar drawer on navigation
   useEffect(() => {
@@ -191,6 +195,7 @@ export function TrackingLayout() {
                 </div>
                 {NAV_TABS.map(tab => {
                   const isActive = activeTab === tab.path;
+                  const badge = tab.path === 'review' && reviewCount > 0 ? reviewCount : null;
                   return (
                     <button
                       key={tab.path}
@@ -203,9 +208,19 @@ export function TrackingLayout() {
                         fontSize: '0.8rem', fontWeight: isActive ? '600' : '400',
                         color: isActive ? 'var(--accent)' : 'var(--text-muted)',
                         transition: 'background 0.15s',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem',
                       }}
                     >
-                      {tab.label}
+                      <span>{tab.label}</span>
+                      {badge != null && (
+                        <span style={{
+                          background: 'var(--gold)', color: '#1a1300', borderRadius: '999px',
+                          fontSize: '0.62rem', fontWeight: '700', fontFamily: "'Orbitron',sans-serif",
+                          padding: '0.05rem 0.4rem', minWidth: '1.2rem', textAlign: 'center', lineHeight: 1.4,
+                        }}>
+                          {badge}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
