@@ -1,11 +1,16 @@
 name: smoke-frontend
 
 # Post-deployment smoke of the Vercel frontend. Vercel's Git integration posts a
-# GitHub Deployment + deployment_status for every deploy (preview and
-# production); this reacts to the successful ones and probes the *live* URL from
-# the deployment payload — no hardcoded domain, so it works on every fork of the
-# template. It catches deploy-time breakage that unit tests can't see: a broken
-# SPA rewrite, a half-uploaded build, a missing PWA manifest.
+# GitHub Deployment + deployment_status for every deploy; this reacts to a
+# successful *Production* one and probes the live URL from the deployment payload
+# — no hardcoded domain, so it works on every fork of the template. It catches
+# deploy-time breakage that unit tests can't see: a broken SPA rewrite, a
+# half-uploaded build, a missing PWA manifest.
+#
+# Production only, on purpose: Vercel Preview deployments sit behind Vercel's
+# authentication wall, which serves a 200 SSO interstitial (not the app) to an
+# anonymous CI runner — every preview probe would false-fail. Production is the
+# public site users actually hit, so that is what we smoke.
 #
 # Requires the Vercel↔GitHub integration to report deployments to GitHub (the
 # default when you import the repo into Vercel). If you deploy some other way,
@@ -16,7 +21,9 @@ on:
 jobs:
   smoke:
     name: smoke deployed URL
-    if: github.event.deployment_status.state == 'success'
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment == 'Production'
     runs-on: ubuntu-latest
     steps:
       - name: Probe the deployed frontend
