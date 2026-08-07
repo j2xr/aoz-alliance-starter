@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAllianceEvents } from '../hooks/useAllianceEvents';
+import { useAllianceImportDeltas } from '../hooks/useEventImportDelta';
 import { EventCard } from '../components/EventCard';
 import { isAccessDenied } from '../queries/atQueries';
 
@@ -10,6 +11,9 @@ export function EventsPage() {
   const { allianceId } = useParams();
   const [limit, setLimit] = useState(20);
   const { data: events = [], isLoading, error } = useAllianceEvents(allianceId, limit);
+  // Fetched separately (not per-card) so the list issues one query instead of N.
+  const { data: deltas = [] } = useAllianceImportDeltas(allianceId);
+  const deltaByEventId = Object.fromEntries(deltas.map(d => [d.event_id, d]));
 
   if (!allianceId) {
     return (
@@ -87,7 +91,7 @@ export function EventsPage() {
       ) : (
         <div style={{ display: 'grid', gap: '0.6rem' }}>
           {events.map(event => (
-            <EventCard key={event.id} event={event} />
+            <EventCard key={event.id} event={event} importDelta={deltaByEventId[event.id]} />
           ))}
         </div>
       )}

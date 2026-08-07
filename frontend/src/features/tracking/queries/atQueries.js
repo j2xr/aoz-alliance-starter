@@ -54,6 +54,27 @@ export async function fetchEventLeaderboard(eventId) {
   return data ?? [];
 }
 
+export async function fetchEventImportDelta(eventId) {
+  const { data, error } = await supabase
+    .from('at_v_event_import_delta')
+    .select('*')
+    .eq('event_id', eventId)
+    .maybeSingle();
+  if (error) throw error;
+  return data; // null when the event has no row (shouldn't happen — the view left-joins)
+}
+
+export async function fetchAllianceImportDeltas(allianceId, limit = 20) {
+  const { data, error } = await supabase
+    .from('at_v_event_import_delta')
+    .select('*')
+    .eq('alliance_id', allianceId)
+    .order('event_datetime', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function fetchParticipationRate(allianceId, playerId) {
   // Single row for the player detail page: loading the whole alliance view
   // just to keep one row would transfer N rows for nothing.
