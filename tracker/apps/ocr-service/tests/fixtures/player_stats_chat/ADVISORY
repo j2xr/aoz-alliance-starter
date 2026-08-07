@@ -1,0 +1,16 @@
+This scene is benched in ADVISORY mode: bench.py prints its accuracy but does
+NOT fail CI on a miss, and it is kept out of baseline.json.
+
+Why: player_stats_chat reads free-form, human-typed alliance-chat messages
+(labeled/unlabeled/mixed-order stats, Cyrillic/Japanese/emoji handles read with
+`-l eng`, translator badges, typos, and prose corrections). Name accuracy in
+particular is expected to sit below the 0.90 target that gated scenes must hit,
+so gating here would make CI flaky without reflecting a real regression.
+
+The value of these fixtures is coverage: they exercise the full-image OCR +
+state-machine path end-to-end on real screenshots — the one dashboard data type
+that previously had zero real-image bench coverage (only mocked unit tests).
+
+To promote this scene to blocking once the parser reaches its targets: delete
+this marker file, then run `uv run python ../../tools/bench-ocr/bench.py
+--write-baseline` from tracker/apps/ocr-service so the scene enters baseline.json.

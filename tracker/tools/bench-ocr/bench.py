@@ -77,7 +77,7 @@ import cv2  # noqa: E402
 
 from app.parsers import REGISTRY  # noqa: E402
 from app.parsers._trace import FieldBox, RowTrace  # noqa: E402
-from app.parsers.base import DonationParseResult  # noqa: E402
+from app.parsers.base import DonationParseResult, PlayerStatsParseResult  # noqa: E402
 from app.preprocess import preprocess_image  # noqa: E402
 
 FIXTURES_ROOT = OCR_SERVICE_PATH / "tests" / "fixtures"
@@ -105,6 +105,21 @@ _DONATION_TARGETS: dict[str, float] = {
     "rank": 0.95,
     "alliance_honor": 0.95,
 }
+
+# player_stats_chat is a free-form, human-typed scene (see its fixtures'
+# ADVISORY marker). These targets set the reporting bar, but the scene is
+# benched in advisory mode, so a miss is printed, not gated.
+_STATS_TARGETS: dict[str, float] = {
+    "name": 0.90,
+    "attack": 0.95,
+    "hp": 0.95,
+    "defense": 0.95,
+}
+
+# Absolute tolerance for a stat percentage match, to absorb float
+# representation of the transcribed golden (e.g. 887.2) without letting a real
+# misread digit slip through.
+_STAT_ABS_TOL = 0.05
 
 
 @dataclass
@@ -342,6 +357,44 @@ def _compare_donation_row(
     return matches, anomalies
 
 
+def _stat_match(want: Any, got: Any) -> bool:
+    """Numeric stat equality with a small tolerance.
+
+    Both None → match (neither the golden nor the parser has the value).
+    One None  → miss. Otherwise match within ``_STAT_ABS_TOL``.
+    """
+    if want is None and got is None:
+        return True
+    if want is None or got is None:
+        return False
+    return abs(float(want) - float(got)) <= _STAT_ABS_TOL
+
+
+def _compare_stats_row(
+    fixture: str, row_idx: int, want: dict, got: Any
+) -> tuple[dict[str, bool], list[Anomaly]]:
+    """Compare one player_stats_chat row. Returns (per-field correctness, anomalies).
+
+    Fields: name (fuzzy, shared with the other scenes) plus the three numeric
+    stat slots, which the parser exposes as ``*_pct`` attributes.
+    """
+    conf = float(got.confidence)
+    matches: dict[str, bool] = {}
+    anomalies: list[Anomaly] = []
+
+    _compare_name(fixture, row_idx, want, got, conf, matches, anomalies)
+
+    for field, attr in (("attack", "attack_pct"), ("hp", "hp_pct"), ("defense", "defense_pct")):
+        exp = want.get(f"{field}_pct")
+        actual = getattr(got, attr, None)
+        ok = _stat_match(exp, actual)
+        matches[field] = ok
+        if not ok:
+            anomalies.append(Anomaly("FAIL", fixture, row_idx, field, exp, actual, conf))
+
+    return matches, anomalies
+
+
 def _bench_event_type(
     event_type: str,
     fixtures_dir: Path,
@@ -370,11 +423,14 @@ def _bench_event_type(
         return _empty
 
     with fixtures[0].open(encoding="utf-8") as fh:
-        is_donation = json.load(fh).get("kind") == "donation"
+        kind = json.load(fh).get("kind")
 
     advisory = (fixtures_dir / _ADVISORY_MARKER).exists()
 
-    targets = _DONATION_TARGETS if is_donation else _EVENT_TARGETS
+    targets = {
+        "donation": _DONATION_TARGETS,
+        "player_stats": _STATS_TARGETS,
+    }.get(kind, _EVENT_TARGETS)
     fields = list(targets.keys())
     # name_exact is tracked alongside the gated fields but never gated: it feeds
     # the informational summary row and a baseline entry (blocking on *new*
@@ -435,6 +491,8 @@ def _bench_event_type(
         for i, (want, got) in enumerate(zip(exp_members, got_members, strict=False)):
             if isinstance(result, DonationParseResult):
                 matches, row_anomalies = _compare_donation_row(fixture_path.stem, i, want, got)
+            elif isinstance(result, PlayerStatsParseResult):
+                matches, row_anomalies = _compare_stats_row(fixture_path.stem, i, want, got)
             else:
                 matches, row_anomalies = _compare_event_row(fixture_path.stem, i, want, got)
 

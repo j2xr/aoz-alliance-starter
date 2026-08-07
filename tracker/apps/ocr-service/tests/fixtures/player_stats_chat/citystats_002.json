@@ -1,0 +1,50 @@
+{
+  "kind": "player_stats",
+  "scene": "player_stats_chat",
+  "source": "(LOL) City stats chat, 05-02 — real alliance submissions (continuation)",
+  "note": "Bulleit posted a free-text correction ('Lra 893 * sorry i guess im a little dyslexic') after the structured bubble; the golden keeps the structured 983/754/477 the parser is designed to read, and the prose correction is expected to be dropped as noise. Timestamps and translator badges are not members.",
+  "members": [
+    {
+      "name": "Jasmin ツ",
+      "attack_pct": 807.2,
+      "attack_kind": "lra",
+      "hp_pct": 642.5,
+      "defense_pct": 415.3
+    },
+    {
+      "name": "幸恵丸⚓船長",
+      "attack_pct": 535,
+      "attack_kind": "lra",
+      "hp_pct": 462,
+      "defense_pct": 307
+    },
+    {
+      "name": "Luxemburg",
+      "attack_pct": 382.2,
+      "attack_kind": "lra",
+      "hp_pct": 300.1,
+      "defense_pct": 270.6
+    },
+    {
+      "name": "THOR,01",
+      "attack_pct": 422.2,
+      "attack_kind": "lra",
+      "hp_pct": 340.7,
+      "defense_pct": 340.2
+    },
+    {
+      "name": "Stoka",
+      "attack_pct": 450,
+      "attack_kind": "lra",
+      "hp_pct": 350,
+      "defense_pct": 250
+    },
+    {
+      "name": "Bulleit",
+      "attack_pct": 983,
+      "attack_kind": "lra",
+      "hp_pct": 754,
+      "defense_pct": 477
+    }
+  ]
+}
