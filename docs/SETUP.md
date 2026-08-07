@@ -58,7 +58,7 @@ docs/       # this guide
 
 All migrations live in `supabase/migrations/`. They create the frontend's
 `events` table (`0000_events.sql`) and the tracker's `at_*` tables/views/policies
-(`0001`–`0017`), in order.
+(`0001`–`0026`), in order.
 
 ### Option A — Supabase CLI (recommended)
 
@@ -92,7 +92,7 @@ order by table_name;
 
 You should see `events` plus the `at_*` tables (`at_alliances`, `at_players`,
 `at_events`, `at_participations`, `at_donations`, `at_player_stats`,
-`at_alliance_members`, …).
+`at_alliance_members`, `at_corrections`, …).
 
 > `0008_at_seed_alliances.sql` ships empty on purpose. You'll add your
 > alliance row in [step 7](#7-first-login--link-yourself-to-an-alliance).
@@ -292,7 +292,8 @@ row linking that account to an alliance.
    ```
 
 5. Open `/tracking` on your site, log in, and you should now see your alliance,
-   its events, players, donations, and stats as the bot ingests screenshots.
+   its events, players, donations, stats, and any low-confidence rows on the
+   Review page as the bot ingests screenshots.
 
 ---
 

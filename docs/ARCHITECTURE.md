@@ -68,6 +68,12 @@ graph TB
 4. The bot UPSERTs the result into the relevant `at_*` tables (idempotent —
    re-uploading the same capture is a no-op).
 5. The dashboard reads those tables through Supabase with RLS applied.
+6. Rows the OCR read with low confidence are flagged (`needs_review`) and
+   surfaced on the dashboard's Review page (`at_v_needs_review`); each event is
+   also checked for import completeness against its own header totals
+   (`at_v_event_import_delta`). An operator fixes a value with `/correct` or maps
+   a misread name with `/player-alias`, and `/correct` edits are audited in
+   `at_corrections`.
 
 ## Conventions
 

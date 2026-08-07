@@ -52,6 +52,21 @@ the OCR service, which detects the screen type (event leaderboard, donation
 ranking, or player stats chat), extracts the rows, and upserts them into
 Supabase. The frontend dashboard then renders the history — no manual data entry.
 
+## The event calendar
+
+The landing page is a shared, public event calendar — month, week and upcoming
+views, all in UTC. Anyone can read it and add to it; no login (the tracking
+dashboard is the login-gated half).
+
+**Add an event:** click **+ Add** (or any empty day) to open the form. Give it a
+title, a date and time (UTC), a type (KE, Alliance, Event or Other), an optional
+description, and your name. Optionally make it recurring — daily, weekly, every
+4 weeks, monthly or yearly — with an end date. Paste an in-game countdown and the
+form fills in the date and time for you. New events appear live for everyone.
+
+Events can be edited, duplicated, or deleted (with undo) from the event popup,
+and any month or week can be exported as an `.ics` file or to Google Calendar.
+
 ## The tracking dashboard
 
 Login-gated at `/tracking`, scoped per alliance. Members see only the alliances
@@ -59,10 +74,11 @@ they belong to; everything is read-only.
 
 | Page | What it shows |
 |------|---------------|
-| 📋 **Events** | Per-event leaderboards (rank, power, points) with participation history |
+| 📋 **Events** | Per-event leaderboards (rank, power, points) with participation history, plus an import-completeness badge (official header vs imported rows) |
 | 👥 **Players** | Roster with per-player participation rate and power/points evolution |
 | 💰 **Donations** | Weekly Alliance Honor ranking, one selectable week at a time |
 | ⚔️ **Stats** | Latest military stats (attack / HP / defense %) per member, with history |
+| 🔍 **Review** | Rows the OCR read with low confidence, worst first, with the commands to fix them |
 
 **Events** — every recorded event with its alliance rank, total points and fighter count:
 

@@ -116,8 +116,9 @@ pnpm --filter @alliance-tracker/discord-bot test
 | Events | `at_event_types`, `at_events`, `at_participations` |
 | Donations | `at_donation_periods`, `at_donations` |
 | Military stats | `at_player_stats` |
+| Corrections | `at_corrections` (audit log of manual `/correct` fixes) |
 | Pipeline | `at_screenshot_uploads` (sha256 dedup) |
-| Views | `at_v_event_leaderboard`, `at_v_player_participation_rate`, `at_v_donation_leaderboard`, `at_v_player_stats_latest`, … |
+| Views | `at_v_event_leaderboard`, `at_v_player_participation_rate`, `at_v_donation_leaderboard`, `at_v_donation_player_totals`, `at_v_player_stats_latest`, `at_v_player_stats_history`, `at_v_probable_leavers`, `at_v_event_import_delta`, `at_v_needs_review` |
 
 All writes go through idempotent UPSERTs. Re-uploading the same screenshot is a
 no-op; re-uploading for the same period overwrites (latest-wins for donations
@@ -140,6 +141,60 @@ Ambiguous detection → force it with `/upload kind:<event|donation|player_stats
 
 ---
 
+## Feeding the tracker (what to screenshot)
+
+Post the in-game screenshot to a Discord channel listed in
+`DISCORD_ALLOWED_CHANNEL_IDS` and the bot ingests it automatically. What to
+capture for each screen:
+
+- **Events** — the event's leaderboard screen. Detected by its title (Polar
+  Invasion, Elite Wars, …). Writes `at_events` + `at_participations`.
+- **Donations** — the **Contribution Ranking** screen. Writes
+  `at_donation_periods` + `at_donations`.
+- **Attack / HP / Defense stats** — a screenshot of the in-game **"(LOL) City
+  stats" chat**, where members type their military percentages in free-form
+  messages. Detected by the channel title containing **"city stats"**; the
+  parser reads whatever labels appear — LRA/MRA (attack), MHP/HP/PV (HP), MGD
+  (defense), OCR-misread variants included — and writes `at_player_stats` (one
+  row per player per day, latest wins). It surfaces on the ⚔️ Stats dashboard
+  page.
+
+If auto-detection guesses wrong, force the type with
+`/upload kind:<event|donation|player_stats>`.
+
+---
+
+## OCR quality & corrections
+
+Reading game screenshots is imperfect, so the pipeline defends data quality at
+three points:
+
+1. **At extraction** — `validators.py` applies sanity rules (power ≥ 1M, rank
+   `R1`–`R5`, and it auto-repairs a swapped power/points pair), `base.py` flags a
+   `possible_truncation`, and a page is rejected outright if fewer than half its
+   rows read cleanly. Low-confidence player names can optionally be re-read by a
+   local LLM (`LLM_FALLBACK_ENABLED`); the confidence thresholds are env vars
+   (`OCR_CONFIDENCE_THRESHOLD*`, see [`docs/SETUP.md`](../docs/SETUP.md)).
+2. **At storage** — names are matched against known aliases
+   (`at_player_aliases`), and a close fuzzy match is auto-saved as a new alias,
+   so the system keeps learning. A row read below the confidence threshold is
+   stored anyway but flagged `needs_review`.
+3. **After the fact** — the dashboard's 🔍 **Review** page (`at_v_needs_review`)
+   lists every flagged row worst-first, and a per-event **import-completeness**
+   check (`at_v_event_import_delta`) compares the game's own header totals against
+   the imported rows. Fix a value with `/correct` (audited in `at_corrections`),
+   map a misread name with `/player-alias`, or merge duplicate players with
+   `/merge`.
+
+**Caveat on the import check:** the completeness verdict uses the **row count**
+only (`total_battlers` vs imported rows). `total_points` is *not* the sum of
+member points for every event type — for Elite Wars, Polar Invasion and
+Wasteland Showdown the header figure is a different, alliance-level metric
+(measured 259×, 19.7× and 24.4× the member sum), so the view exposes both point
+totals as raw context and computes no points delta.
+
+---
+
 ## Discord commands
 
 | Command | Effect |
@@ -156,6 +211,9 @@ Ambiguous detection → force it with `/upload kind:<event|donation|player_stats
 | `/donation list` | Recorded donation periods |
 | `/player-alias` | Manage a player's OCR aliases |
 | `/merge` | Merge two duplicate players |
+| `/correct` | Manually correct a score misread by OCR (audited in `at_corrections`) |
+| `/find-duplicates` | List likely duplicate players (read-only, no merging) |
+| `/setup-alliance` | Create the alliance linked to this Discord channel |
 
 Automatic ingestion fires on any message with an attachment in a channel listed
 in `DISCORD_ALLOWED_CHANNEL_IDS`.
