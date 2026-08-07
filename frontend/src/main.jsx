@@ -13,6 +13,7 @@ import { PlayersPage } from './features/tracking/pages/Players.jsx'
 import { PlayerDetailPage } from './features/tracking/pages/PlayerDetail.jsx'
 import { DonationsPage } from './features/tracking/pages/Donations.jsx'
 import { PlayerStatsPage } from './features/tracking/pages/PlayerStats.jsx'
+import { ReviewPage } from './features/tracking/pages/Review.jsx'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 <Route path="players/:playerId" element={<PlayerDetailPage />} />
                 <Route path="donations" element={<DonationsPage />} />
                 <Route path="stats" element={<PlayerStatsPage />} />
+                <Route path="review" element={<ReviewPage />} />
               </Route>
             </Route>
             <Route path="*" element={<App />} />

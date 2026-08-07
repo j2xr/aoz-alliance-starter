@@ -54,6 +54,29 @@ export async function fetchEventLeaderboard(eventId) {
   return data ?? [];
 }
 
+export async function fetchNeedsReview(allianceId) {
+  const { data, error } = await supabase
+    .from('at_v_needs_review')
+    .select('*')
+    .eq('alliance_id', allianceId)
+    // Worst reads first — that's the order a reviewer wants to work in.
+    .order('ocr_confidence', { ascending: true, nullsFirst: true })
+    .order('occurred_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchNeedsReviewCount(allianceId) {
+  // head:true → PostgREST returns only the count, no rows. Used by the
+  // sidebar badge, which runs on every page.
+  const { count, error } = await supabase
+    .from('at_v_needs_review')
+    .select('row_id', { count: 'exact', head: true })
+    .eq('alliance_id', allianceId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function fetchEventImportDelta(eventId) {
   const { data, error } = await supabase
     .from('at_v_event_import_delta')
