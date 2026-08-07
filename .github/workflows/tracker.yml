@@ -1,10 +1,13 @@
 name: tracker
 
+# No `paths:` filter on pull_request, on purpose: these jobs are *required*
+# status checks on main. A path-filtered check simply never reports on a PR
+# that doesn't touch its paths, and GitHub keeps such a PR blocked forever
+# ("Expected — waiting for status to be reported"). Running them on every PR
+# costs ~90s and makes the protection rule actually satisfiable.
+# The push filter below is kept: there, nothing is waiting on the result.
 on:
   pull_request:
-    paths:
-      - 'tracker/**'
-      - '.github/workflows/tracker.yml'
   push:
     branches: [main]
     paths:

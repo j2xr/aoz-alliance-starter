@@ -1,10 +1,13 @@
 name: frontend
 
+# No `paths:` filter on pull_request, on purpose: this job is a *required*
+# status check on main. A path-filtered check simply never reports on a PR that
+# doesn't touch its paths, and GitHub keeps such a PR blocked forever
+# ("Expected — waiting for status to be reported"). Running it on every PR
+# costs ~35s and makes the protection rule actually satisfiable.
+# The push filter below is kept: there, nothing is waiting on the result.
 on:
   pull_request:
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend.yml'
   push:
     branches: [main]
     paths:
