@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
+import { ImportQualityBadge } from './ImportQuality';
 
 function formatDatetime(iso) {
   if (!iso) return '—';
@@ -9,7 +10,7 @@ function formatDatetime(iso) {
   }) + ' UTC';
 }
 
-export function EventCard({ event }) {
+export function EventCard({ event, importDelta }) {
   const navigate = useNavigate();
   const { allianceId } = useParams();
 
@@ -52,6 +53,7 @@ export function EventCard({ event }) {
                 #{event.alliance_rank}
               </span>
             )}
+            {importDelta && <ImportQualityBadge row={importDelta} />}
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
             {formatDatetime(event.event_datetime)}

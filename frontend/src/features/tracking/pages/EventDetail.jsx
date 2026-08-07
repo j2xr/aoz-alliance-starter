@@ -1,7 +1,9 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useEventLeaderboard } from '../hooks/useEventLeaderboard';
 import { useAllianceEvent } from '../hooks/useAllianceEvents';
+import { useEventImportDelta } from '../hooks/useEventImportDelta';
 import { LeaderboardTable } from '../components/LeaderboardTable';
+import { ImportQualityPanel } from '../components/ImportQuality';
 
 function formatDatetime(iso) {
   if (!iso) return '—';
@@ -18,6 +20,7 @@ export function EventDetailPage() {
   const { data: leaderboard = [], isLoading: lbLoading, error: lbError } = useEventLeaderboard(eventId);
 
   const { data: event } = useAllianceEvent(eventId);
+  const { data: importDelta, isLoading: deltaLoading, error: deltaError } = useEventImportDelta(eventId);
 
   const typeName = event?.at_event_types?.display_name ?? event?.at_event_types?.code ?? '—';
 
@@ -79,6 +82,17 @@ export function EventDetailPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Import quality — official header totals vs. what actually landed */}
+      <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        borderRadius: '12px', overflow: 'hidden', marginBottom: '1.5rem' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)',
+          fontFamily: "'Orbitron',sans-serif", fontSize: '0.8rem',
+          color: 'var(--text)', letterSpacing: '0.06em' }}>
+          IMPORT QUALITY
+        </div>
+        <ImportQualityPanel row={importDelta} loading={deltaLoading} error={deltaError} />
       </div>
 
       {/* Leaderboard */}
