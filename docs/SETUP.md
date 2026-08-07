@@ -323,15 +323,28 @@ GitHub CLI authenticated as the repo owner):
 
 ```bash
 gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
-  -H "Accept: application/vnd.github+json" \
-  -f 'required_status_checks[strict]=false' \
-  -f 'required_status_checks[contexts][]=build + test' \
-  -f 'required_status_checks[contexts][]=discord-bot (tsc + eslint + vitest)' \
-  -f 'required_status_checks[contexts][]=ocr-service (ruff + mypy + pytest + bench)' \
-  -F 'enforce_admins=false' -F 'required_pull_request_reviews=null' \
-  -F 'restrictions=null' \
-  -F 'allow_force_pushes=false' -F 'allow_deletions=false'
+  -H "Accept: application/vnd.github+json" --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": false,
+    "contexts": [
+      "build + test",
+      "discord-bot (tsc + eslint + vitest)",
+      "ocr-service (ruff + mypy + pytest + bench)"
+    ]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
 ```
+
+> Pass the body as JSON, not as `-f` flags: `-f` sends every value as a string,
+> and the API rejects `"strict": "false"` with
+> `422 For 'properties/strict', "false" is not a boolean`.
 
 Three things about that command are deliberate:
 
