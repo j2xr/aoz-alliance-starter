@@ -5,7 +5,9 @@ Ground truth for the `player_stats_chat` OCR parser (`PlayerStatsChatV1Parser`).
 Screenshots of the in-game alliance chat (`(LOL) City stats`) where members
 manually type their military stats — Long/Mid Range Attack, Melee HP, Melee
 Defense — in free-form messages. Unlike the structured-UI parsers, this one runs
-**full-image OCR (PSM 3) + a text state machine**, with no coordinate crops.
+**full-image OCR (PSM 4, `eng+rus+jpn`) + a text state machine**, with no
+coordinate crops. See the parser module docstring for the sweep that picked
+that configuration.
 
 ## ADVISORY scene
 
@@ -62,10 +64,15 @@ them in the screenshots (but out of the golden) is deliberate.
 
 ## Quality targets (advisory)
 
-| Field | Target |
-|-------|--------|
-| `name` | Similarity ≥ 0.90 (SequenceMatcher) — *advisory* |
-| `attack_pct`, `hp_pct`, `defense_pct` | Exact (±0.05) — *advisory* |
+| Field | Target | Measured |
+|-------|--------|----------|
+| `name` | Similarity ≥ 0.90 (SequenceMatcher) — *advisory* | 81.8% |
+| `attack_pct` | Exact (±0.05) — *advisory* | 90.9% |
+| `hp_pct` | Exact (±0.05) — *advisory* | 81.8% |
+| `defense_pct` | Exact (±0.05) — *advisory* | 81.8% |
+
+The gap is OCR losing whole source lines (an avatar frame swallowing `1) 407`),
+not parsing logic — see the `ADVISORY` file.
 
 ## Adding screenshots
 
