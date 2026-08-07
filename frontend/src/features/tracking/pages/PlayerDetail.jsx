@@ -1,6 +1,9 @@
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePlayerStats, usePlayerInfo } from '../hooks/usePlayerStats';
 import { useParticipationRate } from '../hooks/useParticipationRates';
+import { useAllianceEventCount } from '../hooks/useAllianceEvents';
+import { PERIOD_OPTIONS, periodStartIso } from '../utils/periods';
 import { usePlayerDonationTotals, usePlayerDonationHistory } from '../hooks/useDonations';
 import { usePlayerStatsHistory } from '../hooks/usePlayerStatsHistory';
 import { PointsEvolutionChart } from '../components/PointsEvolutionChart';
@@ -8,6 +11,15 @@ import { PowerHistoryChart } from '../components/PowerHistoryChart';
 import { DonationHistoryList } from '../components/DonationHistoryList';
 import { StatsEvolutionChart } from '../components/StatsEvolutionChart';
 import { formatHonor } from '../utils/donationFormat';
+
+// Same thresholds as ParticipationRateTable.jsx (kept local, mirroring how that
+// file defines its own copy independently).
+function rateColor(pct) {
+  if (pct == null) return 'var(--text-faint)';
+  if (pct >= 80) return 'var(--success)';
+  if (pct >= 50) return 'var(--gold)';
+  return 'var(--danger)';
+}
 
 export function PlayerDetailPage() {
   const { allianceId, playerId } = useParams();
@@ -19,6 +31,16 @@ export function PlayerDetailPage() {
   const { data: donationTotals } = usePlayerDonationTotals(playerId);
   const { data: donationHistory = [] } = usePlayerDonationHistory(playerId, 5);
   const { data: militaryStats = [] } = usePlayerStatsHistory(allianceId, playerId);
+
+  const [period, setPeriod] = useState('all');
+  // Memoized on `period` alone: recomputing periodStartIso() every render would
+  // hand useAllianceEventCount a fresh `now`-based key each time and refetch in
+  // a loop. One boundary per period selection.
+  const since = useMemo(
+    () => (period === 'all' ? null : periodStartIso(period)),
+    [period],
+  );
+  const { data: periodEventCount } = useAllianceEventCount(allianceId, since);
 
   const isLoading = playerLoading || statsLoading;
 
@@ -47,6 +69,29 @@ export function PlayerDetailPage() {
     ? formatHonor(Math.round(donationTotals.avg_per_period ?? 0))
     : '—';
 
+  // Period participation. Numerator is computed client-side from the already
+  // loaded participation rows (each carries event_datetime); only the
+  // denominator — alliance events in the window — needs the extra count query.
+  // Simple ratio (no join-date "eligible events" logic): a player who joined
+  // mid-period shows an artificially low rate — the accepted tradeoff for 'all'.
+  const showPeriod = period !== 'all';
+  const periodParticipated = since == null
+    ? null
+    : stats.filter(s => s.event_datetime != null && new Date(s.event_datetime) >= new Date(since)).length;
+  // periodEventCount === 0 (no events in the window) → null, so we render "—"
+  // rather than a misleading 0% or a NaN.
+  const periodRatePct = since == null || !periodEventCount
+    ? null
+    : Math.round((periodParticipated / periodEventCount) * 1000) / 10;
+
+  // What the Participation / Attendances cards show: period values when a period
+  // is selected, the all-time figures otherwise.
+  const displayRatePct = showPeriod ? periodRatePct : participation?.participation_rate_pct;
+  const displayParticipated = showPeriod ? periodParticipated : participation?.events_participated;
+  // In period mode the denominator is the alliance event count (may be
+  // undefined while loading → treated as null → renders "—").
+  const displayEligible = showPeriod ? (periodEventCount ?? null) : participation?.eligible_events;
+
   return (
     <div style={{ animation: 'fadeUp 0.25s ease' }}>
       {/* Breadcrumb */}
@@ -70,13 +115,11 @@ export function PlayerDetailPage() {
             </h2>
           </div>
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-            {participation?.participation_rate_pct != null && (
-              <div style={{ textAlign: 'center' }}>
+            {(showPeriod || participation?.participation_rate_pct != null) && (
+              <div style={{ textAlign: 'center' }} data-testid="participation-card">
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
-                  fontWeight: '900',
-                  color: participation.participation_rate_pct >= 80 ? 'var(--success)'
-                    : participation.participation_rate_pct >= 50 ? 'var(--gold)' : 'var(--danger)' }}>
-                  {Math.round(participation.participation_rate_pct)}%
+                  fontWeight: '900', color: rateColor(displayRatePct) }}>
+                  {displayRatePct != null ? `${Math.round(displayRatePct)}%` : '—'}
                 </div>
                 <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Participation</div>
               </div>
@@ -99,16 +142,47 @@ export function PlayerDetailPage() {
               </div>
               <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Avg. donations / week</div>
             </div>
-            {participation && (
-              <div style={{ textAlign: 'center' }}>
+            {(showPeriod || participation) && (
+              <div style={{ textAlign: 'center' }} data-testid="attendances-card">
                 <div style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '1.4rem',
                   fontWeight: '900', color: 'var(--text)' }}>
-                  {participation.events_participated}/{participation.eligible_events}
+                  {displayEligible == null ? '—' : `${displayParticipated ?? 0}/${displayEligible}`}
                 </div>
                 <div style={{ fontSize: '0.62rem', color: 'var(--text-faint)' }}>Attendances</div>
               </div>
             )}
           </div>
+        </div>
+
+        {/* Period filter — scopes the Participation / Attendances figures above.
+            'All time' keeps the join-date-aware view; the others are a simple
+            in-period ratio. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem',
+          alignItems: 'center', marginTop: '1rem', paddingTop: '1rem',
+          borderTop: '1px solid var(--border)' }}>
+          <span style={{ fontFamily: "'Orbitron',sans-serif", fontSize: '0.6rem',
+            color: 'var(--text-faint)', letterSpacing: '0.08em', marginRight: '0.3rem' }}>
+            PERIOD
+          </span>
+          {PERIOD_OPTIONS.map(opt => {
+            const active = period === opt.key;
+            return (
+              <button key={opt.key}
+                onClick={() => setPeriod(opt.key)}
+                aria-pressed={active}
+                style={{
+                  fontFamily: "'Orbitron',sans-serif", fontSize: '0.6rem',
+                  letterSpacing: '0.05em', cursor: 'pointer',
+                  padding: '0.3rem 0.65rem', borderRadius: '999px',
+                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                  background: active ? '#38bdf815' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--text-dim)',
+                  transition: 'all 0.1s',
+                }}>
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

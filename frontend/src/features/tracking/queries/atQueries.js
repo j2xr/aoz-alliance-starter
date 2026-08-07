@@ -44,6 +44,19 @@ export async function fetchAllianceEvent(eventId) {
   return data;
 }
 
+export async function fetchAllianceEventCount(allianceId, sinceIso) {
+  // Denominator for the PlayerDetail period participation rate: how many events
+  // the alliance ran since `sinceIso`. head:true → count only, no rows (same
+  // pattern as the Discord bot's donation/leaderboard counts).
+  const { count, error } = await supabase
+    .from('at_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('alliance_id', allianceId)
+    .gte('event_datetime', sinceIso);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function fetchEventLeaderboard(eventId) {
   const { data, error } = await supabase
     .from('at_v_event_leaderboard')
