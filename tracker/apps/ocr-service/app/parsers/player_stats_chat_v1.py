@@ -3,8 +3,32 @@
 Screen type: "(LOL) City stats" — players manually type LRA/MHP/MHD percentages
 in free-form messages. The format is highly variable (labeled, unlabeled, mixed order).
 
-Approach: full-image OCR with PSM 3 (auto layout), then a state-machine parser
-on the resulting text lines. No coordinate-based cropping (unlike structured-UI parsers).
+Approach: full-image OCR with PSM 4 (single column of variable-size text), then
+a state-machine parser on the resulting text lines. No coordinate-based
+cropping (unlike structured-UI parsers).
+
+OCR configuration was chosen by sweeping PSM x language over the bench fixtures
+(``tests/fixtures/player_stats_chat``), scoring against their goldens:
+
+    config                     rows    name  attack     hp  defense
+    --psm 3 -l eng            11/11    3/11    4/11   3/11     3/11   (old)
+    --psm 3 -l eng+rus        10/11    6/11    5/11   5/11     5/11
+    --psm 4 -l eng            13/11    3/11    3/11   2/11     2/11
+    --psm 4 -l eng+rus+jpn    11/11    9/11   10/11   9/11     9/11   (chosen)
+    --psm 6 -l eng+rus+jpn    14/11    0/11    3/11   0/11     1/11
+
+PSM 3 silently drops whole message blocks and PSM 6 invents them; only PSM 4
+reproduces the true number of submissions. ``rus``/``jpn`` are not about
+reading handles for their own sake — without them Tesseract also mangles the
+*Latin* text around them (``MHD`` was read as Cyrillic ``МНО``, ``THOR,01`` as
+``THOR,O1``). The cost is ~1.0s per screenshot instead of ~0.5s.
+
+Known limits (why this scene is still benched ADVISORY):
+- A handle OCR destroys is unrecoverable; the block is kept anyway, because its
+  numbers are still worth importing and the dashboard resolves names through
+  ``at_player_aliases``.
+- A dropped ``)`` turns "2)713.2" into "2713.2", which is indistinguishable
+  from a genuine 4-digit value and is imported as such.
 """
 
 from __future__ import annotations
@@ -67,6 +91,26 @@ _RE_LABELED = re.compile(
 # Explicitly positioned plain number (no label): "2)370"  "1) 498"
 _RE_POS_PLAIN = re.compile(r"^\s*(?P<pos>[1-3])\s*[).]\s*(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?\s*$")
 
+# Same, but found anywhere in the line. Avatar frames and chat-bubble borders
+# bleed into the text layer around the real content ("| 1)887.2", "$ || 2)340.7",
+# "“we PS 3) 340.2 BR"), which defeats an anchored match.
+# The lookbehind keeps the position marker from being read out of a longer
+# number: in "482.5" the "2." must not parse as position 2.
+_RE_POS_ANYWHERE = re.compile(
+    r"(?<![\d.,])(?P<pos>[1-3])\s*[).]\s*(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?"
+)
+
+# Known label + value anywhere in the line, for the same reason.
+_RE_LABELED_ANYWHERE = re.compile(
+    r"(?P<label>[A-Za-z]{2,8})\s*[-–:).]?\s*(?P<val>\d{2,4}(?:[.,\s]\d{1,2})?)\s*%?"
+)
+
+# Position marker separated from its value by OCR junk ("2) mae - 642.5 A",
+# where "mae" is a mangled MHP label).
+_RE_POS_THEN_VALUE = re.compile(
+    r"(?<![\d.,])(?P<pos>[1-3])\s*[).]\s.*?(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?"
+)
+
 # Plain number with nothing else: "363"  "408.5"  "1049,3"
 _RE_PLAIN = re.compile(r"^\s*(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?\s*$")
 
@@ -97,6 +141,23 @@ _RE_UI_CHROME = re.compile(r"^\s*(?:tap\s+to\s+chat|send)\s*$", re.IGNORECASE)
 
 _MAX_NAME_LEN = 30
 _MAX_WORDS_NOISE = 6  # lines with more than this many words are leader instructions
+
+# Characters emitted by OCR reading avatar frames, chat-bubble borders and the
+# translator badge. A player handle never contains them.
+_ART_CHARS = frozenset("|\\«»№<>^~—")
+
+# Minimum share of alphanumeric characters for a line to be a plausible handle.
+# "Q “= af" (0.43) and "J “ ay oe" (0.56) are frame debris; "THOR,01" (0.86),
+# "Jasmin ツ" (0.88) and "幸恵丸⚓船長" (0.83) are real handles.
+_MIN_NAME_ALNUM_RATIO = 0.75
+
+# Longest token still considered a fragment in an all-lowercase candidate
+# ("dy oi", "et", "oer" are split off avatar art; "scepter" is a real handle).
+_MAX_FRAGMENT_TOKEN_LEN = 3
+
+# Tesseract configuration for this scene, chosen by sweeping PSM x language on
+# the bench fixtures (see the module docstring).
+_OCR_CONFIG = "--psm 4 -l eng+rus+jpn"
 
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -145,10 +206,41 @@ def _is_noise_line(line: str) -> bool:
     # Single/double non-word characters (OCR artefacts)
     if re.match(r"^[\W_]{0,3}$", stripped):
         return True
-    # Lines with too many words are leader instructions, not names or stats
-    if len(stripped.split()) > _MAX_WORDS_NOISE:
+    # Lines with too many words are leader instructions, not names or stats —
+    # unless they carry a parseable stat. Avatar art and the translator badge
+    # inflate the word count of a real submission ("MALY | 2) mae - 642.5 A"
+    # is 7 "words" but holds MHP 642.5), and dropping it here would silently
+    # cost that stat.
+    if len(stripped.split()) > _MAX_WORDS_NOISE and not _is_stat_line(stripped):
         return True
     return False
+
+
+def _strip_art(line: str) -> str:
+    """Strip leading/trailing OCR decoration from a line.
+
+    Only non-alphanumeric characters are removed. Stripping stray *letters*
+    would turn the handle "FATCAT29" into the stat line "29", which is exactly
+    the confusion the label whitelist exists to prevent.
+    """
+    return re.sub(r"^[^\w]+|[^\w]+$", "", line).strip()
+
+
+def _labeled_slot_anywhere(s: str) -> tuple[str, float | None, str | None] | None:
+    """First recognised label + value in the line, or None.
+
+    Scans rather than anchors: OCR routinely prefixes the real text with frame
+    debris. A label is only accepted if it is in the whitelist, so "FATCAT29"
+    (label=FATCAT, val=29) is still not a stat line.
+    """
+    for m in _RE_LABELED_ANYWHERE.finditer(s):
+        label = m.group("label").lower()
+        slot = _slot_from_label(label)
+        if slot is None:
+            continue
+        kind = "mra" if label in _MRA_LABELS else ("lra" if slot == "attack" else None)
+        return slot, _parse_float(m.group("val")), kind
+    return None
 
 
 def _is_stat_line(line: str) -> bool:
@@ -156,11 +248,35 @@ def _is_stat_line(line: str) -> bool:
     s = line.strip()
     if _RE_POS_PLAIN.match(s) or _RE_PLAIN.match(s):
         return True
-    m = _RE_LABELED.match(s)
-    if m:
-        # Require a recognised label — prevents "FATCAT29" (label=FATCAT, val=29) from matching
-        return _slot_from_label(m.group("label").lower()) is not None
-    return False
+    if _labeled_slot_anywhere(s) is not None:
+        return True
+    if _RE_POS_ANYWHERE.search(s) or _RE_POS_THEN_VALUE.search(s):
+        return True
+    # Bare number wrapped in frame debris ("2713.2 №").
+    return bool(_RE_PLAIN.match(_strip_art(s)))
+
+
+def _is_decoration(line: str) -> bool:
+    """True if the line looks like OCR frame debris rather than a player handle.
+
+    Used only to protect a block whose stats have not arrived yet: debris
+    landing between a handle and its stats would otherwise be taken for a new
+    player and steal them.
+    """
+    s = line.strip()
+    if not s:
+        return True
+    if any(ch in _ART_CHARS for ch in s):
+        return True
+    # A handle is at least three characters; shorter candidates arriving before
+    # a player's stats are frame debris ("eT" between "Герман" and its stats).
+    if len(s) <= 2:
+        return True
+    alnum = sum(1 for ch in s if ch.isalnum())
+    if alnum / len(s) < _MIN_NAME_ALNUM_RATIO:
+        return True
+    # Short all-lowercase fragments split off avatar art.
+    return s.islower() and all(len(tok) <= _MAX_FRAGMENT_TOKEN_LEN for tok in s.split())
 
 
 def _parse_stat_line(line: str, position: int) -> tuple[str | None, float | None, str | None]:
@@ -179,23 +295,38 @@ def _parse_stat_line(line: str, position: int) -> tuple[str | None, float | None
         val = _parse_float(m.group("val"))
         return _slot_from_position(pos), val, None
 
-    # Try labeled pattern: "LRA-412", "1) MHP - 319", "Wrath 774"
+    # Try labeled pattern: "LRA-412", "1) MHP - 319", "Wrath 774". Scanned
+    # rather than anchored so frame debris around the label doesn't hide it.
+    labeled = _labeled_slot_anywhere(s)
+    if labeled is not None:
+        return labeled
+
+    # Unknown label in an otherwise anchored "label value" line — keep the old
+    # positional fallback so a mangled label still lands in its slot.
     m = _RE_LABELED.match(s)
-    if m:
-        label = m.group("label").lower()
+    if m and _RE_PLAIN.match(_strip_art(s)) is None:
+        slot = _slot_from_position(position)
         val = _parse_float(m.group("val"))
-        slot = _slot_from_label(label)
-        if slot is None:
-            # Unknown label — try positional fallback
-            slot = _slot_from_position(position)
-        kind: str | None = "mra" if label in _MRA_LABELS else ("lra" if slot == "attack" else None)
+        kind: str | None = "lra" if slot == "attack" else None
         return slot, val, kind
 
-    # Plain number, no label — use position
-    m = _RE_PLAIN.match(s)
+    # Position marker somewhere in the line: "| 1)887.2", "“we PS 3) 340.2 BR"
+    m = _RE_POS_ANYWHERE.search(s)
+    if m:
+        pos = int(m.group("pos")) - 1
+        return _slot_from_position(pos), _parse_float(m.group("val")), None
+
+    # Plain number, no label — use position. Strip frame debris first.
+    m = _RE_PLAIN.match(_strip_art(s))
     if m:
         val = _parse_float(m.group("val"))
         return _slot_from_position(position), val, None
+
+    # Last resort: position marker separated from its value by junk.
+    m = _RE_POS_THEN_VALUE.search(s)
+    if m:
+        pos = int(m.group("pos")) - 1
+        return _slot_from_position(pos), _parse_float(m.group("val")), None
 
     return None, None, None
 
@@ -207,10 +338,9 @@ def _slot_is_explicit(line: str) -> bool:
     position — a mere guess that must never outweigh a labeled value.
     """
     s = line.strip()
-    if _RE_POS_PLAIN.match(s):
+    if _RE_POS_PLAIN.match(s) or _RE_POS_ANYWHERE.search(s) or _RE_POS_THEN_VALUE.search(s):
         return True
-    m = _RE_LABELED.match(s)
-    return m is not None and _slot_from_label(m.group("label").lower()) is not None
+    return _labeled_slot_anywhere(s) is not None
 
 
 def _is_player_name(line: str) -> bool:
@@ -342,6 +472,15 @@ def _run_state_machine(lines: list[str]) -> list[PlayerStatsMember]:
 
         # Non-stat, non-noise line: potential player name or long text
         if _is_player_name(line):
+            # Frame debris lands between a handle and its stats ("| oer" right
+            # after "LEON"). Taken for a name it would steal those stats and
+            # shift every following row. A weak candidate arriving while the
+            # current player is still waiting for its stats is therefore
+            # skipped; one arriving after a complete block is a real new player
+            # (a garbled handle is still a handle, and its stats are worth
+            # keeping).
+            if current_name is not None and not current_stat_lines and _is_decoration(line):
+                continue
             _commit()
             current_name = line
             current_stat_lines = []
@@ -383,7 +522,7 @@ class PlayerStatsChatV1Parser(BaseParser):
         # need multilingual OCR here because the stats are numbers regardless
         # of script, and player names that can't be read will resolve via
         # at_player_aliases later.
-        text = pytesseract.image_to_string(image, config="--psm 3 -l eng")
+        text = pytesseract.image_to_string(image, config=_OCR_CONFIG)
         logger.debug("PlayerStatsChat OCR raw text (%d chars)", len(text))
 
         lines = text.splitlines()

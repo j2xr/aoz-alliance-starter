@@ -1,0 +1,43 @@
+{
+  "kind": "player_stats",
+  "scene": "player_stats_chat",
+  "source": "(LOL) City stats chat, 05-02 — real alliance submissions",
+  "note": "Ground truth = the stats each member actually typed. Leader instruction bubbles (RageX_), timestamps, translator badges ('google'), the FATCAT29 'im still using VIP buff' line, and the cut-off Jasmin row (continues in citystats_002) are deliberately NOT members.",
+  "members": [
+    {
+      "name": "Герман",
+      "attack_pct": 412,
+      "attack_kind": "lra",
+      "hp_pct": 319,
+      "defense_pct": 260
+    },
+    {
+      "name": "Bumbelbee",
+      "attack_pct": 407,
+      "attack_kind": "lra",
+      "hp_pct": 370,
+      "defense_pct": 269
+    },
+    {
+      "name": "scepter",
+      "attack_pct": 887.2,
+      "attack_kind": "lra",
+      "hp_pct": 713.2,
+      "defense_pct": 443.9
+    },
+    {
+      "name": "KlausRider",
+      "attack_pct": 363,
+      "attack_kind": "lra",
+      "hp_pct": 368,
+      "defense_pct": 318
+    },
+    {
+      "name": "LEÓN",
+      "attack_pct": 645.7,
+      "attack_kind": "lra",
+      "hp_pct": 405,
+      "defense_pct": 272.6
+    }
+  ]
+}
