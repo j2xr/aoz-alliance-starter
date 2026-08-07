@@ -2,6 +2,12 @@
 
 > Guide for integrating the `at_*` tables (produced by the tracker) into the React frontend's `/tracking` dashboard.
 
+> **Historical note.** This is the original one-shot integration guide, kept for
+> context. The dashboard it describes has since been built (in `.jsx`, in this
+> repo — not the separate `.tsx` repo referenced below), and now also has a
+> Review page. For the current state, see [`../README.md`](../README.md) and
+> [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ---
 
 ## Context
