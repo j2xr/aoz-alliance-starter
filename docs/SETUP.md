@@ -324,13 +324,34 @@ GitHub CLI authenticated as the repo owner):
 ```bash
 gh api -X PUT repos/<owner>/<repo>/branches/main/protection \
   -H "Accept: application/vnd.github+json" \
-  -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[strict]=false' \
   -f 'required_status_checks[contexts][]=build + test' \
   -f 'required_status_checks[contexts][]=discord-bot (tsc + eslint + vitest)' \
   -f 'required_status_checks[contexts][]=ocr-service (ruff + mypy + pytest + bench)' \
   -F 'enforce_admins=false' -F 'required_pull_request_reviews=null' \
-  -F 'restrictions=null'
+  -F 'restrictions=null' \
+  -F 'allow_force_pushes=false' -F 'allow_deletions=false'
 ```
+
+Three things about that command are deliberate:
+
+- **Only the three PR checks are required.** `images (build + smoke)`,
+  `database (migrations + RLS pgTAP)` and `smoke deployed URL` are *not* listed:
+  they run on `push: main` and on `deployment_status`, never on a pull request.
+  A required check that never reports leaves the PR stuck on
+  "Expected — waiting for status to be reported", with no way to merge.
+- **The two PR workflows must not be `paths:`-filtered** for the same reason —
+  see the comment at the top of `frontend.yml` / `tracker.yml`. Re-adding a
+  `paths:` filter to their `pull_request:` trigger will silently block every PR
+  that doesn't touch those paths.
+- **`enforce_admins=false`** keeps an escape hatch for the repo owner (a
+  one-person project can otherwise lock itself out), and
+  `required_pull_request_reviews=null` is required when you are the only
+  maintainer: GitHub does not let you approve your own PR.
+
+`strict=false` means a PR does not have to be rebased onto the newest `main`
+before merging. The checks still run against the merge result, so this is safe;
+set it to `true` if you want the stricter (and more rebase-heavy) behaviour.
 
 **Run the database gate locally** before pushing (needs Docker + the Supabase
 CLI):
