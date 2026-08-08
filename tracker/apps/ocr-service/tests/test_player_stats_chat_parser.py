@@ -91,6 +91,14 @@ def test_parse_float(raw: str, expected: float | None) -> None:
         ("269", 2, "defense", 269.0, None),
         ("408.5", 1, "hp", 408.5, None),
         ("482.5", 0, "attack", 482.5, None),
+        # --- Dropped-paren recovery: OCR drops the ")" in "2)713.2" → "2713.2" ---
+        ("2713.2", 1, "hp", 713.2, None),  # leading "2" == hp position → split
+        ("3443.9", 2, "defense", 443.9, None),  # leading "3" == defense position → split
+        ("2713.2", 0, "attack", 2713.2, None),  # position mismatch → kept, not split
+        ("1049.3", 0, "attack", 1049.3, None),  # genuine 4-digit (2nd digit 0) → kept
+        # --- Trailing frame debris must NOT become a space-decimal ("477 1}") ---
+        ("3) MHD - 477 1}", 2, "defense", 477.0, None),
+        ("2) MHP - 754 -", 1, "hp", 754.0, None),
     ],
 )
 def test_parse_stat_line(
@@ -207,6 +215,28 @@ def test_state_machine_plain_number_block() -> None:
     assert m.hp_pct == pytest.approx(407.0)
     assert m.defense_pct == pytest.approx(269.0)
     assert m.confidence == pytest.approx(1.0)
+
+
+def test_state_machine_recovers_dropped_paren_in_context() -> None:
+    """Real scepter block: the middle line's ")" was dropped ("2)713.2" →
+    "2713.2"), with explicit "1)" and "3)" siblings around it. The dropped-paren
+    recovery splits it back to HP=713.2 (not a bogus 2713.2)."""
+    lines = ["scepter", "| 1)887.2", "2713.2 №", "т г = | 3)443.9"]
+    members = _run_state_machine(lines)
+    assert len(members) == 1
+    m = members[0]
+    assert m.attack_pct == pytest.approx(887.2)
+    assert m.hp_pct == pytest.approx(713.2)  # recovered, not 2713.2
+    assert m.defense_pct == pytest.approx(443.9)
+
+
+def test_state_machine_frame_debris_not_a_decimal() -> None:
+    """Real Bulleit defense line: "477 1}" is 477 with chat-bubble border, not
+    477.1 — the space is only a decimal when followed by %/space/end."""
+    lines = ["Bulleit", "1) LRA - 983", "2) MHP - 754 -", "3) MHD - 477 1}"]
+    members = _run_state_machine(lines)
+    assert len(members) == 1
+    assert members[0].defense_pct == pytest.approx(477.0)  # not 477.1
 
 
 def test_state_machine_mra_label() -> None:
