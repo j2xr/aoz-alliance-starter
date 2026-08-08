@@ -27,8 +27,15 @@ Known limits (why this scene is still benched ADVISORY):
 - A handle OCR destroys is unrecoverable; the block is kept anyway, because its
   numbers are still worth importing and the dashboard resolves names through
   ``at_player_aliases``.
-- A dropped ``)`` turns "2)713.2" into "2713.2", which is indistinguishable
-  from a genuine 4-digit value and is imported as such.
+- OCR occasionally drops a whole stat line at PSM 4 (the value is absent from
+  the text, not misread): e.g. Bumbelbee's attack and both of Stoka's lower
+  stats never reach the parser. A text-based parser cannot recover a value that
+  isn't in the text, so these stay missing — this is the main reason the scene
+  can't yet meet the 95% stat target and remains ADVISORY.
+
+A dropped ``)`` ("2)713.2" → "2713.2") and a space-swallowed trailing debris
+digit ("477 1}" → 477.1) used to corrupt otherwise-good values; both are now
+recovered (see _RE_DROPPED_PAREN and _RE_LABELED).
 """
 
 from __future__ import annotations
@@ -83,8 +90,14 @@ _MRA_LABELS: frozenset[str] = frozenset({"mra"})
 
 # Labeled stat (optional leading position marker):
 #   "LRA-412"  "1) LRA - 1183.4"  "LRA : 502.9%"  "Wrath 774"  "2) MHP - 319"
+# The fractional part accepts "." "," or an OCR space-for-dot ("498 5%" → 498.5),
+# but a SPACE is only honoured as a decimal when the trailing digit(s) are
+# followed by "%", whitespace or end of line — see _DEC below. Without that
+# guard, "3) MHD - 477 1}" (the "1}" is chat-bubble border) imported 477 as
+# 477.1 (regression pinned in the tests).
+_DEC = r"(?:[.,]\d{1,2}|\s\d{1,2}(?=[%\s]|$))?"
 _RE_LABELED = re.compile(
-    r"^\s*(?:[1-3]\s*[).]\s*)?(?P<label>[A-Za-z]{2,8})\s*[-–:).]?\s*(?P<val>\d{2,4}(?:[.,\s]\d{1,2})?)\s*%?",
+    rf"^\s*(?:[1-3]\s*[).]\s*)?(?P<label>[A-Za-z]{{2,8}})\s*[-–:).]?\s*(?P<val>\d{{2,4}}{_DEC})\s*%?",
     re.IGNORECASE,
 )
 
@@ -100,9 +113,11 @@ _RE_POS_ANYWHERE = re.compile(
     r"(?<![\d.,])(?P<pos>[1-3])\s*[).]\s*(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?"
 )
 
-# Known label + value anywhere in the line, for the same reason.
+# Known label + value anywhere in the line, for the same reason. Same guarded
+# space-decimal as _RE_LABELED (see _DEC): a space glued to trailing frame
+# debris is not a decimal.
 _RE_LABELED_ANYWHERE = re.compile(
-    r"(?P<label>[A-Za-z]{2,8})\s*[-–:).]?\s*(?P<val>\d{2,4}(?:[.,\s]\d{1,2})?)\s*%?"
+    rf"(?P<label>[A-Za-z]{{2,8}})\s*[-–:).]?\s*(?P<val>\d{{2,4}}{_DEC})\s*%?"
 )
 
 # Position marker separated from its value by OCR junk ("2) mae - 642.5 A",
@@ -113,6 +128,16 @@ _RE_POS_THEN_VALUE = re.compile(
 
 # Plain number with nothing else: "363"  "408.5"  "1049,3"
 _RE_PLAIN = re.compile(r"^\s*(?P<val>\d{2,4}(?:[.,]\d{1,2})?)\s*%?\s*$")
+
+# Dropped-paren recovery. OCR sometimes drops the ")" in a positioned value,
+# turning "2)713.2" into "2713.2" — a 4-digit plain number implausible for a
+# stat percentage. Match a leading position digit (1-3) glued directly to a full
+# 3-digit value whose first digit is 1-9: this deliberately does NOT match a
+# genuine 4-digit reading like "1049,3" (its post-position digit is 0). Applied
+# only when the leading digit also matches the line's slot position (game order
+# == OCR line order — see _parse_stat_line), so it fires on the dropped-paren
+# signature, never tearing apart a real four-digit value.
+_RE_DROPPED_PAREN = re.compile(r"^(?P<pos>[1-3])(?P<val>[1-9]\d{2}(?:[.,]\d{1,2})?)$")
 
 # Timestamp lines: "05-02 13:20"  "2026-05-02"  "13:20"
 _RE_TIMESTAMP = re.compile(
@@ -319,8 +344,15 @@ def _parse_stat_line(line: str, position: int) -> tuple[str | None, float | None
     # Plain number, no label — use position. Strip frame debris first.
     m = _RE_PLAIN.match(_strip_art(s))
     if m:
-        val = _parse_float(m.group("val"))
-        return _slot_from_position(position), val, None
+        raw = m.group("val")
+        # Recover a dropped ")": "2713.2" is "2)713.2" with the paren lost.
+        # Only split when the leading position digit matches this line's slot,
+        # so a genuine four-digit reading is never torn apart (see
+        # _RE_DROPPED_PAREN).
+        dp = _RE_DROPPED_PAREN.match(raw)
+        if dp and int(dp.group("pos")) - 1 == position:
+            return _slot_from_position(position), _parse_float(dp.group("val")), None
+        return _slot_from_position(position), _parse_float(raw), None
 
     # Last resort: position marker separated from its value by junk.
     m = _RE_POS_THEN_VALUE.search(s)
