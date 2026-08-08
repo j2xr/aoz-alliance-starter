@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from app.llm_fallback import (
+    _crop_name_band,
     _resize_for_llm,
     llm_fallback,
     llm_fallback_donation,
@@ -316,6 +317,57 @@ class TestResizeForLlm:
         # width scale = 720/1080 = 0.667, height scale = 960/2400 = 0.4 -> 0.4 wins
         assert h == 960
         assert w == int(1080 * 0.4)
+
+
+class TestCropNameBand:
+    """The full-width row is cropped to the name band and upscaled before it
+    reaches the model — this is what lets the 2B read decorated handles."""
+
+    def test_donation_keeps_full_height_drops_left_and_upscales(self) -> None:
+        # (225, 1080): drop left 27% (rank+avatar) -> width 789, then x2.5.
+        out = _crop_name_band(_fake_image(), is_donation=True)
+        assert out.shape == (int(225 * 2.5), int((1080 - int(1080 * 0.27)) * 2.5))
+
+    def test_event_keeps_only_top_name_band(self) -> None:
+        # Event rows keep the top ~58% (power number below the name is excluded),
+        # so the band is shorter than the donation (full-height) crop.
+        event = _crop_name_band(_fake_image(), is_donation=False)
+        donation = _crop_name_band(_fake_image(), is_donation=True)
+        assert event.shape[1] == donation.shape[1]  # same crop width
+        assert event.shape[0] < donation.shape[0]  # shorter (top band only)
+        assert event.shape[0] == int(int(225 * 0.58) * 2.5)
+
+
+class TestPresencePenalty:
+    """Some Ollama builds bake presence_penalty=1.5 (every qwen3.5:* tag), which
+    makes vision models abstain or mix scripts; the request must force it to 0."""
+
+    def test_options_force_presence_penalty_zero(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response()
+            llm_fallback(_fake_image())
+            options = mock_post.call_args.kwargs["json"]["options"]
+            assert options["presence_penalty"] == 0
+
+
+class TestTagNameParsing:
+    """The prompt returns the alliance tag and the name as separate fields so the
+    model cannot return the (readable) tag as the name — the "(SOD)"->"SOD" bug."""
+
+    def test_event_returns_name_field(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response('{"tag": "SOD", "name": "AL3X"}')
+            assert llm_fallback(_fake_image()) == "AL3X"
+
+    def test_event_null_name_returns_none(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response('{"tag": "SOD", "name": null}')
+            assert llm_fallback(_fake_image()) is None
+
+    def test_donation_returns_name_and_score(self) -> None:
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _mock_response('{"tag": "SOD", "name": "AL3X", "score": 8392}')
+            assert llm_fallback_donation(_fake_image()) == ("AL3X", 8392)
 
 
 def _player_stats_response(payload_json: str) -> MagicMock:
