@@ -115,7 +115,15 @@ _TAB_DETECT_MIN_DELTA: float = float(os.getenv("OCR_TAB_DETECT_MIN_DELTA", "15.0
 _AMBIGUOUS_PERIOD_TYPE: Literal["unknown"] = "unknown"
 
 _MEMBER_LIST_TOP = 395  # y-start of first row (canonical)
-_ROW_HEIGHT = 175  # 12 rows fit in ~2100 px after the tabs/headers band
+# Row pitch in 1080-wide captures. Measured at 178.15px (σ≈0.2) by vertical
+# autocorrelation / band regression over all 19 fixtures — matches the sibling
+# polar_invasion_v1 parser's 179 on the same device parc. The former 175
+# undershot by ~3px/row, so the name/honor crops drifted ~33px down by row 11
+# (a 90px band), which is what starved the row-10/11 honor and name reads. The
+# fractional bottom guard in parse() must move in lockstep with any bump here:
+# a correct pitch pushes row 11's band past the image edge on ~1/3 of captures,
+# and an all-or-nothing guard would then drop the whole row.
+_ROW_HEIGHT = 178
 _MAX_ROWS = 12
 # Floor beneath which a text-density run in _detect_list_top is noise, not a
 # real name line (see there). NOT scaled by image height: preprocess only
@@ -131,15 +139,35 @@ _MAX_ROWS = 12
 # height ever could.
 _MIN_NAME_BAND_HEIGHT = 8
 
+# A chosen row-0 band this much taller than a normal text line has merged with
+# adjacent content — a decorated second line, or focus-row graphics bleeding
+# into the name column — so its geometric CENTRE no longer marks the row-0
+# baseline. Unlike a rejection ceiling (which the comment above rules out, and
+# which would wrongly drop a genuinely tall name line), this only changes how an
+# accepted band is anchored: above this height, take the band's TOP edge plus a
+# normal half-line instead of its centre. The top edge is the stable landmark
+# because a merge extends *away* from it. Measured over the 19 fixtures: normal
+# bands are 22-29px and the tallest still-single-line one (weekly_018) is 46px,
+# while weekly_015's merged band is 74px and its centre sits ~24px below the
+# true row-0 line — dragging list_top down and uniformly mis-aligning every row
+# once the pitch is correct (rank 8→12/12, parse 5.6s→2.0s after this fix). The
+# 55px gate sits above the 46px legitimate max, so only a real merge trips it.
+# NOT scaled by image height, for the same reason as _MIN_NAME_BAND_HEIGHT:
+# width-only normalization keeps glyph/band heights constant in pixels.
+_MERGED_BAND_MIN_HEIGHT = 55
+_NAME_LINE_HALF_HEIGHT = 12
+
 # Badge crop for R1..R5 detection. Same x as polar invasion (identical avatar
-# widget), but a taller y window: the donation screen packs 12 rows, so the
-# fixed 175 px pitch drifts a couple of pixels per row and by rows 10-11 the
-# badge slides below a tight (15, 65) window — the detector then misreads the
-# partial disc as R4. The taller band absorbs that drift (rank 85%→99% on the
-# fixtures) while staying within the avatar's upper-left, so it never catches a
-# neighbouring badge.
+# widget). The y window was stretched to (15, 90) back when the row pitch was
+# mis-set to 175: that ~3px/row undershoot slid the badge ~33px down by row 11,
+# so the window had to reach that far to still catch the disc. With the pitch
+# corrected to 178 (see _ROW_HEIGHT) the badge sits at its nominal offset on
+# every row, and the over-tall window instead admitted neighbouring content and
+# cost a couple of rows. (18, 78) re-centres on the disc — measured best across
+# the 19 fixtures (rank 96.1%→96.5%) — while staying inside the avatar's
+# upper-left so it never catches an adjacent row's badge.
 _RANK_BADGE_X = (148, 200)
-_RANK_BADGE_Y = (15, 90)
+_RANK_BADGE_Y = (18, 78)
 
 # Leaderboard-position crop (the plain digit(s) at x=0..170 — see module
 # docstring). Calibrated against the shipped fixtures: the digit sits in the
@@ -360,13 +388,23 @@ class ContributionRankingV1Parser(BaseParser):
         period_type = self._detect_selected_tab(image)
 
         members: list[DonationMember] = []
+        name_start_offset = int(_NAME_Y_OFF[0] * scale)
         name_end_offset = int(_NAME_Y_OFF[1] * scale)
+        # Keep a row while at least half of its name band is on-screen, rather
+        # than only when the whole band fits. At the true 178px pitch, row 11's
+        # band clips a few px past the image bottom on ~1/3 of captures; the old
+        # all-or-nothing `y + name_end_offset > h` guard then discarded the
+        # entire row — name AND honor — even though most glyphs were present
+        # (numpy slicing clamps the crop, so a partially-visible band still
+        # OCRs). rows_onscreen below uses the same offset so the truncation
+        # check stays consistent with what the loop actually parses.
+        row_keep_offset = name_start_offset + (name_end_offset - name_start_offset) // 2
         # Per-image cache of the (threshold, psm) combo that won the last
         # rank vote; mirrors PolarInvasionV1Parser.parse.
         rank_cache: dict[str, tuple[int, int] | None] = {"last": None}
         for i in range(_MAX_ROWS):
             y = list_top + i * row_h
-            if y + name_end_offset > h:
+            if y + row_keep_offset > h:
                 break
             member = self._parse_row(
                 image,
@@ -395,7 +433,7 @@ class ContributionRankingV1Parser(BaseParser):
         # this way) or legitimately (a capture cropped shorter than a full
         # page, which this same formula also correctly does NOT flag, since
         # rows_onscreen shrinks with it).
-        rows_onscreen = min(_MAX_ROWS, (h - list_top - name_end_offset) // row_h + 1)
+        rows_onscreen = min(_MAX_ROWS, (h - list_top - row_keep_offset) // row_h + 1)
         possible_truncation = len(members) < rows_onscreen
         if possible_truncation:
             logger.warning(
@@ -417,12 +455,15 @@ class ContributionRankingV1Parser(BaseParser):
 
     # ── Cross-row consistency ────────────────────────────────────────────────
     #
-    # The leaderboard is sorted by alliance_honor descending — a value that
-    # jumps *above* the row before it within the same capture cannot be
-    # correct (ties are fine; real captures show equal-honor rows back to
-    # back). Unlike a garbled name, a misread honor is just another
-    # plausible-looking number ("2385" read as "92256"), so nothing upstream
-    # flags it — this ordering check is the only signal available.
+    # The leaderboard is sorted by alliance_honor descending, so two misreads
+    # break the expected order: a value that jumps *above* the row before it
+    # ("2385" read as "92256"), and a value that *collapses* far below it when a
+    # digit is dropped ("2035" read as "2"). The second still satisfies
+    # descending order, so only a magnitude test catches it — see
+    # _HONOR_MIN_DROP_RATIO. Ties are fine (real captures show equal-honor rows
+    # back to back). Unlike a garbled name, a misread honor is just another
+    # plausible-looking number, so nothing upstream flags it — this cross-row
+    # check is the only signal available.
     #
     # When it fires: re-OCR the cell with a few extra configs and keep
     # whichever candidate actually fits between its neighbours. Fitting the
@@ -437,6 +478,15 @@ class ContributionRankingV1Parser(BaseParser):
     # exactly match a value this very check just proved suspect.
     _MONOTONICITY_FIX_CONFIDENCE = 0.40  # < 0.5: must trip needsReview() (upsert.ts, exclusive)
     _MONOTONICITY_NO_FIX_CONFIDENCE = 0.0
+    # A row-to-row honor *drop* below this fraction of the previous row is the
+    # digit-truncation signature (2035 → 2, 1455 → 4, 6738 → 722): implausibly
+    # small yet still monotone, so the increase check below never catches it and
+    # nothing downstream flags an order-consistent misread. Measured on the 19
+    # contribution_ranking goldens (205 consecutive pairs): the smallest real
+    # drop ratio is 0.526 (p1) and none fall below 0.20, so this floor flags all
+    # four fixture truncations with zero false positives. Genuine 0-honor rows
+    # exist and are excluded by the strict `> 0` test at the call site.
+    _HONOR_MIN_DROP_RATIO = 0.20
 
     def _enforce_honor_monotonicity(
         self, image: np.ndarray, members: list[DonationMember], scale: float
@@ -445,8 +495,24 @@ class ContributionRankingV1Parser(BaseParser):
             if i == 0:
                 continue  # no predecessor to compare against
             upper = members[i - 1].alliance_honor
-            if member.alliance_honor <= upper:
-                continue  # nominal: non-increasing (or a legitimate tie)
+
+            increased = member.alliance_honor > upper
+            # A value that stays ≤ the row above but collapses to an implausibly
+            # small fraction of it is a dropped digit, not a real step down (see
+            # _HONOR_MIN_DROP_RATIO). Both anomalies share the recovery path
+            # below; only the trigger differs. The truncation ratio is only
+            # meaningful against a TRUSTED predecessor: if the row above was
+            # itself flagged suspect this pass (e.g. a corrupted-high 92256
+            # misread), a perfectly legitimate value below it would look
+            # truncated — so skip the check there. The increase test needs no
+            # such guard: a jump above the row above is anomalous regardless of
+            # whether that row is itself reliable.
+            prev_trusted = members[i - 1].suspect_honor_window is None
+            truncated = (
+                prev_trusted and 0 < member.alliance_honor < upper * self._HONOR_MIN_DROP_RATIO
+            )
+            if not increased and not truncated:
+                continue  # nominal: a plausible non-increasing step (or a tie)
 
             # Log the PHYSICAL on-screen slot, not this member's index in the
             # already-compacted list — any earlier row dropped as unreadable
@@ -460,10 +526,19 @@ class ContributionRankingV1Parser(BaseParser):
             row = member.row_index if member.row_index is not None else i
 
             lower = members[i + 1].alliance_honor if i + 1 < len(members) else 0
+            if truncated:
+                # A valid reading must also clear the plausibility floor, so the
+                # re-OCR below can't "fix" the cell by re-picking the same
+                # truncated number; the tightened window also hands extract.py's
+                # LLM fallback the real lower bound to judge against.
+                lower = max(lower, int(upper * self._HONOR_MIN_DROP_RATIO) + 1)
             logger.warning(
-                "donation row %d: alliance_honor=%d breaks monotonicity (previous row=%d)",
+                "donation row %d: alliance_honor=%d %s (previous row=%d)",
                 row,
                 member.alliance_honor,
+                "breaks monotonicity"
+                if increased
+                else "implausibly small — likely a truncated (dropped-digit) read",
                 upper,
             )
             member.suspect_honor_window = (lower, upper)
@@ -697,7 +772,15 @@ class ContributionRankingV1Parser(BaseParser):
                 # weekly_010, where the column header renders as its own
                 # measurable band ahead of the real row-0 name line.
                 continue
-            first_band_centre = (start + end) // 2
+            if end - start > _MERGED_BAND_MIN_HEIGHT:
+                # This band has merged with adjacent content (see
+                # _MERGED_BAND_MIN_HEIGHT): its centre is dragged off the row-0
+                # baseline, so anchor on its top edge + a normal half-line
+                # instead. The heights here are absolute pixels (width-only
+                # normalization), so neither constant is scaled.
+                first_band_centre = start + _NAME_LINE_HALF_HEIGHT
+            else:
+                first_band_centre = (start + end) // 2
             break
 
         if first_band_centre is None:

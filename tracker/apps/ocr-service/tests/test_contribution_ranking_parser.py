@@ -15,7 +15,9 @@ from app.parsers.base import DonationMember, DonationParseResult
 from app.parsers.contribution_ranking_v1 import (
     _MAX_ROWS,
     _MEMBER_LIST_TOP,
+    _MERGED_BAND_MIN_HEIGHT,
     _MIN_NAME_BAND_HEIGHT,
+    _NAME_LINE_HALF_HEIGHT,
     _NAME_Y_OFF,
     _POSITION_PSMS,
     _POSITION_THRESHOLDS,
@@ -290,9 +292,10 @@ def test_parser_returns_donation_result_kind() -> None:
 
 
 def _canonical_image() -> np.ndarray:
-    """Exactly canonical height (scale=1), so row_h=175 and name_end_offset=130
-    match the raw canonical constants — makes rows_onscreen easy to reason
-    about by hand for the tests below."""
+    """Exactly canonical height (scale=1), so row_h=178 and the fractional
+    bottom guard's offset (name_start 45 + half the 85px band = 87) match the
+    raw canonical constants — makes rows_onscreen easy to reason about by hand
+    for the tests below."""
     return np.zeros((CANONICAL_HEIGHT, 1080), dtype=np.uint8)
 
 
@@ -301,18 +304,18 @@ def _canonical_image() -> np.ndarray:
     [
         pytest.param(
             700,
-            [_donor(alliance_honor=1000 - i * 10) for i in range(6)] + [None, None, None],
+            [_donor(alliance_honor=1000 - i * 10) for i in range(6)] + [None] * 4,
             6,
             True,
-            9,
+            10,
             id="rows_missing_within_reach_are_flagged",
         ),
         pytest.param(
             700,
-            [_donor(alliance_honor=1000 - i * 10) for i in range(9)],
-            9,
+            [_donor(alliance_honor=1000 - i * 10) for i in range(10)],
+            10,
             False,
-            9,
+            10,
             id="geometric_cutoff_not_flagged",
         ),
         pytest.param(
@@ -339,8 +342,8 @@ def test_possible_truncation(
     where list_top leaves room for fewer than _MAX_ROWS rows (a scroll
     position further down the page, or a shorter aspect ratio) is not
     truncation as long as every row that physically fit was read — list_top
-    =700 in a canonical-height image leaves room for exactly 9 rows
-    ((2400-700-130)//175 + 1 == 9, case 2); list_top=0 leaves room for all
+    =700 in a canonical-height image leaves room for exactly 10 rows
+    ((2400-700-87)//178 + 1 == 10, case 2); list_top=0 leaves room for all
     _MAX_ROWS (case 3). expected_rows (the same rows_onscreen value) is
     exposed on the result so a caller can judge how severe a flagged
     truncation is (e.g. discord-bot's upsert.ts truncation ratio guard)
@@ -475,6 +478,33 @@ def test_detect_list_top_falls_back_on_low_contrast_window() -> None:
     result = parser._detect_list_top(image, scale=1.0)
 
     assert result == _MEMBER_LIST_TOP
+
+
+def test_detect_list_top_anchors_a_merged_band_on_its_top_edge() -> None:
+    """A band far taller than a single text line (a decorated 2nd line or
+    focus-row graphics bleeding into the name column) has its centre dragged
+    off the row-0 baseline. Above _MERGED_BAND_MIN_HEIGHT the band is anchored
+    on its TOP edge + a normal half-line instead of its centre.
+
+    Regression test for the real weekly_015 case: its 74px merged band centred
+    ~24px below the true row-0 line, which — once the row pitch was corrected —
+    uniformly mis-aligned every row (rank 8→12/12, parse 5.6s→2.0s after this
+    fix). A centre anchor here would return band_centre(427) - 87 = 340; the
+    top-edge anchor returns band_start(390) + 12 - 87 = 315.
+    """
+    merged = (390, 464)  # 74px: > _MERGED_BAND_MIN_HEIGHT, like weekly_015
+    assert merged[1] - merged[0] > _MERGED_BAND_MIN_HEIGHT
+    # A normal periodic follow-up a row-pitch below the merged band's START,
+    # so the band is accepted as row 0 in the first place.
+    followup = (merged[0] + _ROW_HEIGHT, merged[0] + _ROW_HEIGHT + 29)
+    parser = ContributionRankingV1Parser()
+
+    result = parser._detect_list_top(_list_top_image([merged, followup]), scale=1.0)
+
+    name_offset = (_NAME_Y_OFF[0] + _NAME_Y_OFF[1]) // 2
+    assert result == merged[0] + _NAME_LINE_HALF_HEIGHT - name_offset
+    # And distinctly NOT the centre-anchored value a normal band would give.
+    assert result != _expected_list_top(merged)
 
 
 # ── Tab detection ─────────────────────────────────────────────────────────────
@@ -1065,6 +1095,100 @@ def test_enforce_honor_monotonicity_keeps_original_when_no_candidate_fits() -> N
     assert members[1].confidence == 0.0  # flagged low-confidence instead
     assert members[1].suspect_honor_window == (2051, 2458)
     assert members[1].suspect_honor_window[0] <= 2385 <= members[1].suspect_honor_window[1]
+
+
+# ── Honor monotonicity guard: implausible-drop (digit truncation) ─────────────
+#
+# A dropped digit yields a value far BELOW the row above yet still descending,
+# so the increase check never sees it. _HONOR_MIN_DROP_RATIO catches it: a drop
+# below 0.20x the previous row is the truncation signature (measured across the
+# 19 fixtures — smallest real drop ratio 0.526, none below 0.20). This is the
+# other half of the 4 silent row-11 truncations (2035→2, 4724→7, 1455→4) that
+# used to be written unflagged.
+
+
+def test_enforce_honor_monotonicity_flags_and_corrects_a_truncated_drop() -> None:
+    """The last-row truncation pattern: 2051 above, next row's 2035 misread as
+    a single digit "2". It stays descending, so only the ratio test catches it;
+    the tightened window then rejects the still-truncated re-read and accepts a
+    plausible one."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=2051, row_y=0),
+        _donor(alliance_honor=2, row_y=175, confidence=0.9),  # 2035 with a dropped digit
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[2035]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 2035
+    assert members[1].confidence == ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE
+    # Lower bound tightened to the plausibility floor (int(2051*0.20)+1 = 411),
+    # so a candidate that is itself still truncated could never "fit".
+    assert members[1].suspect_honor_window == (411, 2051)
+
+
+def test_enforce_honor_monotonicity_truncation_keeps_value_when_no_candidate_fits() -> None:
+    """No re-read clears the plausibility floor: keep the raw (truncated) value,
+    never fabricate, but zero confidence so downstream review still fires."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=4734, row_y=0),
+        _donor(alliance_honor=7, row_y=175, confidence=0.9),  # 4724 truncated
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[7]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].alliance_honor == 7  # unchanged: never fabricate
+    assert members[1].confidence == 0.0
+    assert members[1].suspect_honor_window == (int(4734 * 0.20) + 1, 4734)
+
+
+def test_enforce_honor_monotonicity_allows_a_legitimate_large_drop() -> None:
+    """A steep but plausible step (0.25x here, above the 0.20 floor) is NOT a
+    truncation — no re-OCR, no flag. Guards the ratio floor against firing on
+    real leaderboard gaps."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=1000, row_y=0),
+        _donor(alliance_honor=250, row_y=175),  # 0.25x: steep but legitimate
+    ]
+
+    with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    mock_candidates.assert_not_called()
+    assert members[1].alliance_honor == 250
+    assert members[1].suspect_honor_window is None
+
+
+def test_enforce_honor_monotonicity_ignores_a_drop_below_a_suspect_predecessor() -> None:
+    """The ratio is only meaningful against a TRUSTED row above. When the
+    predecessor is itself a corrupted-high misread (92256, flagged suspect this
+    pass), a legitimate value below it (2051) must NOT be re-flagged as
+    truncated — otherwise the guard corrupts a perfectly good row off a bad
+    reference."""
+    image = np.zeros((2400, 1080), dtype=np.uint8)
+    parser = ContributionRankingV1Parser()
+    members = [
+        _donor(alliance_honor=2458, row_y=0),
+        _donor(alliance_honor=92256, row_y=175, confidence=0.9),  # corrupted-high
+        _donor(alliance_honor=2051, row_y=350, confidence=0.9),  # legitimate
+    ]
+
+    # Returns 92256 for any row; if the truncation check wrongly fired on row 2,
+    # 92256 would "fit" its (18452, 92256] window and overwrite the good 2051.
+    with patch.object(parser, "_ocr_honor_candidates", return_value=[92256]):
+        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+
+    assert members[1].suspect_honor_window is not None  # row 1 flagged (increase)
+    assert members[2].alliance_honor == 2051  # row 2 untouched
+    assert members[2].confidence == 0.9
+    assert members[2].suspect_honor_window is None
 
 
 def test_enforce_honor_monotonicity_last_row_uses_zero_as_lower_bound() -> None:
