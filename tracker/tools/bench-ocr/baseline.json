@@ -243,6 +243,150 @@
         "correct": 12,
         "total": 12
       }
+    },
+    "weekly_012": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_013": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 11,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_014": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_015": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 11,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 9,
+        "total": 12
+      }
+    },
+    "weekly_016": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 10,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 12,
+        "total": 12
+      }
+    },
+    "weekly_017": {
+      "alliance_honor": {
+        "correct": 10,
+        "total": 12
+      },
+      "name": {
+        "correct": 10,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 10,
+        "total": 12
+      },
+      "rank": {
+        "correct": 11,
+        "total": 12
+      }
+    },
+    "weekly_018": {
+      "alliance_honor": {
+        "correct": 11,
+        "total": 12
+      },
+      "name": {
+        "correct": 9,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 8,
+        "total": 12
+      },
+      "rank": {
+        "correct": 11,
+        "total": 12
+      }
+    },
+    "weekly_019": {
+      "alliance_honor": {
+        "correct": 12,
+        "total": 12
+      },
+      "name": {
+        "correct": 8,
+        "total": 12
+      },
+      "name_exact": {
+        "correct": 7,
+        "total": 12
+      },
+      "rank": {
+        "correct": 11,
+        "total": 12
+      }
     }
   },
   "elite_wars": {

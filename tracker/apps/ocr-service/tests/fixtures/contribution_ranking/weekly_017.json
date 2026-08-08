@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Stoka",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3159
+    },
+    {
+      "name": "pennywise",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3070
+    },
+    {
+      "name": "SNIPER",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2850
+    },
+    {
+      "name": "Jrh",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 2850
+    },
+    {
+      "name": "Dark_Leider",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 2849
+    },
+    {
+      "name": "Lúa",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2810
+    },
+    {
+      "name": "FireFist",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2720
+    },
+    {
+      "name": "Kcuscg",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2573
+    },
+    {
+      "name": "XxDESTRUCTORxX",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2470
+    },
+    {
+      "name": "BigRedQueen",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 2305
+    },
+    {
+      "name": "Толик",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2296
+    },
+    {
+      "name": "VTN",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2265
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "CHIANTI",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 5725
+    },
+    {
+      "name": "scepter",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 5710
+    },
+    {
+      "name": "Ṣímbα",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 5669
+    },
+    {
+      "name": "Sincityfun",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 5591
+    },
+    {
+      "name": "jcOn",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 5305
+    },
+    {
+      "name": "Mel.k",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 5305
+    },
+    {
+      "name": "Akrid",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 5213
+    },
+    {
+      "name": "Yahoo",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 5210
+    },
+    {
+      "name": "spider99802259",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 5102
+    },
+    {
+      "name": "Madara⁶⁹Uchiha",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4913
+    },
+    {
+      "name": "Yuyuyu325",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 4734
+    },
+    {
+      "name": "nuna",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4724
+    }
+  ]
+}

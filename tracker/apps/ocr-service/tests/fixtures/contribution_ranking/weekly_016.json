@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Dawn",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3839
+    },
+    {
+      "name": "Bibble",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 3835
+    },
+    {
+      "name": "JMAC",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3679
+    },
+    {
+      "name": "ResidentEvil.",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3579
+    },
+    {
+      "name": "HEAVYMETAL",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 3578
+    },
+    {
+      "name": "JayJayOv",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3551
+    },
+    {
+      "name": "KOR.Park",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3536
+    },
+    {
+      "name": "Can",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3463
+    },
+    {
+      "name": "Genesis",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3382
+    },
+    {
+      "name": "Jαʂɱιŋツ",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 3287
+    },
+    {
+      "name": "おーしあ",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 3191
+    },
+    {
+      "name": "Stoka",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3159
+    }
+  ]
+}
