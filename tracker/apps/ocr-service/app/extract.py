@@ -26,13 +26,77 @@ _LEADING_RANK_RE = re.compile(r"^\s*\d{1,2}\s+")
 logger = logging.getLogger(__name__)
 
 _CONFIDENCE_THRESHOLD = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.75"))
-# Names have structurally lower Tesseract confidence than numeric fields
-# (e.g. a correctly-read name can score ~0.29 on certain game fonts), hence a
-# dedicated threshold; rank/power/points are near-certain with whitelisted OCR
-# and are not wired to LLM fallback (the LLM only improves names).
-_CONFIDENCE_THRESHOLD_NAME = float(
-    os.getenv("OCR_CONFIDENCE_THRESHOLD_NAME", str(_CONFIDENCE_THRESHOLD))
+# Weak, low confidence floor kept as ONE input among the orthogonal misread
+# signals below — NOT the old 0.75 primary gate. Tesseract name confidence is
+# anti-correlated with correctness (measured: wrong names average 0.71, correct-
+# but-flagged 0.64; several pure-garbage reads score 1.00), so triggering the LLM
+# on `confidence < 0.75` spent ~19% of calls on already-correct rows while
+# skipping high-confidence garbage. `looks_like_misread` (which inspects the OCR
+# output itself) is the primary trigger; this floor only adds a look at a
+# genuinely uncertain read whose output happens to look clean.
+_CONF_FLOOR_NAME = float(os.getenv("OCR_LLM_NAME_CONF_FLOOR", "0.35"))
+
+# Frame/junk debris a real handle essentially never contains — chat-bubble
+# borders, currency, math symbols. `~ ^ —` are deliberately NOT here: they occur
+# in real decorated handles (e.g. `~Loki~`).
+_LLM_JUNK_CHARS = frozenset("|\\«»№<>§¢")
+# Punctuation/decoration legitimate in a handle, so it never reads as junk.
+_LLM_NAME_PUNCT = frozenset("._-•⚓←→'’`.,()[]! *~^")
+# Below this alphanumeric share the output is mostly symbols → almost certainly a
+# misread ("A > №", "¢ JE", "= mm ..", "{ (LOL)").
+_LLM_MIN_ALNUM_RATIO = 0.6
+# Script blocks a legitimate handle can use: Latin (+ accents/Vietnamese),
+# Cyrillic, CJK/kana, Hangul, plus a few decoration blocks. A char outside all of
+# these (and not allowed punctuation/digit) is OCR noise, not a handle.
+_ALLOWED_SCRIPT_RANGES: tuple[tuple[int, int], ...] = (
+    (0x00C0, 0x024F),  # Latin-1 supplement + extended (accents, Đ, Ø …)
+    (0x1E00, 0x1EFF),  # Latin extended additional (Vietnamese, Ṣ)
+    (0x0400, 0x04FF),  # Cyrillic
+    (0x3040, 0x30FF),  # hiragana + katakana (incl. ・ ー)
+    (0x3400, 0x9FFF),  # CJK unified
+    (0xF900, 0xFAFF),  # CJK compatibility
+    (0xAC00, 0xD7A3),  # Hangul syllables
+    (0x1100, 0x11FF),  # Hangul jamo
+    (0x2020, 0x2022),  # dagger, double dagger, bullet
+    (0x2190, 0x21FF),  # arrows
+    (0x2460, 0x24FF),  # enclosed alphanumerics (circled)
+    (0x1F000, 0x1FAFF),  # emoji / pictographs
 )
+
+
+def _char_out_of_script(ch: str) -> bool:
+    """True when a character belongs to no script a real handle would use."""
+    if ch.isspace() or ch.isdigit() or ch in _LLM_NAME_PUNCT:
+        return False
+    if ch.isascii() and ch.isalpha():
+        return False
+    cp = ord(ch)
+    return not any(lo <= cp <= hi for lo, hi in _ALLOWED_SCRIPT_RANGES)
+
+
+def looks_like_misread(name: str) -> bool:
+    """Heuristic (OCR-output-only) that a name is a garbage misread worth the LLM.
+
+    Orthogonal to Tesseract confidence (see `_CONF_FLOOR_NAME`): fires on the
+    *shape* of the output — frame debris, a low alphanumeric share, an
+    out-of-script character, or a near-empty read. These catch the confident
+    garbage the confidence gate missed (`علE`→`¢ JE`, `Bulleit`→`A > №`,
+    `ÐÃŘĶ§ĮĐĒ•築`→`ĐÄRK§|ĐE s 3Š`) with near-zero waste on correct names.
+
+    It cannot catch a *clean-but-wrong* misread (`VTN`→`VIN`, `GOAT••`→`GOATe e`):
+    that output looks like a valid handle, so no output-only signal separates it
+    from a correct read — those are the roster-collision path's job, not this.
+    """
+    s = name.strip()
+    if sum(1 for c in s if c.isalnum()) < 2:
+        return True
+    if any(c in _LLM_JUNK_CHARS for c in s):
+        return True
+    if sum(1 for c in s if c.isalnum()) / len(s) < _LLM_MIN_ALNUM_RATIO:
+        return True
+    return any(_char_out_of_script(c) for c in s)
+
+
 # Confidence assigned when a suspect alliance_honor (flagged by
 # _enforce_honor_monotonicity, which could not itself confirm a fix) is
 # replaced by an LLM score that fits the same monotonicity window. Distinct
@@ -135,10 +199,13 @@ def _apply_llm_fallback(
     parser: BaseParser,
     force_all: bool = False,
 ) -> ParseResult | DonationParseResult:  # PlayerStatsParseResult is handled before this call
-    """Generic LLM fallback: corrects member.name on rows below confidence threshold.
+    """Generic LLM fallback: corrects member.name on rows that look misread.
 
-    Works for both event (MemberResult) and donation (DonationMember) shapes —
-    only the `name` field is rewritten; all other fields are preserved verbatim.
+    A row is sent to the LLM when its OCR name looks like a garbage misread
+    (`looks_like_misread`), its confidence is below `_CONF_FLOOR_NAME`, its
+    alliance_honor is flagged suspect, or `force_all` is set. Works for both
+    event (MemberResult) and donation (DonationMember) shapes — only the `name`
+    field is rewritten; all other fields are preserved verbatim.
     """
     from app.llm_fallback import llm_fallback, llm_fallback_donation
 
@@ -150,18 +217,22 @@ def _apply_llm_fallback(
     fallback_disabled = False
     members = cast(list[MemberResult | DonationMember], result.members)
     for i, member in enumerate(members):
-        # A suspect alliance_honor must reach the LLM even at high name
-        # confidence — coupling that decision to the name threshold is
-        # exactly the class of accident that let _MONOTONICITY_FIX_CONFIDENCE
-        # (0.5 before this fix) sit above _CONFIDENCE_THRESHOLD_NAME's 0.35
-        # default and never reach the LLM either.
+        # A suspect alliance_honor must reach the LLM regardless of how the name
+        # scores — coupling that decision to any name signal is exactly the class
+        # of accident that let _MONOTONICITY_FIX_CONFIDENCE (0.5 before that fix)
+        # sit above the old name threshold and never reach the LLM either.
         honor_suspect = (
             isinstance(member, DonationMember) and member.suspect_honor_window is not None
         )
-        skip_low_conf = (
-            not force_all and member.confidence >= _CONFIDENCE_THRESHOLD_NAME and not honor_suspect
+        # Trigger orthogonally to Tesseract confidence (see looks_like_misread /
+        # _CONF_FLOOR_NAME): the output *shape* predicts a garbage misread far
+        # better than the (anti-correlated) confidence score. Confidence survives
+        # only as a weak low floor.
+        name_misread = looks_like_misread(member.name)
+        should_try = (
+            force_all or honor_suspect or name_misread or member.confidence < _CONF_FLOOR_NAME
         )
-        if skip_low_conf or fallback_disabled:
+        if not should_try or fallback_disabled:
             updated.append(member)
             continue
 
@@ -172,10 +243,10 @@ def _apply_llm_fallback(
         elif honor_suspect:
             window_repr = cast(DonationMember, member).suspect_honor_window
             reason = f"suspect_honor_window={window_repr}"
+        elif name_misread:
+            reason = f"name {member.name!r} looks like a misread"
         else:
-            reason = (
-                f"confidence {member.confidence:.2f} < threshold {_CONFIDENCE_THRESHOLD_NAME:.2f}"
-            )
+            reason = f"confidence {member.confidence:.2f} < floor {_CONF_FLOOR_NAME:.2f}"
         logger.info("LLM fallback triggered for %r (row %d): %s", member.name, row, reason)
 
         # Band actually cropped by the parser: the index in `members` doesn't
