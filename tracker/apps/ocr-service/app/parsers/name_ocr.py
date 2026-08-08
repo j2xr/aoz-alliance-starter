@@ -66,7 +66,12 @@ def normalize_name(name: str) -> str:
 # screenshot resolution. A name made entirely of these (plus ASCII) cannot be
 # disambiguated from Latin by tesseract; when the multilingual model picks
 # them, we re-OCR with `-l eng` to recover the real Latin spelling.
-AMBIGUOUS_CYRILLIC = frozenset("АВЕКМНОРСТХаеорсух")
+# Lowercase `к` (U+043A) is included alongside the others — it is as close to a
+# Latin `k` as `о`/`с` are to `o`/`c` at capture resolution: without it a Latin
+# "kok" read as "Кок" counted as a genuine (distinctive) Russian pseudo and the
+# eng retry never ran. Other lowercase forms (`м`/`т`/`н`) are deliberately left
+# out: their glyphs diverge enough from Latin to be real signal.
+AMBIGUOUS_CYRILLIC = frozenset("АВЕКМНОРСТХаеорсухк")
 
 
 def has_distinctive_cyrillic(text: str) -> bool:
@@ -195,6 +200,20 @@ def ocr_name_pass(
     return words_from_data(data, min_conf=min_conf, sep=sep), data
 
 
+def _letterlike_len(s: str) -> int:
+    """Count only the characters that carry the pseudo's identity: ASCII
+    alphanumerics and Cyrillic letters.
+
+    Used to compare the English retry against the multilingual read in
+    ``disambiguate_cyrillic`` without letting garbage the multilingual pass
+    sprinkles in — a katakana avatar bleed (``トド``), an OCR'd alliance tag
+    (``(500)``), stray punctuation — inflate the multilingual length and reject
+    an otherwise-good Latin reading. CJK, punctuation and whitespace don't count
+    toward either side.
+    """
+    return sum(1 for c in s if (c.isascii() and c.isalnum()) or 0x0400 <= ord(c) <= 0x04FF)
+
+
 def disambiguate_cyrillic(
     crop: np.ndarray, name: str, name_data: dict[str, Any], *, sep: str = ""
 ) -> tuple[str, dict[str, Any]]:
@@ -231,7 +250,12 @@ def disambiguate_cyrillic(
         return name_rus, data_rus
 
     name_eng, data_eng = ocr_name_pass(crop, "eng", sep=sep)
-    if name_eng and len(name_eng) >= len(name) - 1:
+    # Accept the English pass when it recovered a comparable amount of
+    # identity-bearing content (ASCII alphanumerics + Cyrillic letters). Using
+    # raw length here let a multilingual read padded with CJK/tag garbage
+    # (``トド | (500) СЕКАТОР_1000``) out-measure the correct-but-tag-only English
+    # read (``| (SOD) CEKATOP_1000``) and wrongly keep the Cyrillic form.
+    if name_eng and _letterlike_len(name_eng) >= _letterlike_len(name) - 1:
         return name_eng, data_eng
 
     return name, name_data
