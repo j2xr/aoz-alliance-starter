@@ -50,12 +50,15 @@ _THINKING_MODEL_HINTS = ("qwen3", "deepseek-r1")
 # Exception: small models like moondream emit an immediate stop token *without*
 # `format: json`, so we re-enable it for them via _JSON_FORMAT_MODEL_HINTS.
 _PROMPT = (
-    "Extract the player name from this mobile game screenshot row. "
-    "The name appears above the power number and may use any script: "
-    "Latin, Cyrillic (Russian), CJK (Chinese or Japanese kanji/kana), "
-    "Korean (Hangul), Vietnamese (accented Latin), emoji, or a mix. "
-    "Copy it exactly as displayed, preserving every character. "
-    'Return ONLY a JSON object: {"name": "<exact name, or null if unreadable>"}.'
+    "This is one row from a mobile game leaderboard: a player avatar, then the player "
+    "name. The name may include an alliance tag in parentheses like (SOD) BEFORE the "
+    "real name — that parenthesised tag is NOT the name. Read the actual player name, "
+    "which may be Latin, Cyrillic (Russian), CJK (Chinese/Japanese kanji or kana), "
+    "Korean (Hangul), Vietnamese (accented Latin), emoji, or decorated/stylised "
+    "characters. "
+    'Return ONLY a JSON object: {"tag": "<parenthesised tag, or null>", '
+    '"name": "<the real player name after the tag, copied exactly; null if unreadable>"}. '
+    "Never put the tag in the name field. If the name is unreadable, use null — do not guess."
 )
 
 # Simplified prompt for small vision models (e.g. moondream) that struggle with
@@ -68,17 +71,22 @@ _PROMPT_SIMPLE = (
     "Copy the name exactly as shown. Use null if unreadable."
 )
 
-# Donation-row prompt: asks for the name AND the Alliance Honor score in the same
-# call. The caller (extract._apply_llm_fallback) accepts the corrected name ONLY
-# when this score matches the independently-OCR'd honor — a self-consistency
-# check that the model actually read *this* row rather than a notification
-# banner overlaid on it or a neighbouring row. See llm_fallback_donation.
+# Donation-row prompt: asks for the alliance tag, the name, AND the Alliance Honor
+# score in the same call. Tag and name are SEPARATE fields so the model cannot fall
+# back to the (readable) tag when the (decorated) name is hard — the failure that
+# stored "(SOD) ⇐.AL3X.⇒" as name="SOD" in production. The caller
+# (extract._apply_llm_fallback) still accepts the corrected name ONLY when `score`
+# matches the independently-OCR'd honor — a self-consistency check that the model
+# actually read *this* row rather than a banner overlaid on it. See
+# llm_fallback_donation.
 _PROMPT_DONATION = (
-    "This is one row of a mobile game contribution leaderboard. Left to right it shows: "
-    "a rank number, an avatar, the player name, and the player's score (Alliance Honor) "
-    "as a number on the far right. Copy the name exactly, in any script. "
-    'Return ONLY a JSON object: {"name": "<exact player name, or null if unreadable>", '
-    '"score": <the Alliance Honor number on the far right, or null>}.'
+    "This is one row of a mobile game contribution leaderboard: a rank number, an "
+    "avatar, an optional alliance tag in parentheses like (SOD), the player name, and "
+    "far right the Alliance Honor score. The parenthesised tag is NOT the name. "
+    'Return ONLY a JSON object: {"tag": "<parenthesised tag, or null>", '
+    '"name": "<the real player name after the tag, copied exactly; null if unreadable>", '
+    '"score": <the Alliance Honor number on the far right, or null>}. '
+    "Never put the tag in the name field. If the name is unreadable, use null — do not guess."
 )
 
 # Prompt for full player stats chat screenshot extraction.
@@ -197,6 +205,12 @@ def _call_ollama(
             "num_predict": num_predict,
             "temperature": 0,
             "seed": 42,
+            # Some Ollama builds bake in presence_penalty=1.5 (e.g. every qwen3.5:*
+            # tag — QwenLM/Qwen3-VL#1825). On this extraction task that makes vision
+            # models abstain (name=null) or mix scripts (hallucinated Lao/Burmese)
+            # and run ~10x slower. 0 is the recommended value; harmless for models
+            # (like qwen3-vl) that don't set the bad default.
+            "presence_penalty": 0,
         },
     }
     if _uses_json_format(model):
@@ -367,6 +381,35 @@ def _resize_for_llm(
     return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 
+# The parser hands the LLM a full-width row (rank badge + avatar + name + score).
+# The name occupies a thin central band; the avatar and blank gutter waste the
+# model's vision-token budget and, worse, distract small models (observed: reading
+# the power number instead of the name). Cropping to the name band and upscaling
+# gives each glyph more pixels — what lets the 2B model read decorated handles like
+# "⇐ .AL3X. ⇒" instead of falling back to the alliance tag.
+_LLM_NAME_X_START_FRAC = 0.27  # drop the rank badge + avatar (left ~27% of the row)
+_LLM_EVENT_NAME_HEIGHT_FRAC = 0.58  # event rows: the name sits above the power number
+_LLM_UPSCALE = 2.5
+
+
+def _crop_name_band(row_image: np.ndarray, is_donation: bool) -> np.ndarray:
+    """Crop a full-width row to the name band and upscale it for the vision model.
+
+    Donation rows keep full height — the name and the far-right Alliance Honor score
+    share one line and the score is needed for the self-consistency gate. Event rows
+    keep only the top band: the power number sits *below* the name and otherwise
+    pulls a small model's attention onto the digits.
+    """
+    h, w = row_image.shape[:2]
+    x0 = int(w * _LLM_NAME_X_START_FRAC)
+    if is_donation:
+        band = row_image[:, x0:]
+    else:
+        band = row_image[: int(h * _LLM_EVENT_NAME_HEIGHT_FRAC), x0:]
+    new_w, new_h = int(band.shape[1] * _LLM_UPSCALE), int(band.shape[0] * _LLM_UPSCALE)
+    return cv2.resize(band, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+
 def llm_fallback(row_image: np.ndarray) -> str | None:
     """Send a cropped row image to a vision model via Ollama and return the player name."""
     base_url, model, num_ctx, num_predict, think, timeout_seconds, keep_alive, headers = (
@@ -374,6 +417,7 @@ def llm_fallback(row_image: np.ndarray) -> str | None:
     )
     prompt = _build_prompt(model, think)
 
+    row_image = _crop_name_band(row_image, is_donation=False)
     h, w = row_image.shape[:2]
     encoded_image = _encode_image(row_image)
 
@@ -420,9 +464,9 @@ def llm_fallback_donation(row_image: np.ndarray) -> tuple[str | None, int | None
     name when they agree — so a confident-but-wrong read (e.g. a notification
     banner overlaying the row, which the model happily transcribes as a player
     name) is caught: a model whose attention drifted off the real row reports a
-    score that does not match. Uses the full-width crop on purpose — the model
-    must pick the honor out among the row's numbers, and a drifted read betrays
-    itself by returning the wrong one.
+    score that does not match. The name-band crop (see `_crop_name_band`) keeps
+    the row's full height and its right side, so the far-right honor stays in
+    frame for this cross-check while the rank badge and avatar are dropped.
     """
     base_url, model, num_ctx, num_predict, think, timeout_seconds, keep_alive, headers = (
         _get_ollama_params()
@@ -434,6 +478,7 @@ def llm_fallback_donation(row_image: np.ndarray) -> tuple[str | None, int | None
     else:
         prompt = _PROMPT_DONATION
 
+    row_image = _crop_name_band(row_image, is_donation=True)
     h, w = row_image.shape[:2]
     encoded_image = _encode_image(row_image)
 
