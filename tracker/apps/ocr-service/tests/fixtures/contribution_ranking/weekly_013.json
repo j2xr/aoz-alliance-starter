@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Метью",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 6738
+    },
+    {
+      "name": "3lar",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 6717
+    },
+    {
+      "name": "Ichigo_19",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 6705
+    },
+    {
+      "name": "JANI",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 6490
+    },
+    {
+      "name": "Дмитриий",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 6453
+    },
+    {
+      "name": "beandip",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 6297
+    },
+    {
+      "name": "King.gerald",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 6198
+    },
+    {
+      "name": "VruPhilou",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 6195
+    },
+    {
+      "name": "幸恵丸船長",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 6179
+    },
+    {
+      "name": "Cummins",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 6087
+    },
+    {
+      "name": "MrWind",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 5875
+    },
+    {
+      "name": "CHIANTI",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 5725
+    }
+  ]
+}

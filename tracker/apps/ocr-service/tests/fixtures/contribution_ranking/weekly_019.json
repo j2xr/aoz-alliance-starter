@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "~Loki~",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 1576
+    },
+    {
+      "name": "DarKKnight",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 1575
+    },
+    {
+      "name": "RT8",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1455
+    },
+    {
+      "name": "DEMODUS",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1378
+    },
+    {
+      "name": "Poputin",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1340
+    },
+    {
+      "name": "Insidious",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 915
+    },
+    {
+      "name": "GOAT••",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 600
+    },
+    {
+      "name": "M1sskat",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 510
+    },
+    {
+      "name": "KANHA_",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 485
+    },
+    {
+      "name": "MGK",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 255
+    },
+    {
+      "name": "ADAM2907",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 0
+    },
+    {
+      "name": "spyx",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 0
+    }
+  ]
+}

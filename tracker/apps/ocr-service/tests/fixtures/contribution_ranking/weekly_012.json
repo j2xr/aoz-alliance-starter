@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Edu",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 8118
+    },
+    {
+      "name": "StevenPham",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 8051
+    },
+    {
+      "name": "Сказка",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 7976
+    },
+    {
+      "name": "Bumbelbee",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 7783
+    },
+    {
+      "name": "Герман",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 7384
+    },
+    {
+      "name": "Blitzdog",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 7357
+    },
+    {
+      "name": "Nomad",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 7317
+    },
+    {
+      "name": "FATCAT29",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 7265
+    },
+    {
+      "name": "VVV",
+      "alliance_tag": "L0L",
+      "rank": "R4",
+      "alliance_honor": 7120
+    },
+    {
+      "name": "Maks",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 6929
+    },
+    {
+      "name": "BORZ",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 6772
+    },
+    {
+      "name": "Метью",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 6738
+    }
+  ]
+}

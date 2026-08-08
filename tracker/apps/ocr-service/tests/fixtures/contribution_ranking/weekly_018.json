@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "VTN",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 2265
+    },
+    {
+      "name": "Onepunch",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 2220
+    },
+    {
+      "name": "Baron.Rojo",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 2147
+    },
+    {
+      "name": "Garbageman",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 2110
+    },
+    {
+      "name": "doradora12",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 1948
+    },
+    {
+      "name": "GOLF",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 1845
+    },
+    {
+      "name": "BlizzardKing",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1826
+    },
+    {
+      "name": "j a s m i n",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1750
+    },
+    {
+      "name": "TomeyNYC",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1636
+    },
+    {
+      "name": "~Loki~",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 1576
+    },
+    {
+      "name": "DarKKnight",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 1575
+    },
+    {
+      "name": "RT8",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 1455
+    }
+  ]
+}

@@ -202,6 +202,17 @@ _ALLIANCE_TAG_RE = re.compile(r"\(\s*([A-Za-z0-9]{1,5})\s*\)\s*")
 # unlikely to happen to contain a coincidental "(XX)"-shaped fragment this
 # early.
 _ALLIANCE_TAG_SEARCH_WINDOW = 20
+# Fallback for when the tag OCR'd too garbled for the strict "(TAG)" shape
+# above but still sits ahead of the real name as a strippable prefix. Two
+# observed garble modes on the "(L0L)" tag (its digit "0" and thin "L"s are
+# a magnet for misreads): the parens survive but wrap non-ASCII glyphs the
+# strict class rejects — "(ОГ) КАННА", "я Л ОГ) nuna" — or the closing paren
+# is dropped and a stray token abuts the name — "_= | (LOU HEAVYMETAL". The
+# two alternatives below strip, respectively, everything through the first
+# ")" and everything through an "(short-token" run. Applied ONLY after the
+# strict match fails (see _strip_alliance_tag), so clean "(SOD)"/"(L0L)"
+# rows — every shipped SOD fixture — never reach it.
+_GARBLED_TAG_PREFIX_RE = re.compile(r"^(?:.{0,9}?\)|.{0,6}?\([^\s)]{1,5})\s*")
 
 # ASCII fast-path: same logic as polar_invasion_v1 — eng-only first, escalate
 # to full multilang only when result is non-ASCII or confidence is too low.
@@ -224,6 +235,14 @@ def _strip_alliance_tag(raw: str) -> tuple[str | None, str]:
     window = raw[:_ALLIANCE_TAG_SEARCH_WINDOW]
     m = _ALLIANCE_TAG_RE.search(window)
     if not m:
+        # Strict "(TAG)" not found — try to salvage a garbled-tag prefix
+        # (see _GARBLED_TAG_PREFIX_RE). The tag itself is unrecoverable here
+        # (return None), but peeling it off rescues the name that follows.
+        g = _GARBLED_TAG_PREFIX_RE.match(window)
+        if g:
+            remainder = (window[g.end() :] + raw[len(window) :]).strip()
+            if len(remainder.replace(" ", "")) >= 2:
+                return None, remainder
         return None, raw.strip()
     remainder = (window[m.end() :] + raw[len(window) :]).strip()
     if not remainder:
@@ -712,13 +731,27 @@ class ContributionRankingV1Parser(BaseParser):
         header's 37px height stretched its lookahead window enough to
         overlap the real row-1 band by coincidence, so the header wrongly
         measured as periodic and got used as row 0, corrupting every row.
-        The tolerance itself absorbs the few-pixel jitter between a row's
+        The near tolerance absorbs the few-pixel jitter between a row's
         nominal start and where its text actually begins (ascenders/
-        descenders, sub-pixel rendering).
+        descenders, sub-pixel rendering). The far tolerance is deliberately
+        wider: the nominal ``row_h`` (175) undershoots the real row pitch
+        seen on captures — measured at ~178px by vertical autocorrelation
+        across every fixture — and, because a candidate band is anchored on
+        its ``start``, a tall row-0 band (e.g. a short highlighted name whose
+        graphics bleed into the name column) starts early, pushing the next
+        row's *start* to ``start + ~1.12·row_h``. A symmetric ±17px window
+        misses it by a few pixels and the real row-0 band gets wrongly
+        rejected as non-periodic — this is exactly what collapsed weekly_018
+        to a single row. Both tolerances are CONSTANTS, not scaled by the
+        candidate's own height (never anchored on ``end``): a taller header
+        band therefore does NOT get a proportionally wider lookahead, which
+        is the property that keeps weekly_010's 37px header from aliasing
+        onto its row-1 band.
         """
-        tol = max(10, row_h // 10)
-        lo = max(0, start + row_h - tol)
-        hi = min(len(above), start + row_h + tol)
+        near = max(10, row_h // 10)
+        far = max(near, row_h // 6)
+        lo = max(0, start + row_h - near)
+        hi = min(len(above), start + row_h + far)
         if lo >= hi:
             return False
         return bool(np.any(above[lo:hi]))

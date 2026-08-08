@@ -1,0 +1,78 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "nuna",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4724
+    },
+    {
+      "name": "KlausRider",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4627
+    },
+    {
+      "name": "Luxemburg",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4525
+    },
+    {
+      "name": "Pravednik",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4473
+    },
+    {
+      "name": "ZEROHERO",
+      "alliance_tag": "L0L",
+      "rank": "R3",
+      "alliance_honor": 4460
+    },
+    {
+      "name": "THOR,01",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4426
+    },
+    {
+      "name": "kor,spark",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4412
+    },
+    {
+      "name": "علE",
+      "alliance_tag": "L0L",
+      "rank": "R2",
+      "alliance_honor": 4407
+    },
+    {
+      "name": "ÐRACØNIAÑ",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4221
+    },
+    {
+      "name": "Mysterio",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 4008
+    },
+    {
+      "name": "Gumper",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3901
+    },
+    {
+      "name": "Dawn",
+      "alliance_tag": "L0L",
+      "rank": "R1",
+      "alliance_honor": 3839
+    }
+  ]
+}
