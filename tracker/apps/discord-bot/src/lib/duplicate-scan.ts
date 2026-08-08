@@ -11,7 +11,7 @@
 // which displays the candidates and lets a human trigger /merge after
 // checking the source screenshot.
 
-import { normalizeOcrName, levenshtein } from './name-resolve.js';
+import { normalizeOcrName, levenshtein, type RosterPlayer } from './name-resolve.js';
 
 // ── Comparison key: homoglyph folding ───────────────────────────────────────
 //
@@ -168,6 +168,56 @@ export function compareNames(rawA: string, rawB: string): NameComparison {
     return { keyA, keyB, distance, similarity, containment, proximity: 'weak', reason: 'fairly close names' };
   }
   return { keyA, keyB, distance, similarity, containment, proximity: 'none', reason: 'unrelated names' };
+}
+
+// ── Collisions against the roster at credit time ─────────────────────────────
+//
+// Conceptually a name-resolve.ts concern (a NEW OCR name vs the roster), but it
+// needs compareNames' homoglyph fold, and name-resolve.ts is imported *by* this
+// module — so it lives here, next to compareNames, to avoid the import cycle.
+//
+// Proximities that make a credit ambiguous. Same set upsert.ts already treats
+// as a near-duplicate (exact-key catches homoglyph/accent twins LEÓN≡LEON,
+// Satana≡Sa†ana; weak catches short-name distance-1 pairs VV/VVV, jc0n/jcOn).
+export const COLLISION_PROXIMITIES: ReadonlySet<NameProximity> = new Set([
+  'exact-key',
+  'strong',
+  'weak',
+]);
+
+export type RosterCollision = { player: RosterPlayer; comparison: NameComparison };
+
+/**
+ * Roster players — other than the one we are about to credit (`creditedId`) —
+ * whose name closely resembles `rawName`.
+ *
+ * A non-empty result means crediting `rawName` is a silent-misattribution risk:
+ * the screenshot could have been one of these other players, misread into the
+ * credited name. This is the case an exact string match hides — `LEON` matches
+ * the `LEON` row exactly, so nothing looks wrong, yet a `LEÓN` player sits one
+ * accent away. Detection only; the caller decides what to do (today: warn, and
+ * still credit the exact/fuzzy match — never drops or reroutes data here).
+ *
+ * Deliberately reuses compareNames' full signal (incl. the short-name `weak`
+ * tier): unlike findFuzzyMatch, which suppresses short names to avoid *merging*
+ * JANI/DANI, surfacing a short-name collision for human review is exactly the
+ * point (`VV`/`VVV` is a real example). The cost is expected warnings on rosters
+ * that genuinely contain a near-identical pair.
+ */
+export function findRosterCollisions(
+  rawName: string,
+  creditedId: string,
+  roster: RosterPlayer[],
+): RosterCollision[] {
+  const collisions: RosterCollision[] = [];
+  for (const player of roster) {
+    if (player.id === creditedId) continue;
+    const comparison = compareNames(rawName, player.name);
+    if (COLLISION_PROXIMITIES.has(comparison.proximity)) {
+      collisions.push({ player, comparison });
+    }
+  }
+  return collisions;
 }
 
 // ── Grouping by context (event or donation period) ──────────────────────────

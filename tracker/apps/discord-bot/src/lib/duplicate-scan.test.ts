@@ -7,12 +7,14 @@ import {
   rankCandidates,
   foldConfusables,
   duplicateKey,
+  findRosterCollisions,
   MAX_ENTRIES_PER_CONTEXT,
   type ScanEntry,
   type ScanContext,
   type DuplicateTier,
   type NameProximity,
 } from './duplicate-scan.js';
+import type { RosterPlayer } from './name-resolve.js';
 
 // ── Validation table: the 4 confirmed real duplicates + the confirmed
 // distinct false positives, all drawn from the 3 audits of 2026-07-26
@@ -308,5 +310,58 @@ describe('the loose scorer never leaks into the automatic auto-alias path', () =
     expect(findFuzzyMatch('RigSteelCurtain', [{ id: 'p1', name: 'Big§teelCurtain' }])).toEqual({
       kind: 'none',
     });
+  });
+});
+
+// ── findRosterCollisions ─────────────────────────────────────────────────────
+//
+// The wrong-player-attribution guard: a name credited to one roster player that
+// also resembles a DIFFERENT one. Covers the exact-match blind spot (an exact
+// string match to `LEON` while `LEÓN` sits in the same roster).
+describe('findRosterCollisions', () => {
+  const roster = (...names: string[]): RosterPlayer[] =>
+    names.map((name, i) => ({ id: `p${i}`, name }));
+
+  it('flags a homoglyph/accent twin of the credited exact match', () => {
+    // OCR read "LEON", credited to the p0 "LEON" row; "LEÓN" (p1) is one accent
+    // away — the screenshot could have been that player.
+    const r = roster('LEON', 'LEÓN');
+    const hits = findRosterCollisions('LEON', 'p0', r);
+    expect(hits.map((h) => h.player.name)).toEqual(['LEÓN']);
+    expect(hits[0]!.comparison.proximity).toBe('exact-key');
+  });
+
+  it('flags a short-name distance-1 twin (VV / VVV, jc0n / jcOn)', () => {
+    expect(findRosterCollisions('VVV', 'p0', roster('VVV', 'VV')).map((h) => h.player.name)).toEqual(
+      ['VV'],
+    );
+    expect(
+      findRosterCollisions('jc0n', 'p0', roster('jc0n', 'jcOn')).map((h) => h.player.name),
+    ).toEqual(['jcOn']);
+  });
+
+  it('flags a dagger-decoration twin (Satana / Sa†ana)', () => {
+    // The dagger is stripped (not folded), so "sa†ana" → "saana": one delete
+    // from "satana" → proximity 'strong' rather than an exact-key twin. Still a
+    // collision — 'strong' is in COLLISION_PROXIMITIES.
+    const hits = findRosterCollisions('Satana', 'p0', roster('Satana', 'Sa†ana'));
+    expect(hits.map((h) => h.player.name)).toEqual(['Sa†ana']);
+    expect(hits[0]!.comparison.proximity).toBe('strong');
+  });
+
+  it('excludes the credited player itself', () => {
+    // Only the credited "LEON" is present — no OTHER player to collide with.
+    expect(findRosterCollisions('LEON', 'p0', roster('LEON'))).toEqual([]);
+  });
+
+  it('returns nothing when no other roster name resembles the credit', () => {
+    expect(findRosterCollisions('Zephyrion', 'p0', roster('Zephyrion', 'CompletelyUnrelated'))).toEqual(
+      [],
+    );
+  });
+
+  it('reports every colliding player, not just the closest', () => {
+    const hits = findRosterCollisions('LEON', 'p0', roster('LEON', 'LEÓN', 'LEoN'));
+    expect(hits.map((h) => h.player.name).sort()).toEqual(['LEoN', 'LEÓN']);
   });
 });
