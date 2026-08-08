@@ -9,8 +9,14 @@ Usage (from repo root):
     python tools/bench-ocr/bench.py --write-baseline
 
 Name accuracy is reported two ways so a green run can't hide misreads:
-- ``name``       : fuzzy match, ``SequenceMatcher.ratio() >= 0.70`` (case-insensitive).
-                   This is the gated metric (Target column), kept for continuity.
+- ``name``       : the gated metric (Target column). Long names pass on a fuzzy
+                   ``SequenceMatcher.ratio() >= 0.70`` (case-insensitive); short
+                   names (normalized key length <= _SHORT_NAME_MAX_KEY_LEN) pass
+                   only on key equality (accents/case/decoration may differ, a
+                   base letter/digit may not — see _name_matches). The ratio is
+                   length-biased and unreliable on short names, where a single
+                   substitution is also the wrong-player-attribution risk
+                   (``JMAC``→``IMAC``, ``VV``→``VVV``).
 - ``name_exact`` : strict ``got.name == want["name"]``. Informational only
                    (Target ``—``, Status ``INFO``) — it is NOT gated, so adding
                    the metric can't turn CI red on its own. Its purpose is
@@ -22,10 +28,11 @@ Verbose output: one line per anomaly, printed BELOW the per-fixture table.
     FAIL      <fixture>  row=NN  field=<name>  expected=<v>  got=<v>  conf=<f>
     MISMATCH  <fixture>  row=NN  field=name    expected=<v>  got=<v>  conf=<f>  sim=<f>
     WARN      <fixture>  row=NN  field=name    expected=<v>  got=<v>  conf=<f>  sim=<f>
-- FAIL: got != expected on that field (name: below the fuzzy threshold).
-- MISMATCH: name passed the fuzzy threshold but is NOT byte-exact — a real
-  misread the fuzzy metric would otherwise silently absorb (e.g.
-  ``BigSteelCurtain`` → ``Rig§teelCurtain``, ``Mjölnir`` → ``Mjolnir``).
+- FAIL: got != expected on that field (name: failed _name_matches — below the
+  fuzzy threshold for a long name, or not key-equal for a short one).
+- MISMATCH: name passed _name_matches but is NOT byte-exact — a real misread the
+  gated metric still tolerates (e.g. ``BigSteelCurtain`` → ``Rig§teelCurtain``,
+  ``Mjölnir`` → ``Mjolnir``).
 - WARN: row matched on all fields but member confidence is < CONFIDENCE_THRESHOLD.
 - Name anomaly lines (FAIL/MISMATCH/WARN) also print ``sim=<ratio>`` so a
   correct-but-low-confidence WARN reads ``sim=1.00`` at a glance while a misread
@@ -64,6 +71,7 @@ import logging
 import os
 import sys
 import time
+import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -157,6 +165,43 @@ class BenchResult:
 
 def _sim(a: str, b: str) -> float:
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+
+# Below this normalized-key length the fuzzy ratio is unreliable AND dangerous:
+# unreliable because it is length-biased (one substitution on a 3-char name is
+# 0.67, two on a 15-char name is 0.87), dangerous because a substitution on a
+# short name is exactly the wrong-player-attribution risk (JMAC→IMAC, VV→VVV,
+# jc0n→jcOn — the last two are distinct real players). Same threshold as the
+# bot's MIN_KEY_LENGTH_FOR_FUZZY (discord-bot/src/lib/name-resolve.ts).
+_SHORT_NAME_MAX_KEY_LEN = 4
+
+
+def _name_key(s: str) -> str:
+    """Casefold, drop accents and NFKC-decompose (so fullwidth/decorated forms
+    collapse), then keep only letters and digits.
+
+    Strips the punctuation/whitespace/arrows/daggers that decorate handles, so a
+    spacing-only degradation reads as equal (``← .AL3X. →`` ≡ ``←.AL3X.→`` →
+    ``al3x``). Deliberately does NOT fold homoglyphs: ``jc0n`` (digit 0) and
+    ``jcOn`` (letter O) must stay distinct — they are two different players.
+    """
+    decomposed = unicodedata.normalize("NFKD", s.casefold())
+    without_marks = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return "".join(c for c in without_marks if c.isalnum())
+
+
+def _name_matches(got: str, want: str) -> bool:
+    """Whether ``got`` counts as a correct read of the golden ``want``.
+
+    Long names keep the fuzzy ratio gate (tolerates minor OCR degradation).
+    Short names (golden key length ≤ _SHORT_NAME_MAX_KEY_LEN) require key
+    equality instead: accents, case and decoration may differ, a base letter or
+    digit may not. This stops the fuzzy metric silently absorbing a short-name
+    substitution the way it used to (``JMAC``→``IMAC`` scored 0.75 = "correct").
+    """
+    if len(_name_key(want)) <= _SHORT_NAME_MAX_KEY_LEN:
+        return _name_key(got) == _name_key(want)
+    return _sim(got, want) >= 0.70
 
 
 def _pct(num: int, den: int) -> str:
@@ -282,11 +327,11 @@ def _compare_name(
       misread the fuzzy metric would otherwise silently absorb.
     A correct-but-low-confidence row emits its WARN in the caller instead.
     """
-    name_fuzzy = _sim(got.name, want["name"]) >= 0.7
+    name_ok = _name_matches(got.name, want["name"])
     name_exact = got.name == want["name"]
-    matches["name"] = name_fuzzy
+    matches["name"] = name_ok
     matches["name_exact"] = name_exact
-    if not name_fuzzy:
+    if not name_ok:
         anomalies.append(Anomaly("FAIL", fixture, row_idx, "name", want["name"], got.name, conf))
     elif not name_exact:
         anomalies.append(

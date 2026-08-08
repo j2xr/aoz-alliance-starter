@@ -88,7 +88,7 @@
         "total": 12
       },
       "name": {
-        "correct": 12,
+        "correct": 11,
         "total": 12
       },
       "name_exact": {
@@ -322,7 +322,7 @@
         "total": 12
       },
       "name": {
-        "correct": 11,
+        "correct": 10,
         "total": 12
       },
       "name_exact": {
@@ -460,7 +460,7 @@
     },
     "20260416T0600_002": {
       "name": {
-        "correct": 11,
+        "correct": 10,
         "total": 11
       },
       "name_exact": {
@@ -506,7 +506,7 @@
     },
     "20260407T1500_002": {
       "name": {
-        "correct": 10,
+        "correct": 9,
         "total": 11
       },
       "name_exact": {
