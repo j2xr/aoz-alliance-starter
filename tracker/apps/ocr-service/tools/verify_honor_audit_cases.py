@@ -64,7 +64,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from app.dispatcher import DONATION_CODE, UnknownEventError, detect_screen_kind
-from app.extract import _CONFIDENCE_THRESHOLD_NAME, _LLM_FALLBACK_ENABLED, extract
+from app.extract import _CONF_FLOOR_NAME, _LLM_FALLBACK_ENABLED, extract, looks_like_misread
 from app.parsers import get_parser
 from app.parsers.base import DonationMember, DonationParseResult
 from app.preprocess import preprocess_image
@@ -250,11 +250,14 @@ def scan_root(root: Path, cases: Sequence[AuditCase], *, mode: str) -> list[RowH
             for m in members:
                 final = final_by_row_index.get(m.row_index) if m.row_index is not None else None
                 # Reflects the real trigger of app.extract._apply_llm_fallback:
-                # a "suspect" row or one below the name confidence threshold
-                # is sent to the LLM as soon as LLM_FALLBACK_ENABLED is true
-                # (read here from the same module, so the actually active value).
+                # a "suspect" row, one whose name looks like a garbage misread,
+                # or one below the low confidence floor is sent to the LLM as
+                # soon as LLM_FALLBACK_ENABLED is true (read from the same module,
+                # so the actually active values).
                 reached_llm = _LLM_FALLBACK_ENABLED and (
-                    m.suspect_honor_window is not None or m.confidence < _CONFIDENCE_THRESHOLD_NAME
+                    m.suspect_honor_window is not None
+                    or looks_like_misread(m.name)
+                    or m.confidence < _CONF_FLOOR_NAME
                 )
                 hits.append(
                     RowHit(

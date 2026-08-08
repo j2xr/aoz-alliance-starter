@@ -19,6 +19,7 @@ from app.extract import (
     _apply_llm_fallback_player_stats,
     _physical_row,
     _rewrite_name,
+    looks_like_misread,
 )
 from app.parsers.base import (
     DonationMember,
@@ -64,7 +65,7 @@ def test_low_confidence_row_is_corrected() -> None:
 
 
 def test_high_confidence_row_is_skipped() -> None:
-    """A confident row never reaches the LLM and is preserved verbatim."""
+    """A confident, clean-looking row never reaches the LLM and is preserved."""
     result = _event_result([_member("Confident", 0.99)])
     with patch("app.llm_fallback.llm_fallback") as mock_llm:
         out = _apply_llm_fallback(_IMG, result, _StubParser())
@@ -72,6 +73,49 @@ def test_high_confidence_row_is_skipped() -> None:
     mock_llm.assert_not_called()
     assert out.members[0].name == "Confident"
     assert out.members[0].confidence == 0.99
+
+
+def test_high_confidence_garbage_name_is_corrected() -> None:
+    """The P3 case the old confidence gate missed: a confident-but-garbage read
+    (conf 0.99, but the output is frame debris) now reaches the LLM via
+    looks_like_misread — orthogonal to the (useless-here) confidence score."""
+    result = _event_result([_member("A > №", 0.99)])
+    with patch("app.llm_fallback.llm_fallback", return_value="Bulleit") as mock_llm:
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    mock_llm.assert_called_once()
+    assert out.members[0].name == "Bulleit"
+
+
+# ── looks_like_misread ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        # Garbage misreads (frame debris / low alnum ratio / out-of-script / near
+        # empty) → worth an LLM look. These are the confident-garbage reads the
+        # confidence gate structurally missed.
+        ("¢ JE", True),  # علE
+        ("A > №", True),  # Bulleit
+        ("ĐÄRK§|ĐE s 3Š", True),  # ÐÃŘĶ§ĮĐĒ•築
+        ("| (LOL)", True),  # Ṣímbα
+        ('= "mm ..', True),  # LATAM.REYCOLIMAN
+        ("Км&.", True),  # King.gerald
+        ("x", True),  # near-empty read
+        # Correct or legitimately decorated handles → must NOT waste a call.
+        ("Аня", False),
+        ("MHGYM7000", False),
+        ("幸恵丸ポーター", False),  # CJK + kana
+        ("TôiyêuViệtNam", False),  # Vietnamese
+        ("焼鳥_Yakitori", False),  # CJK + underscore + Latin
+        ("~Loki~", False),  # tilde decoration is legitimate
+        ("BigSteelCurtain", False),
+        ("Mjolnir", False),  # clean-but-wrong reads look valid → not flagged
+    ],
+)
+def test_looks_like_misread(name: str, expected: bool) -> None:
+    assert looks_like_misread(name) is expected
 
 
 def test_force_all_corrects_even_confident_rows() -> None:
@@ -278,10 +322,10 @@ def test_suspect_honor_replaced_even_when_llm_returns_no_name() -> None:
 
 
 def test_suspect_honor_row_reaches_llm_even_at_high_name_confidence() -> None:
-    """The predicate fix: _MONOTONICITY_FIX_CONFIDENCE (0.40) sits above
-    OCR_CONFIDENCE_THRESHOLD_NAME's 0.35 default, so a suspect row with a
-    "fixed" (re-OCR corrected) honor would never reach the LLM without an
-    explicit honor_suspect override — exactly the secondary P1 bug."""
+    """A suspect honor must reach the LLM regardless of the name signals: at
+    confidence 0.99 with a clean-looking name, neither the confidence floor nor
+    looks_like_misread would fire, so only the explicit honor_suspect override
+    gets this row to the LLM — the secondary P1 bug this pins."""
     donor = _suspect_donor(alliance_honor=9044, window=(0, 3102), confidence=0.99)
     result = DonationParseResult(period_type="weekly", members=[donor])
     with patch(
