@@ -7,7 +7,12 @@ import type {
 import { supabase } from './supabase.js';
 import { isoWeekStartParis } from './period.js';
 import { findFuzzyMatch, type RosterPlayer } from './name-resolve.js';
-import { compareNames, type NameComparison } from './duplicate-scan.js';
+import {
+  compareNames,
+  findRosterCollisions,
+  type NameComparison,
+  type RosterCollision,
+} from './duplicate-scan.js';
 import logger from '../logger.js';
 
 export type ProcessedUpsertResult = {
@@ -142,6 +147,37 @@ function findNearDuplicateInRoster(
   return best;
 }
 
+// Crediting an OCR name to an existing player — whether by exact string match
+// or by fuzzy match — is a silent-misattribution risk when the same name also
+// closely resembles a DIFFERENT roster player: the screenshot could have been
+// that other player, misread into the credited name (LEÓN→LEON, VV→VVV,
+// jc0n→jcOn). This surfaces it for /find-duplicates review. It never reroutes
+// or drops the row: an exact match is still the best available signal, so the
+// credit stands — we just stop it happening *silently*.
+function warnIfColliding(
+  rawName: string,
+  creditedId: string,
+  creditedName: string,
+  via: 'exact match' | 'fuzzy match',
+  roster: RosterPlayer[],
+): RosterCollision[] {
+  const collisions = findRosterCollisions(rawName, creditedId, roster);
+  if (collisions.length === 0) return collisions;
+  logger.warn(
+    {
+      rawName,
+      creditedName,
+      via,
+      collidesWith: collisions.map((c) => ({
+        name: c.player.name,
+        proximity: c.comparison.proximity,
+      })),
+    },
+    'OCR name credited to a player but collides with another roster entry — possible wrong-player attribution, check /find-duplicates',
+  );
+  return collisions;
+}
+
 /**
  * Deduplicates members by name (keeping the highest-confidence entry), then
  * resolves player aliases and splits members into direct vs aliased sets.
@@ -221,8 +257,15 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
 
     for (const m of stillUnresolved) {
       // Name already present as-is in the roster: the onConflict upsert
-      // (alliance_id,name) handles it natively, no alias needed.
-      if (roster.some((p) => p.name === m.name)) continue;
+      // (alliance_id,name) handles it natively, no alias needed. This exact
+      // match is credited unconditionally — but an exact match to one player
+      // can still be a misread of a near-identical other (LEÓN→LEON), so flag
+      // that collision for review even though the credit stands.
+      const exact = roster.find((p) => p.name === m.name);
+      if (exact) {
+        warnIfColliding(m.name, exact.id, exact.name, 'exact match', roster);
+        continue;
+      }
 
       const match = findFuzzyMatch(m.name, roster);
       if (match.kind === 'match') {
@@ -238,6 +281,10 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
           { rawName: m.name, canonicalName: match.player.name },
           'Auto-resolved OCR name variant to an existing player',
         );
+        // findFuzzyMatch uses raw Levenshtein (no homoglyph fold) and already
+        // returns 'ambiguous' for >=2 raw candidates, but it can still land a
+        // single match while a homoglyph twin sits alongside — surface that.
+        warnIfColliding(m.name, match.player.id, match.player.name, 'fuzzy match', roster);
       } else if (match.kind === 'ambiguous') {
         logger.warn(
           { rawName: m.name, candidates: match.candidates.map((c) => c.name) },

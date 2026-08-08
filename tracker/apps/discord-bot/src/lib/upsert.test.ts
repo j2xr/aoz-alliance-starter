@@ -545,6 +545,48 @@ describe('upsertEventResult', () => {
     expect(aliasCalls).toHaveLength(1); // the only call is the exact-alias lookup, not an insert
   });
 
+  it('warns when an OCR name exact-matches one player but collides with a homoglyph twin', async () => {
+    // The silent-misattribution case the exact-match path used to wave through:
+    // OCR reads "LEON", which exactly matches the LEON row, so nothing looks
+    // wrong — but "LEÓN" sits one accent away in the same roster and could have
+    // been the real player. The credit stands (exact match), but it's flagged.
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
+    queueFrom({ id: 'event-1' });
+    queueFrom([]); // at_player_aliases: no exact alias
+    queueFrom([
+      { id: 'p-leon', name: 'LEON' },
+      { id: 'p-leon-accent', name: 'LEÓN' },
+    ]); // roster fetch: the exact match AND its twin
+    queueFrom([{ id: 'p-leon', name: 'LEON' }]); // at_players upsert: credited to the exact match
+    queueFrom([]); // at_alliance_memberships select
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]); // existing at_participations fetch: none
+    queueFrom(null); // at_participations upsert
+    queueFrom(null); // at_screenshot_uploads update
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [{ name: 'LEON', rank: 'R2', power: 700_000, points: 10_000, confidence: 0.6 }],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ rawName: 'LEON', creditedName: 'LEON', via: 'exact match' }),
+      expect.stringContaining('/find-duplicates'),
+    );
+
+    // Warn-only: no alias inserted, the exact match is still credited as-is.
+    const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
+    expect(aliasCalls).toHaveLength(1);
+  });
+
   it('does not warn when no roster entry resembles the new name', async () => {
     queueFrom(null);
     queueFrom({ id: 'upload-1' });
