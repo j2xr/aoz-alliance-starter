@@ -52,7 +52,7 @@
         "total": 12
       },
       "name": {
-        "correct": 12,
+        "correct": 11,
         "total": 12
       },
       "name_exact": {
@@ -66,7 +66,7 @@
     },
     "weekly_002": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -88,11 +88,11 @@
         "total": 12
       },
       "name": {
-        "correct": 12,
+        "correct": 11,
         "total": 12
       },
       "name_exact": {
-        "correct": 9,
+        "correct": 10,
         "total": 12
       },
       "rank": {
@@ -110,7 +110,7 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 10,
+        "correct": 11,
         "total": 12
       },
       "rank": {
@@ -120,7 +120,7 @@
     },
     "weekly_005": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -128,11 +128,11 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 10,
+        "correct": 12,
         "total": 12
       },
       "rank": {
-        "correct": 12,
+        "correct": 11,
         "total": 12
       }
     },
@@ -142,7 +142,7 @@
         "total": 12
       },
       "name": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name_exact": {
@@ -164,7 +164,7 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 10,
+        "correct": 11,
         "total": 12
       },
       "rank": {
@@ -186,7 +186,7 @@
         "total": 12
       },
       "rank": {
-        "correct": 12,
+        "correct": 11,
         "total": 12
       }
     },
@@ -210,7 +210,7 @@
     },
     "weekly_010": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -236,7 +236,7 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 10,
+        "correct": 11,
         "total": 12
       },
       "rank": {
@@ -246,7 +246,7 @@
     },
     "weekly_012": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -268,11 +268,11 @@
         "total": 12
       },
       "name": {
-        "correct": 11,
+        "correct": 10,
         "total": 12
       },
       "name_exact": {
-        "correct": 11,
+        "correct": 10,
         "total": 12
       },
       "rank": {
@@ -282,7 +282,7 @@
     },
     "weekly_014": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -290,7 +290,7 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 8,
+        "correct": 10,
         "total": 12
       },
       "rank": {
@@ -308,11 +308,11 @@
         "total": 12
       },
       "name_exact": {
-        "correct": 10,
+        "correct": 9,
         "total": 12
       },
       "rank": {
-        "correct": 9,
+        "correct": 12,
         "total": 12
       }
     },
@@ -322,7 +322,7 @@
         "total": 12
       },
       "name": {
-        "correct": 10,
+        "correct": 11,
         "total": 12
       },
       "name_exact": {
@@ -336,7 +336,7 @@
     },
     "weekly_017": {
       "alliance_honor": {
-        "correct": 10,
+        "correct": 12,
         "total": 12
       },
       "name": {
@@ -348,25 +348,25 @@
         "total": 12
       },
       "rank": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       }
     },
     "weekly_018": {
       "alliance_honor": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       },
       "name": {
-        "correct": 9,
+        "correct": 10,
         "total": 12
       },
       "name_exact": {
-        "correct": 8,
+        "correct": 9,
         "total": 12
       },
       "rank": {
-        "correct": 11,
+        "correct": 12,
         "total": 12
       }
     },
@@ -376,11 +376,11 @@
         "total": 12
       },
       "name": {
-        "correct": 8,
+        "correct": 10,
         "total": 12
       },
       "name_exact": {
-        "correct": 7,
+        "correct": 9,
         "total": 12
       },
       "rank": {
