@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from app.parsers.name_ocr import (
+    _letterlike_len,
     disambiguate_cyrillic,
     fix_name_substitutions,
     has_distinctive_cyrillic,
@@ -150,13 +151,54 @@ def test_disambiguate_eng_branch_returns_winning_pass_data() -> None:
 def test_disambiguate_keeps_original_when_eng_too_short() -> None:
     original = _data([(0, "КАМНА_")], conf=30)
     rus = _data([(0, "")], conf=0)
-    eng = _data([(0, "K")], conf=90)  # trop court : len < len(original) - 1
+    eng = _data([(0, "K")], conf=90)  # trop court : letterlike < letterlike(original) - 1
 
     with patch(_OCR_DATA, side_effect=[rus, eng]):
         name, data = disambiguate_cyrillic(_CROP, "КАМНА_", original)
 
     assert name == "КАМНА_"
     assert data is original
+
+
+def test_letterlike_len_counts_only_ascii_alnum_and_cyrillic() -> None:
+    # CJK, tag parens, pipes and whitespace don't count — so a garbage-padded
+    # multilingual read and the clean English read measure the same length.
+    assert _letterlike_len("トド | (500) СЕКАТОР_1000") == 14
+    assert _letterlike_len("| (SOD) CEKATOP_1000") == 14
+    assert _letterlike_len("") == 0
+
+
+def test_disambiguate_accepts_eng_despite_multilingual_garbage() -> None:
+    """Regression (weekly_002 `CEKATOP_1000`): the multilingual pass padded the
+    real name with a katakana avatar-bleed and an OCR'd tag (`トド | (500) …`), so
+    raw length made the correct English read look "too short" and the Cyrillic
+    form was wrongly kept. letterlike length ignores that padding."""
+    name_ml = "トド | (500) СЕКАТОР_1000"
+    original = _data([(0, name_ml)], conf=30)
+    rus = _data([(0, name_ml)], conf=40)  # still no distinctive Cyrillic
+    eng = _data([(0, "| (SOD) CEKATOP_1000")], conf=80)
+
+    with patch(_OCR_DATA, side_effect=[rus, eng]):
+        name, data = disambiguate_cyrillic(_CROP, name_ml, original)
+
+    assert name == "| (SOD) CEKATOP_1000"  # tag is stripped later, in the parser
+    assert data is eng
+
+
+def test_disambiguate_fires_on_lowercase_cyrillic_ka() -> None:
+    """Regression (weekly_003/011 `kok` → `Кок`): Cyrillic `к` (U+043A) is a
+    Latin-`k` lookalike, so a name of only lookalikes that includes lowercase к
+    must be treated as ambiguous (not distinctive) and routed to the eng pass."""
+    assert not has_distinctive_cyrillic("Кок")
+    original = _data([(0, "Кок")], conf=30)
+    rus = _data([(0, "Кок")], conf=40)  # no distinctive letter to recover
+    eng = _data([(0, "kok")], conf=85)
+
+    with patch(_OCR_DATA, side_effect=[rus, eng]):
+        name, data = disambiguate_cyrillic(_CROP, "Кок", original)
+
+    assert name == "kok"
+    assert data is eng
 
 
 # ── normalize_name ────────────────────────────────────────────────────────────
