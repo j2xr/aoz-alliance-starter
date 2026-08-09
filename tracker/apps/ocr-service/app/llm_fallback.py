@@ -399,7 +399,14 @@ _LLM_DONATION_X_START_FRAC = 0.27
 # name). Measured: event names start ~0.20 and end well before 0.70.
 _LLM_EVENT_X_BAND_FRAC = (0.15, 0.72)
 _LLM_EVENT_NAME_HEIGHT_FRAC = 0.58  # event rows: the power number sits below the name
-_LLM_UPSCALE = 2.5
+# Upscale applied to the cropped name band before encoding — a model-dependent
+# speed lever (measured 2026-08-09). qwen3-vl re-normalises any input to a fixed
+# vision-token budget, so the factor barely matters (reads and ~85 s/row latency are
+# flat from 1.0 to 2.5). qwen3.5 instead scales its image prefill with pixel count,
+# so 1.0 is ~4x faster (~20 s vs ~68 s at 2.5) with equal-or-better reads. Default
+# stays 2.5 (no behaviour change for the current qwen3-vl deployment); set
+# OCR_LLM_UPSCALE=1.0 when switching OLLAMA_MODEL to a qwen3.5:* build.
+_LLM_UPSCALE = float(os.getenv("OCR_LLM_UPSCALE", "2.5"))
 
 
 def _crop_name_band(row_image: np.ndarray, is_donation: bool) -> np.ndarray:
