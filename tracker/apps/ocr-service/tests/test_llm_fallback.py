@@ -328,14 +328,22 @@ class TestCropNameBand:
         out = _crop_name_band(_fake_image(), is_donation=True)
         assert out.shape == (int(225 * 2.5), int((1080 - int(1080 * 0.27)) * 2.5))
 
-    def test_event_keeps_only_top_name_band(self) -> None:
-        # Event rows keep the top ~58% (power number below the name is excluded),
-        # so the band is shorter than the donation (full-height) crop.
+    def test_event_takes_a_tighter_band(self) -> None:
+        # Event rows have no alliance tag, so the name starts earlier and there is a
+        # points column to its right: the band is tighter than donation on BOTH axes —
+        # shorter (top ~58%, power sits below) and narrower (avatar dropped left at
+        # 0.15, points dropped right at 0.72).
         event = _crop_name_band(_fake_image(), is_donation=False)
         donation = _crop_name_band(_fake_image(), is_donation=True)
-        assert event.shape[1] == donation.shape[1]  # same crop width
         assert event.shape[0] < donation.shape[0]  # shorter (top band only)
+        assert event.shape[1] < donation.shape[1]  # narrower (both sides trimmed)
         assert event.shape[0] == int(int(225 * 0.58) * 2.5)
+        assert event.shape[1] == int((int(1080 * 0.72) - int(1080 * 0.15)) * 2.5)
+
+    def test_event_left_crop_does_not_clip_early_names(self) -> None:
+        # Regression guard: the event left edge (0.15) must stay left of where names
+        # start (~0.20 measured), else leading glyphs are lost (焼鳥_Yakitori -> _Yakitori).
+        assert int(1080 * 0.15) < int(1080 * 0.20)
 
 
 class TestPresencePenalty:
