@@ -193,6 +193,35 @@ def test_donation_correction_rejected_when_score_missing() -> None:
     assert out.members[0].confidence == 0.0
 
 
+def test_notification_banner_row_skips_llm_and_flags_review() -> None:
+    """A row overlaid by a notification toast must NOT reach the LLM: the model would
+    transcribe the banner's *other* player (고 -> CEKATOP_1000) and even pass the honor
+    gate (it still reads this row's real score). Keep the OCR name, flag needs_review."""
+    donor = DonationMember(
+        name="고", alliance_tag=None, rank="R1", alliance_honor=1946, confidence=0.2
+    )
+    result = DonationParseResult(period_type="weekly", members=[donor])
+    with (
+        patch("app.extract._looks_like_notification_banner", return_value=True),
+        patch("app.llm_fallback.llm_fallback_donation") as mock_llm,
+    ):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    mock_llm.assert_not_called()
+    m = out.members[0]
+    assert m.name == "고"  # OCR kept — the banner's player is not credited
+    assert m.confidence == 0.0  # flagged needs_review downstream
+
+
+def test_banner_detector_matches_phrases_only() -> None:
+    """The detector fires on banner phrasing, not on a normal row's text."""
+    banner = "CEKATOP_1000 helped you Heal Wounded 1946"
+    with patch("pytesseract.image_to_string", return_value=banner):
+        assert extract._looks_like_notification_banner(_IMG) is True
+    with patch("pytesseract.image_to_string", return_value="(SOD) BigSteelCurtain 6095"):
+        assert extract._looks_like_notification_banner(_IMG) is False
+
+
 def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:
     """A validated correction still runs through tag-stripping (the LLM returns
     the name verbatim, tag included)."""

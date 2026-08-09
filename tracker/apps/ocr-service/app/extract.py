@@ -4,6 +4,7 @@ import re
 from typing import Any, cast
 
 import numpy as np
+import pytesseract
 
 from app.dispatcher import DONATION_CODE, PLAYER_STATS_CODE, detect_screen_kind
 from app.parsers import get_parser
@@ -193,6 +194,34 @@ def _physical_row(member: MemberResult | DonationMember, i: int) -> int:
     return i
 
 
+# A transient game notification toast — "<player> helped you Heal Wounded",
+# "<player> reinforced ...", etc. — can overlay a leaderboard row. A vision model then
+# transcribes the banner's *other* player as this row's name (observed: "고" ->
+# "CEKATOP_1000"), and it slips past the honor gate because the model still reads this
+# row's real score, so the score matches. The banner text is English regardless of the
+# row player's script, so detect it with a cheap Tesseract pass and skip the LLM for
+# that row rather than credit the wrong player. Overridable/localisable via env.
+_BANNER_PHRASES: tuple[str, ...] = tuple(
+    p.strip().lower()
+    for p in os.getenv(
+        "OCR_NOTIFICATION_BANNER_PHRASES", "helped you,heal wounded,reinforced,helped defend"
+    ).split(",")
+    if p.strip()
+)
+
+
+def _looks_like_notification_banner(row_crop: np.ndarray) -> bool:
+    """True when the row is overlaid by a notification banner (see `_BANNER_PHRASES`)."""
+    if not _BANNER_PHRASES:
+        return False
+    try:
+        text = pytesseract.image_to_string(row_crop, config="--psm 6 -l eng").lower()
+    except Exception:
+        logger.debug("banner-detection OCR pass failed; assuming no banner", exc_info=True)
+        return False
+    return any(phrase in text for phrase in _BANNER_PHRASES)
+
+
 def _apply_llm_fallback(
     image: np.ndarray,
     result: ParseResult | DonationParseResult,
@@ -259,6 +288,15 @@ def _apply_llm_fallback(
         y = member.row_y if member.row_y is not None else member_list_top + i * row_height
         crop_h = member.row_h if member.row_h is not None else row_height
         row_crop: np.ndarray = image[y : y + crop_h, :]
+        if _looks_like_notification_banner(row_crop):
+            logger.warning(
+                "notification banner over row %d (%r): skipping LLM (it would read the "
+                "banner's player) — keeping OCR name, flagged needs_review",
+                row,
+                member.name,
+            )
+            updated.append(member.model_copy(update={"confidence": 0.0}))
+            continue
         try:
             if isinstance(member, DonationMember):
                 llm_name, llm_score = llm_fallback_donation(row_crop)
