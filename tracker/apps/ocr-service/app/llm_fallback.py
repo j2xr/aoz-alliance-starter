@@ -387,25 +387,37 @@ def _resize_for_llm(
 # the power number instead of the name). Cropping to the name band and upscaling
 # gives each glyph more pixels — what lets the 2B model read decorated handles like
 # "⇐ .AL3X. ⇒" instead of falling back to the alliance tag.
-_LLM_NAME_X_START_FRAC = 0.27  # drop the rank badge + avatar (left ~27% of the row)
-_LLM_EVENT_NAME_HEIGHT_FRAC = 0.58  # event rows: the name sits above the power number
+# Donation rows carry an alliance tag "(SOD)", so the name starts late (~0.31 of the
+# width, measured on real rows); drop the rank badge + avatar on the left but keep the
+# full right side — the far-right Alliance Honor score must stay in frame for the
+# self-consistency gate.
+_LLM_DONATION_X_START_FRAC = 0.27
+# Event rows have NO tag, so the name starts right after the avatar (~0.20). A 0.27
+# left crop clipped leading glyphs (焼鳥_Yakitori -> _Yakitori; Simb4 lost, the model
+# read a neighbouring number instead). Take a tighter band: from just inside the avatar
+# to before the far-right points column (which the model otherwise transcribes as the
+# name). Measured: event names start ~0.20 and end well before 0.70.
+_LLM_EVENT_X_BAND_FRAC = (0.15, 0.72)
+_LLM_EVENT_NAME_HEIGHT_FRAC = 0.58  # event rows: the power number sits below the name
 _LLM_UPSCALE = 2.5
 
 
 def _crop_name_band(row_image: np.ndarray, is_donation: bool) -> np.ndarray:
     """Crop a full-width row to the name band and upscale it for the vision model.
 
-    Donation rows keep full height — the name and the far-right Alliance Honor score
-    share one line and the score is needed for the self-consistency gate. Event rows
-    keep only the top band: the power number sits *below* the name and otherwise
-    pulls a small model's attention onto the digits.
+    Donation rows keep full height and the full right side — the name and the far-right
+    Alliance Honor score share one line and the score is needed for the self-consistency
+    gate. Event rows take a tighter band (top only, avatar dropped on the left and the
+    points column dropped on the right): the power number sits *below* the name and the
+    points sit to its *right*, both of which otherwise pull a small model off the name.
     """
     h, w = row_image.shape[:2]
-    x0 = int(w * _LLM_NAME_X_START_FRAC)
     if is_donation:
-        band = row_image[:, x0:]
+        band = row_image[:, int(w * _LLM_DONATION_X_START_FRAC) :]
     else:
-        band = row_image[: int(h * _LLM_EVENT_NAME_HEIGHT_FRAC), x0:]
+        x0 = int(w * _LLM_EVENT_X_BAND_FRAC[0])
+        x1 = int(w * _LLM_EVENT_X_BAND_FRAC[1])
+        band = row_image[: int(h * _LLM_EVENT_NAME_HEIGHT_FRAC), x0:x1]
     new_w, new_h = int(band.shape[1] * _LLM_UPSCALE), int(band.shape[0] * _LLM_UPSCALE)
     return cv2.resize(band, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
