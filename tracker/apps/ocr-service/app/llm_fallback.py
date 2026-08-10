@@ -130,6 +130,31 @@ _SCHEMA_DONATION: dict[str, Any] = {
     },
     "required": ["tag", "name", "score"],
 }
+# player_stats returns EVERY member on the chat screenshot, not one field. Without
+# this schema the model wraps its answer in ```json fences and, on a long roster,
+# runs past num_predict — the truncated (but non-empty) body sailed past the
+# empty-response retry into _extract_json_object, which raised "unbalanced JSON
+# object". Constraining generation to this shape removes the fences and, with the
+# larger _PLAYER_STATS_NUM_PREDICT budget below, stops the truncation.
+_SCHEMA_PLAYER_STATS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "members": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": ["string", "null"]},
+                    "attack_pct": {"type": ["number", "null"]},
+                    "hp_pct": {"type": ["number", "null"]},
+                    "defense_pct": {"type": ["number", "null"]},
+                },
+                "required": ["name", "attack_pct", "hp_pct", "defense_pct"],
+            },
+        },
+    },
+    "required": ["members"],
+}
 
 
 def _uses_thinking_controls(model: str) -> bool:
@@ -377,6 +402,12 @@ _PLAYER_STATS_MAX_HEIGHT = int(os.getenv("OLLAMA_PLAYER_STATS_MAX_HEIGHT", "960"
 # still failing fast enough that the Discord bot does not drop the connection.
 # Override with OLLAMA_PLAYER_STATS_TIMEOUT_SECONDS.
 _PLAYER_STATS_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_PLAYER_STATS_TIMEOUT_SECONDS", "90"))
+# player_stats emits a JSON array covering every member on the screenshot (name +
+# three stats each), far longer than the single-name / donation replies the shared
+# 256-token default was sized for. That default truncated the array (done_reason=
+# length) into unparseable JSON. Give this path its own generous budget.
+# Override with OLLAMA_PLAYER_STATS_NUM_PREDICT.
+_PLAYER_STATS_NUM_PREDICT = int(os.getenv("OLLAMA_PLAYER_STATS_NUM_PREDICT", "1024"))
 
 
 def _resize_for_llm(
@@ -571,12 +602,13 @@ def llm_fallback_player_stats(image: np.ndarray) -> list[dict[str, Any]] | None:
         prompt,
         encoded_image,
         num_ctx,
-        num_predict,
+        _PLAYER_STATS_NUM_PREDICT,
         think,
         keep_alive,
         headers,
         _PLAYER_STATS_TIMEOUT_SECONDS,
         (w, h),
+        _SCHEMA_PLAYER_STATS,
     )
 
     parsed: Any = json.loads(_extract_json_object(raw_response))
