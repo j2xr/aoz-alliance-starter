@@ -446,6 +446,46 @@ class TestLlmFallbackPlayerStats:
             mock_post.return_value = _player_stats_response('{"foo": "bar"}')
             assert llm_fallback_player_stats(np.zeros((800, 720, 3), dtype=np.uint8)) is None
 
+    def test_sends_members_schema_not_json_string(self) -> None:
+        """Like the donation/event paths, a non-moondream model must receive the
+        structured-output *schema* (a dict describing the ``members`` array), never
+        ``format: "json"`` — free-forming under a small model wrapped the answer in
+        ```json fences and truncated into unparseable JSON."""
+        with patch.dict("os.environ", {"OLLAMA_MODEL": "qwen3.5:2b-q4_K_M"}, clear=False):
+            with patch("httpx.post") as mock_post:
+                mock_post.return_value = _player_stats_response('{"members": []}')
+                llm_fallback_player_stats(np.zeros((800, 720, 3), dtype=np.uint8))
+
+            payload = mock_post.call_args.kwargs["json"]
+            fmt = payload.get("format")
+            assert fmt != "json"
+            assert isinstance(fmt, dict)
+            assert fmt.get("required") == ["members"]
+            assert fmt["properties"]["members"]["type"] == "array"
+
+    def test_uses_larger_num_predict_budget(self) -> None:
+        """The full roster reply is far longer than one name, so this path must
+        request more than the shared 256-token default that used to truncate it."""
+        from app.llm_fallback import _PLAYER_STATS_NUM_PREDICT
+
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = _player_stats_response('{"members": []}')
+            llm_fallback_player_stats(np.zeros((800, 720, 3), dtype=np.uint8))
+
+        num_predict = mock_post.call_args.kwargs["json"]["options"]["num_predict"]
+        assert num_predict == _PLAYER_STATS_NUM_PREDICT
+        assert num_predict > 256
+
+    def test_moondream_keeps_json_string_format(self) -> None:
+        """moondream still needs ``format: "json"`` (it EOS-drops otherwise); the
+        json-format hint must win over the schema, as on the other paths."""
+        with patch.dict("os.environ", {"OLLAMA_MODEL": "moondream"}, clear=False):
+            with patch("httpx.post") as mock_post:
+                mock_post.return_value = _player_stats_response('{"members": []}')
+                llm_fallback_player_stats(np.zeros((800, 720, 3), dtype=np.uint8))
+
+            assert mock_post.call_args.kwargs["json"].get("format") == "json"
+
     def test_downscales_large_image_before_encoding(self) -> None:
         """A 1080-wide screenshot is capped to the player-stats max width."""
         with patch("httpx.post") as mock_post:
