@@ -185,15 +185,20 @@ class TestKeepAlive:
                 assert '{"name": "string"' not in payload["prompt"]
                 assert "JSON object" in payload["prompt"]
 
-    def test_non_moondream_omits_json_format(self) -> None:
-        """Non-moondream models must not receive format=json."""
+    def test_non_moondream_sends_schema_not_json_string(self) -> None:
+        """Non-moondream models receive the structured-output *schema* (a dict), never
+        the ``format: "json"`` string — the string makes some vision models drop the
+        whole generation, whereas the schema constrains fields and improves reads."""
         with patch.dict("os.environ", {"OLLAMA_MODEL": "llava:7b"}, clear=False):
             with patch("httpx.post") as mock_post:
                 mock_post.return_value = _mock_response()
                 llm_fallback(_fake_image())
 
                 payload = mock_post.call_args.kwargs.get("json", {})
-                assert "format" not in payload
+                fmt = payload.get("format")
+                assert fmt != "json"
+                assert isinstance(fmt, dict)
+                assert fmt.get("required") == ["name"]
 
     def test_qwen_payload_keeps_think_controls(self) -> None:
         """Thinking-capable models still receive the compatibility controls."""
