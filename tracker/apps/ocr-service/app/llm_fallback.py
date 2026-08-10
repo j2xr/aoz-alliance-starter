@@ -43,22 +43,20 @@ _NUM_PREDICT = 256
 _THINK = False
 _THINKING_MODEL_HINTS = ("qwen3", "deepseek-r1")
 
-# `format: json` is intentionally NOT sent by default: with some vision models
-# + image input, Ollama can drop the entire generation instead of returning the
-# raw text. We ask for JSON in the prompt and extract the first balanced `{...}`
-# block from the free-form response.
-# Exception: small models like moondream emit an immediate stop token *without*
-# `format: json`, so we re-enable it for them via _JSON_FORMAT_MODEL_HINTS.
+# We send Ollama a structured-output JSON *schema* (`format=`, see _SCHEMA_* below)
+# with the fallback prompts. The schema pins the exact fields and is what lets a small
+# vision model read a decorated handle instead of emitting the tag or the score as the
+# name (measured 2026-08-10). The string `format: "json"` is a different thing and is
+# NOT sent by default — with some vision models it makes Ollama drop the whole
+# generation; moondream is the exception (immediate EOS without it), re-enabled via
+# _JSON_FORMAT_MODEL_HINTS.
+#
+# Event rows (polar invasion) carry no alliance tag, so this prompt has no tag clause;
+# it also drops the old "null if unreadable — do not guess" instruction, which made the
+# model abstain (name=null) on hard decorated handles instead of attempting a read.
 _PROMPT = (
-    "This is one row from a mobile game leaderboard: a player avatar, then the player "
-    "name. The name may include an alliance tag in parentheses like (SOD) BEFORE the "
-    "real name — that parenthesised tag is NOT the name. Read the actual player name, "
-    "which may be Latin, Cyrillic (Russian), CJK (Chinese/Japanese kanji or kana), "
-    "Korean (Hangul), Vietnamese (accented Latin), emoji, or decorated/stylised "
-    "characters. "
-    'Return ONLY a JSON object: {"tag": "<parenthesised tag, or null>", '
-    '"name": "<the real player name after the tag, copied exactly; null if unreadable>"}. '
-    "Never put the tag in the name field. If the name is unreadable, use null — do not guess."
+    "Read this game leaderboard row. Return the player name exactly as shown "
+    "(it may be decorated or non-Latin). Ignore any number."
 )
 
 # Simplified prompt for small vision models (e.g. moondream) that struggle with
@@ -71,22 +69,16 @@ _PROMPT_SIMPLE = (
     "Copy the name exactly as shown. Use null if unreadable."
 )
 
-# Donation-row prompt: asks for the alliance tag, the name, AND the Alliance Honor
-# score in the same call. Tag and name are SEPARATE fields so the model cannot fall
-# back to the (readable) tag when the (decorated) name is hard — the failure that
-# stored "(SOD) ⇐.AL3X.⇒" as name="SOD" in production. The caller
+# Donation-row prompt: tag / name / score as SEPARATE fields (schema _SCHEMA_DONATION)
+# so the model cannot fall back to the (readable) tag when the (decorated) name is hard
+# — the failure that stored "(SOD) ⇐.AL3X.⇒" as name="SOD" in production. The caller
 # (extract._apply_llm_fallback) still accepts the corrected name ONLY when `score`
 # matches the independently-OCR'd honor — a self-consistency check that the model
 # actually read *this* row rather than a banner overlaid on it. See
 # llm_fallback_donation.
 _PROMPT_DONATION = (
-    "This is one row of a mobile game contribution leaderboard: a rank number, an "
-    "avatar, an optional alliance tag in parentheses like (SOD), the player name, and "
-    "far right the Alliance Honor score. The parenthesised tag is NOT the name. "
-    'Return ONLY a JSON object: {"tag": "<parenthesised tag, or null>", '
-    '"name": "<the real player name after the tag, copied exactly; null if unreadable>", '
-    '"score": <the Alliance Honor number on the far right, or null>}. '
-    "Never put the tag in the name field. If the name is unreadable, use null — do not guess."
+    "Read this leaderboard row. tag = text in parentheses. name = text after it. "
+    "score = number on the right."
 )
 
 # Prompt for full player stats chat screenshot extraction.
@@ -119,6 +111,25 @@ _JSON_FORMAT_MODEL_HINTS = ("moondream",)
 # Retry once with a larger token budget when a model reaches the cap before it
 # emits any visible response.
 _NUM_PREDICT_MAX_MULTIPLIER = 4
+
+# Ollama structured-output schemas, passed as `format=` next to the prompts above.
+# Constraining generation to these exact fields is decisive for small models on
+# decorated names: it stops them returning the alliance tag or the honor score in the
+# name field. Fields are nullable so a genuinely unreadable row can still yield null.
+_SCHEMA_NAME: dict[str, Any] = {
+    "type": "object",
+    "properties": {"name": {"type": ["string", "null"]}},
+    "required": ["name"],
+}
+_SCHEMA_DONATION: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tag": {"type": ["string", "null"]},
+        "name": {"type": ["string", "null"]},
+        "score": {"type": ["integer", "null"]},
+    },
+    "required": ["tag", "name", "score"],
+}
 
 
 def _uses_thinking_controls(model: str) -> bool:
@@ -192,6 +203,7 @@ def _call_ollama(
     headers: dict[str, str],
     timeout_seconds: float,
     image_shape: tuple[int, int],
+    format_schema: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], float]:
     """Issue one Ollama /api/generate request and return (body, elapsed_seconds)."""
     payload: dict[str, Any] = {
@@ -215,6 +227,8 @@ def _call_ollama(
     }
     if _uses_json_format(model):
         payload["format"] = "json"
+    elif format_schema is not None:
+        payload["format"] = format_schema
     if _uses_thinking_controls(model):
         payload["think"] = think
 
@@ -295,6 +309,7 @@ def _call_with_retry(
     headers: dict[str, str],
     timeout_seconds: float,
     image_shape: tuple[int, int],
+    format_schema: dict[str, Any] | None = None,
 ) -> str:
     """Call Ollama with automatic num_predict doubling on empty+length response."""
     max_num_predict = num_predict * _NUM_PREDICT_MAX_MULTIPLIER
@@ -313,6 +328,7 @@ def _call_with_retry(
             headers,
             timeout_seconds,
             image_shape,
+            format_schema,
         )
         raw_response: str = body.get("response", "")
         done_reason = body.get("done_reason", "")
@@ -452,6 +468,7 @@ def llm_fallback(row_image: np.ndarray) -> str | None:
         headers,
         timeout_seconds,
         (w, h),
+        _SCHEMA_NAME,
     )
 
     raw: Any = json.loads(_extract_json_object(raw_response))
@@ -513,6 +530,7 @@ def llm_fallback_donation(row_image: np.ndarray) -> tuple[str | None, int | None
         headers,
         timeout_seconds,
         (w, h),
+        _SCHEMA_DONATION,
     )
 
     raw: Any = json.loads(_extract_json_object(raw_response))
