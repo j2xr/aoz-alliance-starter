@@ -9,8 +9,17 @@ name: smoke-frontend
 #
 # Production only, on purpose: Vercel Preview deployments sit behind Vercel's
 # authentication wall, which serves a 200 SSO interstitial (not the app) to an
-# anonymous CI runner — every preview probe would false-fail. Production is the
-# public site users actually hit, so that is what we smoke.
+# anonymous CI runner — every preview probe would false-fail.
+#
+# Even for Production, deployment_status.target_url is the *immutable* deployment
+# URL (…-<hash>.vercel.app), and Deployment Protection guards that too — only the
+# assigned production alias is public, and that alias isn't in this payload. So
+# the probe authenticates with a "Protection Bypass for Automation" secret
+# (Vercel → Project → Settings → Deployment Protection), stored as the
+# VERCEL_AUTOMATION_BYPASS_SECRET repo secret and sent as the
+# x-vercel-protection-bypass header. Without it the runner hits the SSO wall and
+# every run false-fails; when the secret is unset we skip (exit 0) rather than
+# fail, so forks that don't configure it stay green instead of red.
 #
 # Requires the Vercel↔GitHub integration to report deployments to GitHub (the
 # default when you import the repo into Vercel). If you deploy some other way,
@@ -29,33 +38,40 @@ jobs:
       - name: Probe the deployed frontend
         env:
           URL: ${{ github.event.deployment_status.target_url }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${URL:-}" ]; then
             echo "deployment_status carried no target_url; nothing to smoke"
             exit 0
           fi
+          if [ -z "${BYPASS:-}" ]; then
+            echo "VERCEL_AUTOMATION_BYPASS_SECRET not set — can't bypass Vercel Deployment Protection on the immutable prod URL; skipping smoke"
+            exit 0
+          fi
+          # Sent on every request so the runner reaches the app, not the SSO wall.
+          bypass=(-H "x-vercel-protection-bypass: $BYPASS")
           echo "Smoking $URL"
 
           # 1) Root serves the SPA shell (the React mount point).
-          root=$(curl -sSfL "$URL/")
+          root=$(curl -sSfL "${bypass[@]}" "$URL/")
           echo "$root" | grep -q '<div id="root"' \
             || { echo "root HTML is missing the #root mount point"; exit 1; }
 
           # 2) A deep link resolves through the SPA rewrite (vercel.json). If that
           #    rewrite breaks, every deep link 404s and no unit test would notice.
-          code=$(curl -s -o /dev/null -w '%{http_code}' -L "$URL/tracking")
+          code=$(curl -s -o /dev/null -w '%{http_code}' -L "${bypass[@]}" "$URL/tracking")
           [ "$code" = 200 ] || { echo "/tracking returned $code (SPA rewrite broken?)"; exit 1; }
 
           # 3) PWA manifest is served (vite-plugin-pwa emits /manifest.webmanifest).
-          code=$(curl -s -o /dev/null -w '%{http_code}' -L "$URL/manifest.webmanifest")
+          code=$(curl -s -o /dev/null -w '%{http_code}' -L "${bypass[@]}" "$URL/manifest.webmanifest")
           [ "$code" = 200 ] || { echo "/manifest.webmanifest returned $code"; exit 1; }
 
           # 4) The hashed JS bundle index.html points at actually loads — catches a
           #    partial/corrupt build where HTML shipped but assets did not.
           asset=$(printf '%s' "$root" | grep -oE '/assets/[^"]+\.js' | head -1)
           if [ -n "$asset" ]; then
-            code=$(curl -s -o /dev/null -w '%{http_code}' -L "$URL$asset")
+            code=$(curl -s -o /dev/null -w '%{http_code}' -L "${bypass[@]}" "$URL$asset")
             [ "$code" = 200 ] || { echo "JS bundle $asset returned $code (partial build?)"; exit 1; }
             echo "asset OK: $asset"
           else
