@@ -13,8 +13,14 @@ export type PlayerLookup =
  * commands (it used to be re-implemented in merge/membership/player/donation
  * with unintentional variants).
  *
- * - match 'exact'   : strict ilike (case-insensitive), limit 2 — for
- *   destructive commands (merge, membership) where ambiguity must block.
+ * - match 'exact'   : case-insensitive ilike, then a case-SENSITIVE tie-break
+ *   — for destructive commands (merge, membership). The ilike keeps the "type
+ *   the name without worrying about case" convenience, but because
+ *   at_players carries `unique (alliance_id, name)` (0001_at_init.sql), at
+ *   most one row can match a given name byte-for-byte, so a case-exact input
+ *   always resolves case duplicates (spyx/SpYX/SPyx) to a single player
+ *   instead of dead-ending on 'ambiguous'. Only a genuinely ambiguous input
+ *   (no exact-case match among several ilike hits) still blocks.
  * - match 'partial' : %name%, limit 5 — for lookup commands (player,
  *   donation) that list candidates when ambiguous.
  *
@@ -27,7 +33,10 @@ export async function resolvePlayerByName(
   opts: { match: 'exact' | 'partial' },
 ): Promise<PlayerLookup> {
   const pattern = opts.match === 'exact' ? escapeLike(name) : `%${escapeLike(name)}%`;
-  const limit = opts.match === 'exact' ? 2 : 5;
+  // exact: fetch up to 5 so every case variant of a name is visible for the
+  // case-sensitive tie-break below (2 was enough to detect ambiguity but not
+  // to disambiguate it).
+  const limit = opts.match === 'exact' ? 5 : 5;
 
   const { data, error } = await supabase
     .from('at_players')
@@ -40,6 +49,15 @@ export async function resolvePlayerByName(
 
   const players = (data ?? []) as PlayerRow[];
   if (players.length === 0) return { status: 'none' };
-  if (players.length > 1) return { status: 'ambiguous', candidates: players };
-  return { status: 'found', player: players[0]! };
+  if (players.length === 1) return { status: 'found', player: players[0]! };
+
+  // Multiple case-insensitive hits. In exact mode, break the tie on an
+  // exact-case match: the unique(alliance_id, name) constraint guarantees at
+  // most one, so this turns "use the exact name" from an unsatisfiable error
+  // into a working merge/membership target on case duplicates.
+  if (opts.match === 'exact') {
+    const caseExact = players.filter((p) => p.name === name);
+    if (caseExact.length === 1) return { status: 'found', player: caseExact[0]! };
+  }
+  return { status: 'ambiguous', candidates: players };
 }

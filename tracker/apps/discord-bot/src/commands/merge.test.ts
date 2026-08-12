@@ -87,6 +87,10 @@ describe('/merge execute', () => {
     queueFrom([]); // at_participations select (canonical): none
     queueFrom([]); // at_alliance_memberships select (alias): none
     queueFrom([]); // at_alliance_memberships select (canonical): none
+    queueFrom([]); // at_donations select (alias): none
+    queueFrom([]); // at_donations select (canonical): none
+    queueFrom([]); // at_player_stats select (alias): none
+    queueFrom([]); // at_player_stats select (canonical): none
     queueFrom(null); // at_player_aliases upsert
     const correctionsChain = mkChain(null); // at_corrections update — captured for inspection
     vi.mocked(supabase.from).mockReturnValueOnce(
@@ -116,15 +120,127 @@ describe('/merge execute', () => {
     vi.mocked(resolvePlayerByName)
       .mockResolvedValueOnce({ status: 'found', player: ALIAS_PLAYER })
       .mockResolvedValueOnce({ status: 'found', player: CANONICAL_PLAYER });
-    queueFrom([]);
-    queueFrom([]);
-    queueFrom([]);
-    queueFrom([]);
+    queueFrom([]); // at_participations select (alias)
+    queueFrom([]); // at_participations select (canonical)
+    queueFrom([]); // at_alliance_memberships select (alias)
+    queueFrom([]); // at_alliance_memberships select (canonical)
+    queueFrom([]); // at_donations select (alias)
+    queueFrom([]); // at_donations select (canonical)
+    queueFrom([]); // at_player_stats select (alias)
+    queueFrom([]); // at_player_stats select (canonical)
     queueFrom(null); // at_player_aliases upsert
     queueFrom(null, 'constraint violation'); // at_corrections update fails
 
     const interaction = fakeInteraction('BadName', 'GoodName');
 
     await expect(execute(interaction)).rejects.toThrow('Failed to reassign correction history');
+  });
+
+  it('reassigns the alias donations to the canonical player before deleting it', async () => {
+    queueFrom(ALLIANCE); // requireAlliance
+    vi.mocked(resolvePlayerByName)
+      .mockResolvedValueOnce({ status: 'found', player: ALIAS_PLAYER })
+      .mockResolvedValueOnce({ status: 'found', player: CANONICAL_PLAYER });
+    queueFrom([]); // at_participations select (alias)
+    queueFrom([]); // at_participations select (canonical)
+    queueFrom([]); // at_alliance_memberships select (alias)
+    queueFrom([]); // at_alliance_memberships select (canonical)
+    queueFrom([{ id: 'don-1', donation_period_id: 'period-1' }]); // at_donations select (alias)
+    queueFrom([]); // at_donations select (canonical): no conflict
+    const donationsUpdateChain = mkChain(null); // at_donations update — captured
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      donationsUpdateChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom([]); // at_player_stats select (alias)
+    queueFrom([]); // at_player_stats select (canonical)
+    queueFrom(null); // at_player_aliases upsert
+    queueFrom(null); // at_corrections update
+    queueFrom(null); // at_players delete
+
+    const interaction = fakeInteraction('BadName', 'GoodName');
+    await execute(interaction);
+
+    // Regression guard for the spyx incident: at_donations.player_id is
+    // `on delete cascade`, so the donation must be reassigned before — and
+    // therefore not destroyed by — the at_players delete.
+    expect(donationsUpdateChain['update']).toHaveBeenCalledWith({ player_id: CANONICAL_PLAYER.id });
+    expect(donationsUpdateChain['in']).toHaveBeenCalledWith('id', ['don-1']);
+
+    const tableCallOrder = vi.mocked(supabase.from).mock.calls.map(([table]) => table);
+    expect(tableCallOrder.indexOf('at_donations')).toBeLessThan(
+      tableCallOrder.lastIndexOf('at_players'),
+    );
+  });
+
+  it('drops an alias donation that conflicts with the canonical on the same period', async () => {
+    queueFrom(ALLIANCE);
+    vi.mocked(resolvePlayerByName)
+      .mockResolvedValueOnce({ status: 'found', player: ALIAS_PLAYER })
+      .mockResolvedValueOnce({ status: 'found', player: CANONICAL_PLAYER });
+    queueFrom([]); // participations alias
+    queueFrom([]); // participations canonical
+    queueFrom([]); // memberships alias
+    queueFrom([]); // memberships canonical
+    queueFrom([{ id: 'don-1', donation_period_id: 'period-1' }]); // at_donations select (alias)
+    queueFrom([{ donation_period_id: 'period-1' }]); // at_donations select (canonical): conflict
+    const donationsDeleteChain = mkChain(null); // at_donations delete — captured
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      donationsDeleteChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom([]); // at_player_stats select (alias)
+    queueFrom([]); // at_player_stats select (canonical)
+    queueFrom(null); // at_player_aliases upsert
+    queueFrom(null); // at_corrections update
+    queueFrom(null); // at_players delete
+
+    await execute(fakeInteraction('BadName', 'GoodName'));
+
+    expect(donationsDeleteChain['delete']).toHaveBeenCalled();
+    expect(donationsDeleteChain['in']).toHaveBeenCalledWith('id', ['don-1']);
+  });
+
+  it('reassigns the alias player stats to the canonical player', async () => {
+    queueFrom(ALLIANCE);
+    vi.mocked(resolvePlayerByName)
+      .mockResolvedValueOnce({ status: 'found', player: ALIAS_PLAYER })
+      .mockResolvedValueOnce({ status: 'found', player: CANONICAL_PLAYER });
+    queueFrom([]); // participations alias
+    queueFrom([]); // participations canonical
+    queueFrom([]); // memberships alias
+    queueFrom([]); // memberships canonical
+    queueFrom([]); // at_donations select (alias)
+    queueFrom([]); // at_donations select (canonical)
+    queueFrom([{ id: 'stat-1', recorded_date: '2026-08-01' }]); // at_player_stats select (alias)
+    queueFrom([]); // at_player_stats select (canonical): no conflict
+    const statsUpdateChain = mkChain(null); // at_player_stats update — captured
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      statsUpdateChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_player_aliases upsert
+    queueFrom(null); // at_corrections update
+    queueFrom(null); // at_players delete
+
+    await execute(fakeInteraction('BadName', 'GoodName'));
+
+    expect(statsUpdateChain['update']).toHaveBeenCalledWith({ player_id: CANONICAL_PLAYER.id });
+    expect(statsUpdateChain['in']).toHaveBeenCalledWith('id', ['stat-1']);
+  });
+
+  it('propagates a database error from the donation reassignment instead of swallowing it', async () => {
+    queueFrom(ALLIANCE);
+    vi.mocked(resolvePlayerByName)
+      .mockResolvedValueOnce({ status: 'found', player: ALIAS_PLAYER })
+      .mockResolvedValueOnce({ status: 'found', player: CANONICAL_PLAYER });
+    queueFrom([]); // participations alias
+    queueFrom([]); // participations canonical
+    queueFrom([]); // memberships alias
+    queueFrom([]); // memberships canonical
+    queueFrom([{ id: 'don-1', donation_period_id: 'period-1' }]); // at_donations select (alias)
+    queueFrom([]); // at_donations select (canonical)
+    queueFrom(null, 'constraint violation'); // at_donations update fails
+
+    await expect(execute(fakeInteraction('BadName', 'GoodName'))).rejects.toThrow(
+      'Failed to reassign donations',
+    );
   });
 });

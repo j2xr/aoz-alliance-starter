@@ -62,7 +62,7 @@ describe('resolvePlayerByName', () => {
       'name',
       'a\\_b',
     ]);
-    expect((exactChain['limit'] as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([2]);
+    expect((exactChain['limit'] as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([5]);
 
     const partialChain = queueChain([]);
     await resolvePlayerByName('alliance-1', '50%', { match: 'partial' });
@@ -71,5 +71,37 @@ describe('resolvePlayerByName', () => {
       '%50\\%%',
     ]);
     expect((partialChain['limit'] as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([5]);
+  });
+
+  it('exact mode breaks a case tie on the exact-case name (case duplicates)', async () => {
+    // The ilike query is case-insensitive, so all three variants come back;
+    // unique(alliance_id, name) guarantees only one matches byte-for-byte.
+    queueChain([
+      { id: 'p1', name: 'spyx' },
+      { id: 'p2', name: 'SpYX' },
+      { id: 'p3', name: 'SPyx' },
+    ]);
+    const result = await resolvePlayerByName('alliance-1', 'SpYX', { match: 'exact' });
+    expect(result).toEqual({ status: 'found', player: { id: 'p2', name: 'SpYX' } });
+  });
+
+  it('exact mode stays ambiguous when no candidate matches the exact case', async () => {
+    queueChain([
+      { id: 'p1', name: 'spyx' },
+      { id: 'p2', name: 'SpYX' },
+    ]);
+    const result = await resolvePlayerByName('alliance-1', 'SPYX', { match: 'exact' });
+    expect(result.status).toBe('ambiguous');
+  });
+
+  it('partial mode never applies the case tie-break (lookup UX unchanged)', async () => {
+    // Even if an exact-case match exists among partial hits, partial mode must
+    // still list candidates rather than silently pick one.
+    queueChain([
+      { id: 'p1', name: 'Alpha' },
+      { id: 'p2', name: 'Alphabet' },
+    ]);
+    const result = await resolvePlayerByName('alliance-1', 'Alpha', { match: 'partial' });
+    expect(result.status).toBe('ambiguous');
   });
 });
