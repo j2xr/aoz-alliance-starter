@@ -41,6 +41,12 @@ export const config = {
   // (CDN download + OCR job polling), so a small pool pipelines work
   // without overloading the OCR service.
   reprocessConcurrency: Number.parseInt(process.env['REPROCESS_CONCURRENCY'] ?? '3', 10),
+  // Opt-in (default off): also flag accepted LLM name corrections for manual
+  // review. Those rows carry the -1 confidence sentinel and so escape the
+  // low-confidence needs_review gate, yet they are the highest-risk reads (the
+  // vision model can return a confident, wrong name — e.g. jasmin→ຊາວມູນ). On =
+  // route every LLM-corrected row to the Review page (a light queue).
+  reviewLlmCorrections: process.env['REVIEW_LLM_CORRECTIONS'] === 'true',
   logLevel: process.env['LOG_LEVEL'] ?? 'info',
   supabaseUrl: sanitizeSupabaseUrl(requireEnv('SUPABASE_URL')),
   supabaseServiceRoleKey: requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
