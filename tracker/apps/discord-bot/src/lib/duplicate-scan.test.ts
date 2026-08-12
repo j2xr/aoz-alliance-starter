@@ -156,6 +156,21 @@ describe('compareNames — validated against every known real example', () => {
     expect(distanceWithoutFold('зрух', 'SPyx')).toBeGreaterThanOrEqual(3);
   });
 
+  it('folds digit↔letter confusables so the measured misreads share a key (Q3)', () => {
+    // 0→o, 1→i: the exact confusions measured in the 2026-08-10 reprocess run.
+    expect(duplicateKey('doradora12')).toBe(duplicateKey('doradorai2'));
+    expect(duplicateKey('THOR,01')).toBe(duplicateKey('THOR,O1'));
+    // Promotes them to the top proximity so /find-duplicates ranks them HIGH.
+    expect(compareNames('doradora12', 'doradorai2').proximity).toBe('exact-key');
+    expect(compareNames('THOR,01', 'THOR,O1').proximity).toBe('exact-key');
+  });
+
+  it('folds only 0 and 1 — other digits stay distinct to avoid inventing collisions', () => {
+    // 2 is not in the fold table, so these two handles keep a real edit distance.
+    expect(duplicateKey('squad2')).not.toBe(duplicateKey('squadz'));
+    expect(compareNames('squad2', 'squadz').proximity).not.toBe('exact-key');
+  });
+
   it('the containment demotion is load-bearing for the dangerous false positive', () => {
     const result = compareNames('jasmin', 'm| jasmin|o');
     expect(result.containment).toBe(true);

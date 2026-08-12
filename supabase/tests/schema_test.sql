@@ -4,7 +4,7 @@
 -- protection or a column the frontend reads.
 
 begin;
-select plan(8);
+select plan(10);
 
 -- 1. Every at_* base table has RLS enabled. A new table added without
 --    `enable row level security` would default to open, leaking across
@@ -51,6 +51,12 @@ select has_column('at_v_event_import_delta', 'battlers_coverage_pct',
   'at_v_event_import_delta exposes battlers_coverage_pct');
 select has_column('at_v_needs_review', 'ocr_confidence',
   'at_v_needs_review exposes ocr_confidence');
+
+-- 9-10. Player-frequency view (migration 0027): read by the credit path and
+--       /find-duplicates as the Q3 frequency prior.
+select has_view('at_v_player_frequency', 'at_v_player_frequency view exists (Q3 frequency prior)');
+select has_column('at_v_player_frequency', 'occurrences',
+  'at_v_player_frequency exposes occurrences');
 
 select * from finish();
 rollback;

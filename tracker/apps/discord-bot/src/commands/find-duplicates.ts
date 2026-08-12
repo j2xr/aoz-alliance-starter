@@ -228,9 +228,34 @@ async function scanAllContexts(
   };
 }
 
+// ── Frequency prior (Q3) ────────────────────────────────────────────────────
+//
+// Corpus-wide capture frequency per player (at_v_player_frequency, 0027), NOT
+// derived from the limited scan window above: it tells the reviewer which
+// spelling of a duplicate pair has been seen more often, so the most-seen one
+// is kept as canonical during /merge. Read-only; never rewrites a canonical.
+async function fetchPlayerFrequency(allianceId: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from('at_v_player_frequency')
+    .select('player_id, occurrences')
+    .eq('alliance_id', allianceId);
+  if (error) throw new Error(`Player frequency query failed: ${error.message}`);
+  return new Map(
+    ((data ?? []) as { player_id: string; occurrences: number | null }[]).map((r) => [
+      r.player_id,
+      r.occurrences ?? 0,
+    ]),
+  );
+}
+
 // ── Rendering ────────────────────────────────────────────────────────────
 
-function renderCandidateLine(c: DuplicateCandidate): string {
+function seenLabel(freqById: Map<string, number>, playerId: string): string {
+  const n = freqById.get(playerId);
+  return n == null ? '' : ` (seen ${n}×)`;
+}
+
+function renderCandidateLine(c: DuplicateCandidate, freqById: Map<string, number>): string {
   const valueWord = c.context.valueLabel === 'honor' ? 'honor' : 'points';
   const valueNote = c.sameValue
     ? `identical ${valueWord} ${c.a.value}`
@@ -238,13 +263,28 @@ function renderCandidateLine(c: DuplicateCandidate): string {
   const alsoNote =
     c.alsoInContexts > 0 ? ` (+${c.alsoInContexts} other context${c.alsoInContexts > 1 ? 's' : ''})` : '';
 
+  // When both counts are known and differ, name the more-seen spelling as the
+  // one to keep as canonical during /merge — this is the concrete Q3 lever
+  // (a canonical chosen by frequency, decided by the human, not auto-rewritten).
+  const freqA = freqById.get(c.a.playerId);
+  const freqB = freqById.get(c.b.playerId);
+  let keepHint = '';
+  if (freqA != null && freqB != null && freqA !== freqB) {
+    const keep = freqA > freqB ? c.a.playerName : c.b.playerName;
+    keepHint = `\n   → keep \`${keep}\` (seen more often) when merging`;
+  }
+
   return (
-    `\`${c.a.playerName}\` ↔ \`${c.b.playerName}\` — ${valueNote} · similarity ${c.name.similarity.toFixed(2)}\n` +
-    `   ${c.name.reason} · ${c.context.label}${alsoNote}`
+    `\`${c.a.playerName}\`${seenLabel(freqById, c.a.playerId)} ↔ \`${c.b.playerName}\`${seenLabel(freqById, c.b.playerId)} — ${valueNote} · similarity ${c.name.similarity.toFixed(2)}\n` +
+    `   ${c.name.reason} · ${c.context.label}${alsoNote}${keepHint}`
   );
 }
 
-function renderCandidatePage(candidates: DuplicateCandidate[], page: number): string {
+function renderCandidatePage(
+  candidates: DuplicateCandidate[],
+  page: number,
+  freqById: Map<string, number>,
+): string {
   const start = page * PAGE_SIZE;
   const pageItems = candidates.slice(start, start + PAGE_SIZE);
 
@@ -255,7 +295,7 @@ function renderCandidatePage(candidates: DuplicateCandidate[], page: number): st
       currentTier = c.tier;
       lines.push(`\n**${TIER_EMOJI[c.tier]} ${TIER_HEADING[c.tier]}**`);
     }
-    lines.push(`• ${renderCandidateLine(c)}`);
+    lines.push(`• ${renderCandidateLine(c, freqById)}`);
   }
   return lines.join('\n');
 }
@@ -283,8 +323,12 @@ export async function renderFindDuplicates(
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const clampedPage = Math.min(Math.max(page, 0), totalPages - 1);
 
+  // Only queried when there's something to annotate — keeps the "no duplicates"
+  // path a pure scan with no extra round-trip.
+  const freqById = await fetchPlayerFrequency(allianceId);
+
   const description = capDiscordContent(
-    `${HEADER}\n${renderCandidatePage(filtered, clampedPage)}`,
+    `${HEADER}\n${renderCandidatePage(filtered, clampedPage, freqById)}`,
     4000,
   );
 
