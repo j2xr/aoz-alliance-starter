@@ -15,6 +15,7 @@ import aiosqlite
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
+from app import crop_retention
 from app.dispatcher import UnknownEventError, refresh_title_patterns_from_supabase
 from app.extract import extract
 from app.preprocess import preprocess_image
@@ -92,6 +93,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     except Exception:
         logger.exception("Failed to load title aliases from Supabase — using built-in fallback")
+
+    # Bound any retained LLM-fallback crops (OCR_KEEP_CROPS) left from prior
+    # runs before serving; no-op when retention is disabled.
+    await asyncio.to_thread(crop_retention.sweep, force=True)
 
     global _watchdog_task
     _watchdog_task = asyncio.create_task(_pending_job_watchdog())
@@ -218,7 +223,9 @@ def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: boo
     try:
         image = preprocess_image(str(tmp_path))
         try:
-            result = extract(image, event_type_override=event_type, force_llm=force_llm)
+            result = extract(
+                image, event_type_override=event_type, force_llm=force_llm, job_id=job_id
+            )
         except UnknownEventError:
             logger.info("Job %s: unknown event type", job_id)
             _submit(_set_job(job_id, "error", {"error": "unknown_event"}))
@@ -230,6 +237,8 @@ def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: boo
         _submit(_set_job(job_id, "error", {"error": "internal_error", "detail": str(exc)}))
     finally:
         tmp_path.unlink(missing_ok=True)
+        # Throttled TTL + size-cap sweep of retained crops (no-op if disabled).
+        crop_retention.sweep()
 
 
 @app.post("/extract", status_code=202)

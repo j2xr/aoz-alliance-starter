@@ -6,6 +6,7 @@ from typing import Any, cast
 import numpy as np
 import pytesseract
 
+from app import crop_retention
 from app.dispatcher import DONATION_CODE, PLAYER_STATS_CODE, detect_screen_kind
 from app.parsers import get_parser
 from app.parsers.base import (
@@ -130,6 +131,7 @@ def extract(
     image: np.ndarray,
     event_type_override: str | None = None,
     force_llm: bool = False,
+    job_id: str | None = None,
 ) -> ParseResult | DonationParseResult | PlayerStatsParseResult:
     if event_type_override == DONATION_CODE:
         screen_kind: str = "donation"
@@ -167,7 +169,7 @@ def extract(
             result = result.model_copy(update={"event_type": code})
 
     if _LLM_FALLBACK_ENABLED or force_llm:
-        result = _apply_llm_fallback(image, result, parser, force_all=force_llm)
+        result = _apply_llm_fallback(image, result, parser, force_all=force_llm, job_id=job_id)
 
     n = len(result.members)
     avg_conf = sum(m.confidence for m in result.members) / n if n else 0.0
@@ -227,6 +229,7 @@ def _apply_llm_fallback(
     result: ParseResult | DonationParseResult,
     parser: BaseParser,
     force_all: bool = False,
+    job_id: str | None = None,
 ) -> ParseResult | DonationParseResult:  # PlayerStatsParseResult is handled before this call
     """Generic LLM fallback: corrects member.name on rows that look misread.
 
@@ -288,6 +291,20 @@ def _apply_llm_fallback(
         y = member.row_y if member.row_y is not None else member_list_top + i * row_height
         crop_h = member.row_h if member.row_h is not None else row_height
         row_crop: np.ndarray = image[y : y + crop_h, :]
+        # F3: keep this candidate row's crop (off unless OCR_KEEP_CROPS). This is
+        # exactly the crop the LLM will see, so no recomputation — captured here,
+        # before the banner check, so banner-skipped rows are retained too.
+        crop_retention.dump_row_crop(
+            job_id,
+            row,
+            row_crop,
+            kind="donation" if isinstance(member, DonationMember) else "event",
+            name=member.name,
+            confidence=member.confidence,
+            reason=reason,
+            alliance_honor=getattr(member, "alliance_honor", None),
+            points=getattr(member, "points", None),
+        )
         if _looks_like_notification_banner(row_crop):
             logger.warning(
                 "notification banner over row %d (%r): skipping LLM (it would read the "

@@ -75,6 +75,39 @@ def test_high_confidence_row_is_skipped() -> None:
     assert out.members[0].confidence == 0.99
 
 
+# ── F3: crop retention hook ────────────────────────────────────────────────────
+
+
+def test_candidate_row_crop_is_retained_when_enabled(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With OCR_KEEP_CROPS, a row sent to the LLM leaves a crop + manifest line;
+    a confident (skipped) row leaves nothing."""
+    monkeypatch.setenv("OCR_KEEP_CROPS", "true")
+    monkeypatch.setenv("OCR_CROP_DIR", str(tmp_path))
+
+    result = _event_result([_member("Mjolnir", 0.20), _member("Confident", 0.99)])
+    with patch("app.llm_fallback.llm_fallback", return_value="Mjölnir"):
+        _apply_llm_fallback(_IMG, result, _StubParser(), job_id="job-xyz")
+
+    job_dir = tmp_path / "job-xyz"
+    crops = sorted(p.name for p in job_dir.glob("row_*.png"))
+    assert crops == ["row_00.png"]  # only the low-confidence row, not the confident one
+    manifest = (job_dir / "manifest.jsonl").read_text().strip().splitlines()
+    assert len(manifest) == 1
+
+
+def test_no_crops_when_retention_disabled(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OCR_KEEP_CROPS", raising=False)
+    monkeypatch.setenv("OCR_CROP_DIR", str(tmp_path))
+
+    result = _event_result([_member("Mjolnir", 0.20)])
+    with patch("app.llm_fallback.llm_fallback", return_value="Mjölnir"):
+        _apply_llm_fallback(_IMG, result, _StubParser(), job_id="job-xyz")
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_high_confidence_garbage_name_is_corrected() -> None:
     """The P3 case the old confidence gate missed: a confident-but-garbage read
     (conf 0.99, but the output is frame debris) now reaches the LLM via
