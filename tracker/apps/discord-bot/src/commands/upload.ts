@@ -15,7 +15,8 @@ import {
 } from '../lib/ingestion.js';
 import { supabase } from '../lib/supabase.js';
 import logger from '../logger.js';
-import { isImageAttachment } from '../lib/attachment.js';
+import { imageAttachmentsOf } from '../lib/attachment.js';
+import { imageChoicesForMessageUrl } from '../lib/image-autocomplete.js';
 import { messages } from '../lib/messages.js';
 import { capDiscordContent } from '../lib/discord-limits.js';
 
@@ -67,6 +68,14 @@ export const data = new SlashCommandBuilder()
       .setDescription('Event type code (required if kind=event)')
       .setAutocomplete(true),
   )
+  .addIntegerOption((opt) =>
+    opt
+      .setName('image')
+      .setDescription('Only reprocess this image (1-based); leave empty for all images')
+      .setRequired(false)
+      .setMinValue(1)
+      .setAutocomplete(true),
+  )
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')
@@ -75,8 +84,21 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused().trim().toLowerCase();
+  // Two autocompleted options now (event_type, image): branch on which one is
+  // focused, or the image typist would get event types (correct.ts pattern).
+  const focused = interaction.options.getFocused(true);
 
+  if (focused.name === 'image') {
+    await interaction.respond(await imageChoicesForMessageUrl(interaction));
+    return;
+  }
+
+  if (focused.name !== 'event_type') {
+    await interaction.respond([]);
+    return;
+  }
+
+  const query = focused.value.trim().toLowerCase();
   const { data: eventTypes, error } = await supabase
     .from('at_event_types')
     .select('code, display_name')
@@ -90,9 +112,9 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
 
   const matches = (eventTypes ?? []).filter(
     (et: { code: string; display_name: string }) =>
-      focused.length === 0 ||
-      et.code.toLowerCase().includes(focused) ||
-      et.display_name.toLowerCase().includes(focused),
+      query.length === 0 ||
+      et.code.toLowerCase().includes(query) ||
+      et.display_name.toLowerCase().includes(query),
   );
 
   await interaction.respond(
@@ -190,26 +212,41 @@ export async function execute(
     .eq('discord_message_id', messageId)
     .eq('alliance_id', alliance.id);
 
-  const images = originalMessage.attachments.filter(
-    (att) => isImageAttachment(att.contentType ?? null, att.name),
-  );
+  const allImages = imageAttachmentsOf(originalMessage);
 
-  if (images.size === 0) {
+  if (allImages.length === 0) {
     await interaction.editReply('❌ No image found in this message.');
     return;
   }
 
-  const plural = images.size > 1 ? 's' : '';
+  // A 1-based `image` narrows to one screenshot. This matters more here than on
+  // /reprocess: upload forces a type onto every image, so on a mixed message
+  // (a donation board + an event board) forcing kind=donation would mislabel
+  // the other one — the selector lets the operator target just the right image.
+  const imageIndex = interaction.options.getInteger('image') ?? undefined;
+  if (imageIndex !== undefined && imageIndex > allImages.length) {
+    const list = allImages.map((att, i) => `#${i + 1} — ${att.name}`).join('\n');
+    await interaction.editReply(
+      `❌ Image ${imageIndex} is out of range — this message has ${allImages.length} image(s):\n${list}`,
+    );
+    return;
+  }
+  const images =
+    imageIndex !== undefined ? allImages.slice(imageIndex - 1, imageIndex) : allImages;
+
+  const plural = images.length > 1 ? 's' : '';
   const kindLabel = kind === 'donation' ? '(donations)' : `(${eventTypeDisplayName ?? eventTypeCode ?? 'event'})`;
+  const imageNote =
+    imageIndex !== undefined ? ` (image #${imageIndex} — ${images[0]!.name})` : '';
   const llmNote = forceLlm ? ' (LLM forced on every line)' : '';
   await interaction.editReply(
-    `⏳ Processing ${images.size} screenshot${plural} ${kindLabel}${llmNote}. This can take several minutes — **please do not upload again**.`,
+    `⏳ Processing ${images.length} screenshot${plural} ${kindLabel}${imageNote}${llmNote}. This can take several minutes — **please do not upload again**.`,
   );
 
   const lines: string[] = [];
   const embeds: EmbedBuilder[] = [];
 
-  for (const [, att] of images) {
+  for (const att of images) {
     let result;
     try {
       result = await processImageAttachment(

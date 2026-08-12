@@ -1,7 +1,7 @@
 import type { EmbedBuilder, Message, TextBasedChannel } from 'discord.js';
 import { config } from '../config.js';
 import logger from '../logger.js';
-import { isImageAttachment } from './attachment.js';
+import { imageAttachmentsOf, isImageAttachment } from './attachment.js';
 import { mapWithConcurrency } from './concurrency.js';
 import {
   processImageAttachment,
@@ -27,6 +27,9 @@ export type ReprocessMessageParams = {
   allianceId: string;
   eventTypeOverride?: string;
   forceLlm?: boolean;
+  // 1-based index into the message's image attachments (operator order). When
+  // set, only that one image is reprocessed; omitted = every image.
+  imageIndex?: number;
 };
 
 export type ReprocessMessageResult = {
@@ -43,18 +46,20 @@ export type ReprocessMessageResult = {
 export async function reprocessMessageScreenshots(
   params: ReprocessMessageParams,
 ): Promise<ReprocessMessageResult> {
-  const { message, allianceId, eventTypeOverride, forceLlm = false } = params;
+  const { message, allianceId, eventTypeOverride, forceLlm = false, imageIndex } = params;
 
-  const images = message.attachments.filter((att) =>
-    isImageAttachment(att.contentType ?? null, att.name),
-  );
+  const allImages = imageAttachmentsOf(message);
+  // A 1-based imageIndex narrows to a single image (slice yields [] when out of
+  // range — callers validate bounds first). Omitted = every image.
+  const images =
+    imageIndex !== undefined ? allImages.slice(imageIndex - 1, imageIndex) : allImages;
 
   // Independent attachments are processed in parallel (bounded pool): most
   // of the time per image is spent waiting (download + OCR polling).
   // Concurrent upserts are safe (onConflict / ignoreDuplicates / 23505).
   // Results are folded back in the attachments' original order.
   const outcomes = await mapWithConcurrency(
-    [...images.values()],
+    images,
     config.reprocessConcurrency,
     (att) => processOneAttachment(att, { message, allianceId, eventTypeOverride, forceLlm }),
   );
@@ -78,7 +83,7 @@ export async function reprocessMessageScreenshots(
   }
 
   return {
-    imageCount: images.size,
+    imageCount: images.length,
     successCount,
     duplicateCount,
     unknownEventCount,

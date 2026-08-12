@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { isImageAttachment } from './attachment.js';
+import { isImageAttachment, imageAttachmentsOf, type ImageAttachment } from './attachment.js';
+
+function fakeMessage(atts: ImageAttachment[]) {
+  return { attachments: { values: () => atts.values() } };
+}
 
 describe('isImageAttachment', () => {
   it('accepts known MIME types', () => {
@@ -36,5 +40,34 @@ describe('isImageAttachment', () => {
     expect(isImageAttachment(null, 'document.pdf')).toBe(false);
     expect(isImageAttachment(null, 'archive.zip')).toBe(false);
     expect(isImageAttachment(null, 'noextension')).toBe(false);
+  });
+});
+
+describe('imageAttachmentsOf', () => {
+  it('returns image attachments in the message order (drives the 1-based index)', () => {
+    const msg = fakeMessage([
+      { url: 'u1', name: 'first.png', contentType: 'image/png' },
+      { url: 'u2', name: 'second.jpg', contentType: 'image/jpeg' },
+    ]);
+    expect(imageAttachmentsOf(msg).map((a) => a.name)).toEqual(['first.png', 'second.jpg']);
+  });
+
+  it('skips non-image attachments but keeps the surviving order', () => {
+    const msg = fakeMessage([
+      { url: 'u1', name: 'notes.pdf', contentType: 'application/pdf' },
+      { url: 'u2', name: 'board.png', contentType: 'image/png' },
+      { url: 'u3', name: 'archive.zip', contentType: 'application/zip' },
+      { url: 'u4', name: 'ranking.jpg', contentType: 'image/jpeg' },
+    ]);
+    expect(imageAttachmentsOf(msg).map((a) => a.name)).toEqual(['board.png', 'ranking.jpg']);
+  });
+
+  it('falls back to the filename extension when contentType is missing', () => {
+    const msg = fakeMessage([{ url: 'u1', name: 'shot.png', contentType: null }]);
+    expect(imageAttachmentsOf(msg)).toHaveLength(1);
+  });
+
+  it('returns [] on a message with no attachments', () => {
+    expect(imageAttachmentsOf(fakeMessage([]))).toEqual([]);
   });
 });

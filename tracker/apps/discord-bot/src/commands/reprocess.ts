@@ -1,11 +1,13 @@
 import {
   SlashCommandBuilder,
   PermissionFlagsBits,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { Message } from 'discord.js';
 import { requireAlliance, resolveAlliance } from '../lib/alliance.js';
-import { isImageAttachment } from '../lib/attachment.js';
+import { imageAttachmentsOf } from '../lib/attachment.js';
+import { imageChoicesForMessageUrl } from '../lib/image-autocomplete.js';
 import { reprocessMessageScreenshots } from '../lib/reprocess.js';
 import logger from '../logger.js';
 
@@ -22,12 +24,24 @@ export const data = new SlashCommandBuilder()
       .setDescription('URL of the Discord message containing the screenshots')
       .setRequired(true),
   )
+  .addIntegerOption((opt) =>
+    opt
+      .setName('image')
+      .setDescription('Only reprocess this image (1-based); leave empty for all images')
+      .setRequired(false)
+      .setMinValue(1)
+      .setAutocomplete(true),
+  )
   .addBooleanOption((opt) =>
     opt
       .setName('force_llm')
       .setDescription('Force the LLM on every line (ignore the OCR confidence threshold)')
       .setRequired(false),
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await interaction.respond(await imageChoicesForMessageUrl(interaction));
+}
 
 export async function execute(
   interaction: ChatInputCommandInteraction,
@@ -89,25 +103,36 @@ export async function execute(
     return;
   }
 
-  const imageCount = originalMessage.attachments.filter((att) =>
-    isImageAttachment(att.contentType ?? null, att.name),
-  ).size;
+  const images = imageAttachmentsOf(originalMessage);
 
-  if (imageCount === 0) {
+  if (images.length === 0) {
     await interaction.editReply('❌ No image found in this message.');
     return;
   }
 
-  const plural = imageCount > 1 ? 's' : '';
+  const imageIndex = interaction.options.getInteger('image') ?? undefined;
+  if (imageIndex !== undefined && imageIndex > images.length) {
+    const list = images.map((att, i) => `#${i + 1} — ${att.name}`).join('\n');
+    await interaction.editReply(
+      `❌ Image ${imageIndex} is out of range — this message has ${images.length} image(s):\n${list}`,
+    );
+    return;
+  }
+
+  const targetCount = imageIndex !== undefined ? 1 : images.length;
+  const plural = targetCount > 1 ? 's' : '';
+  const imageNote =
+    imageIndex !== undefined ? ` (image #${imageIndex} — ${images[imageIndex - 1]!.name})` : '';
   const llmNote = forceLlm ? ' (LLM forced on every line)' : '';
   await interaction.editReply(
-    `⏳ Processing ${imageCount} screenshot${plural}${llmNote}. This can take several minutes - please do not upload again.`,
+    `⏳ Processing ${targetCount} screenshot${plural}${imageNote}${llmNote}. This can take several minutes - please do not upload again.`,
   );
 
   const { lines, embeds, rejectedRawTexts } = await reprocessMessageScreenshots({
     message: originalMessage,
     allianceId: alliance.id,
     forceLlm,
+    ...(imageIndex !== undefined ? { imageIndex } : {}),
   });
 
   if (embeds.length > 0) {
