@@ -22,8 +22,9 @@ vi.mock('../logger.js', () => ({
 
 // These commands can delete/alter alliance data (merge deletes a player,
 // upload can delete at_screenshot_uploads rows, reprocess-channel/reprocess
-// re-run OCR and write rows, membership/player-alias edit canonical player
-// data, setup-alliance creates a new at_alliances row, correct overwrites a
+// re-run OCR and write rows, reprocess-line re-reads one row and auto-applies a
+// score correction, membership/player-alias edit canonical player data,
+// setup-alliance creates a new at_alliances row, correct overwrites a
 // participation/donation score) and previously had no permission restriction
 // at all. find-duplicates is the one exception that writes nothing at all —
 // gated anyway, same bar as /merge, since it's the admin diagnostic tool that
@@ -33,6 +34,7 @@ const SENSITIVE_COMMANDS = [
   'upload',
   'reprocess-channel',
   'reprocess',
+  'reprocess-line',
   'membership',
   'player-alias',
   'setup-alliance',

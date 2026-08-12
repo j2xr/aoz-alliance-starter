@@ -13,6 +13,7 @@ import * as leaderboard from './leaderboard.js';
 import * as upload from './upload.js';
 import * as reprocess from './reprocess.js';
 import * as reprocessChannel from './reprocess-channel.js';
+import * as reprocessLine from './reprocess-line.js';
 import * as membership from './membership.js';
 import * as donation from './donation.js';
 import * as merge from './merge.js';
@@ -39,6 +40,7 @@ export const commands = new Collection<string, Command>([
   ['upload', upload],
   ['reprocess', reprocess],
   ['reprocess-channel', reprocessChannel],
+  ['reprocess-line', reprocessLine],
   ['membership', membership],
   ['donation', donation],
   ['merge', merge],
