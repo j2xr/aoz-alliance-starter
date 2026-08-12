@@ -4,6 +4,7 @@ import type {
   OcrPlayerStatsMember,
   OcrPlayerStatsResult,
 } from '@alliance-tracker/shared-types';
+import { config } from '../config.js';
 import { supabase } from './supabase.js';
 import { isoWeekStartParis } from './period.js';
 import { findFuzzyMatch, type RosterPlayer } from './name-resolve.js';
@@ -418,14 +419,34 @@ async function upsertMemberships(
   return newPlayerRows.length;
 }
 
+// Confidence sentinel the ocr-service assigns to a row whose name was rewritten
+// by an accepted LLM correction (extract.py `_rewrite_name`, default -1.0). It
+// is not a low-confidence score, so the [0, 0.5) gate below never catches it —
+// which is the whole point of Q1's opt-in path.
+const LLM_ACCEPTED_CONFIDENCE = -1;
+
 /**
- * True when OCR confidence is low (0 <= confidence < 0.5) — to be
- * distinguished from the -1 sentinel (accepted LLM correction, see
- * _rewrite_name on the ocr-service side), which is NOT a low-quality signal
- * and must therefore never be flagged.
+ * Whether a row should be flagged for manual review.
+ *
+ * Base rule: a genuinely low OCR confidence (0 <= confidence < 0.5). The other
+ * flagged-on-purpose sentinels already land in that band — 0.0 (a rejected LLM
+ * correction / banner-skipped row) and 0.45 (an LLM-replaced suspect honor).
+ *
+ * The -1 sentinel (an *accepted* LLM name correction) sits outside that band on
+ * purpose, so it is normally NOT flagged. But those are the highest-risk reads
+ * — the model can return a confident, wrong name (jasmin→ຊາວມູນ slipped in
+ * unflagged) — with no low-confidence signal to catch them. When
+ * `reviewLlmCorrections` is on (REVIEW_LLM_CORRECTIONS), route them to review
+ * too. Deliberately NOT keyed on non-latin script: `علE`, `Герман`, `幸恵丸…`
+ * are real handles (see the repo-anonymity/translation notes), so script is not
+ * a quality signal.
  */
-function needsReview(confidence: number): boolean {
-  return confidence >= 0 && confidence < 0.5;
+export function needsReview(
+  confidence: number,
+  reviewLlmCorrections = config.reviewLlmCorrections,
+): boolean {
+  if (confidence >= 0) return confidence < 0.5;
+  return reviewLlmCorrections && confidence === LLM_ACCEPTED_CONFIDENCE;
 }
 
 // The only processing_status meaning "genuine data already written for this

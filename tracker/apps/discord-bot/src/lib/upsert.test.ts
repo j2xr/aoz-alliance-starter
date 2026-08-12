@@ -4,10 +4,16 @@ import {
   upsertDonationResult,
   upsertPlayerStatsResult,
   recordUploadError,
+  needsReview,
 } from './upsert.js';
 import { supabase } from './supabase.js';
 import logger from '../logger.js';
 
+// upsert.ts now reads config.reviewLlmCorrections; mock config so importing it
+// doesn't trip requireEnv() at load (no real secrets in the test env). Default
+// off, matching production's default — the flag-on path is exercised by passing
+// the argument to needsReview() explicitly.
+vi.mock('../config.js', () => ({ config: { reviewLlmCorrections: false } }));
 vi.mock('./supabase.js', () => ({ supabase: { from: vi.fn() } }));
 vi.mock('../logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -47,6 +53,34 @@ function queueFrom(data: unknown, error: string | null = null) {
     mkChain(data, error) as unknown as ReturnType<SupabaseFrom>,
   );
 }
+
+// ---------------------------------------------------------------------------
+// needsReview (Q1)
+// ---------------------------------------------------------------------------
+
+describe('needsReview', () => {
+  it('flags genuinely low OCR confidence regardless of the LLM flag', () => {
+    expect(needsReview(0.2, false)).toBe(true);
+    expect(needsReview(0.0, false)).toBe(true); // rejected-LLM / banner sentinel
+    expect(needsReview(0.45, false)).toBe(true); // LLM-replaced suspect honor
+  });
+
+  it('does not flag a confident read', () => {
+    expect(needsReview(0.8, false)).toBe(false);
+    expect(needsReview(0.5, false)).toBe(false); // exclusive upper bound
+  });
+
+  it('leaves the accepted-LLM sentinel unflagged by default', () => {
+    expect(needsReview(-1, false)).toBe(false);
+  });
+
+  it('flags the accepted-LLM sentinel when reviewLlmCorrections is on', () => {
+    expect(needsReview(-1, true)).toBe(true);
+    // A low-confidence row is still flagged; a confident one still is not —
+    // the flag only adds the -1 case, it does not widen the [0, 0.5) band.
+    expect(needsReview(0.9, true)).toBe(false);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures
