@@ -27,3 +27,22 @@ export function isImageAttachment(
   }
   return IMAGE_EXTENSIONS.has(extensionFromFilename(filename));
 }
+
+/** Minimal shape of the message attachments we care about (also matches the mock in tests). */
+export type ImageAttachment = { url: string; name: string; contentType?: string | null };
+
+type MessageLike = {
+  attachments: { values(): IterableIterator<ImageAttachment> };
+};
+
+/**
+ * The message's image attachments, in the attachments' original order — the
+ * same order the operator sees, which is what makes the 1-based `image` index
+ * of /reprocess and /upload meaningful. Wraps isImageAttachment; does not
+ * replace it.
+ */
+export function imageAttachmentsOf(message: MessageLike): ImageAttachment[] {
+  return [...message.attachments.values()].filter((att) =>
+    isImageAttachment(att.contentType ?? null, att.name),
+  );
+}

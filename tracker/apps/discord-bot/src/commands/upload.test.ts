@@ -57,7 +57,11 @@ function queueEventTypes(data: unknown, error: unknown = null) {
 
 function fakeInteraction(focused: string): AutocompleteInteraction {
   return {
-    options: { getFocused: () => focused },
+    // Handler now uses getFocused(true) and branches on the option name.
+    options: {
+      getFocused: (withDetail?: boolean) =>
+        withDetail ? { name: 'event_type', value: focused } : focused,
+    },
     respond: vi.fn(),
   } as unknown as AutocompleteInteraction;
 }
@@ -146,6 +150,7 @@ function fakeOriginalMessage(attachments: FakeAttachment[]) {
         const filtered = new Map([...attMap.entries()].filter(([, v]) => pred(v)));
         return { size: filtered.size, [Symbol.iterator]: () => filtered.entries() };
       }),
+      values: () => attMap.values(),
     },
   };
 }
@@ -154,8 +159,9 @@ function fakeUploadInteraction(opts: {
   kind?: 'event' | 'donation';
   eventType?: string | null;
   originalMessage: ReturnType<typeof fakeOriginalMessage>;
+  imageOption?: number;
 }) {
-  const { kind = 'donation', eventType = null, originalMessage } = opts;
+  const { kind = 'donation', eventType = null, originalMessage, imageOption } = opts;
   const editReply = vi.fn().mockResolvedValue(undefined);
   const interaction = {
     channelId: 'allowed-channel',
@@ -168,6 +174,7 @@ function fakeUploadInteraction(opts: {
         if (name === 'event_type') return eventType;
         return null;
       },
+      getInteger: () => imageOption ?? null,
       getBoolean: () => false,
     },
     client: {
@@ -366,5 +373,124 @@ describe('upload execute — event routing (goes through routeOcrResult)', () =>
     await execute(interaction);
 
     expect(editReply).toHaveBeenLastCalledWith(expect.objectContaining({ embeds: [fakeEmbed] }));
+  });
+});
+
+describe('upload execute — image selector', () => {
+  const SECOND_ATT: FakeAttachment = {
+    id: 'att-2',
+    name: 'second.png',
+    url: 'https://cdn.discordapp.com/attachments/second.png',
+    contentType: 'image/png',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireAlliance).mockResolvedValue(ALLIANCE);
+  });
+
+  it('processes only the selected image (forcing a type onto just that one)', async () => {
+    queueDeleteExistingUploads();
+    const originalMessage = fakeOriginalMessage([IMAGE_ATT, SECOND_ATT]);
+    const { interaction } = fakeUploadInteraction({
+      kind: 'donation',
+      originalMessage,
+      imageOption: 2,
+    });
+
+    vi.mocked(processImageAttachment).mockResolvedValue({
+      ok: true,
+      filename: 'second.png',
+      fileHash: 'hash-2',
+      filePath: '/data/inbox/orig-msg-1/second.png',
+      ocr: { kind: 'donation', period_type: 'weekly', members: [], possible_truncation: false },
+    });
+    vi.mocked(buildDonationEmbed).mockReturnValue({ data: {} } as unknown as EmbedBuilder);
+    vi.mocked(upsertDonationResult).mockResolvedValue({
+      status: 'processed',
+      periodId: 'period-1',
+      periodStart: '2026-05-18',
+      memberCount: 0,
+      newMemberCount: 0,
+      reversedCorrectionsCount: 0,
+    });
+
+    await execute(interaction);
+
+    expect(processImageAttachment).toHaveBeenCalledTimes(1);
+    expect(processImageAttachment).toHaveBeenCalledWith(
+      expect.anything(),
+      SECOND_ATT.url,
+      SECOND_ATT.name,
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('rejects an out-of-range image index without processing anything', async () => {
+    queueDeleteExistingUploads();
+    const originalMessage = fakeOriginalMessage([IMAGE_ATT]);
+    const { interaction, editReply } = fakeUploadInteraction({
+      kind: 'donation',
+      originalMessage,
+      imageOption: 9,
+    });
+
+    await execute(interaction);
+
+    expect(editReply).toHaveBeenLastCalledWith(expect.stringContaining('out of range'));
+    expect(processImageAttachment).not.toHaveBeenCalled();
+  });
+});
+
+describe('upload autocomplete (image) — the option-branching regression', () => {
+  function fakeImageAutocomplete(opts: {
+    focusedName: 'image' | 'event_type';
+    messageUrl?: string | null;
+    attachments?: FakeAttachment[];
+  }): AutocompleteInteraction {
+    const { focusedName, messageUrl = 'https://discord.com/channels/1/2/3', attachments = [] } = opts;
+    const message = fakeOriginalMessage(attachments);
+    return {
+      options: {
+        getFocused: (withDetail?: boolean) =>
+          withDetail ? { name: focusedName, value: '' } : '',
+        getString: (name: string) => (name === 'message_url' ? messageUrl : null),
+      },
+      client: {
+        channels: {
+          fetch: vi.fn().mockResolvedValue({
+            isTextBased: () => true,
+            messages: { fetch: vi.fn().mockResolvedValue(message) },
+          }),
+        },
+      },
+      respond: vi.fn(),
+    } as unknown as AutocompleteInteraction;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('lists the message images (never event types) when the image option is focused', async () => {
+    const interaction = fakeImageAutocomplete({
+      focusedName: 'image',
+      attachments: [IMAGE_ATT, { ...IMAGE_ATT, id: 'att-2', name: 'second.png' }],
+    });
+    await autocomplete(interaction);
+
+    expect(supabase.from).not.toHaveBeenCalled(); // did not fall through to event_type
+    expect(interaction.respond).toHaveBeenCalledWith([
+      { name: '#1 — shot.png', value: 1 },
+      { name: '#2 — second.png', value: 2 },
+    ]);
+  });
+
+  it('responds [] for the image option when no message_url is typed yet', async () => {
+    const interaction = fakeImageAutocomplete({ focusedName: 'image', messageUrl: null });
+    await autocomplete(interaction);
+
+    expect(interaction.respond).toHaveBeenCalledWith([]);
   });
 });
