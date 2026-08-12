@@ -10,9 +10,9 @@ import { requireAlliance, resolveAlliance, type AllianceRow } from '../lib/allia
 import { isoWeekStartParis } from '../lib/period.js';
 import { escapeLike } from '../lib/escape.js';
 import { formatEventDateTime } from '../lib/format.js';
+import { applyCorrection, type CorrectionField as Field } from '../lib/corrections.js';
 import logger from '../logger.js';
 
-type Field = 'points' | 'power' | 'honor';
 type PlayerRow = { id: string; name: string };
 
 // Postgres "invalid input syntax" — thrown when a free-typed (non-autocomplete)
@@ -423,45 +423,6 @@ async function correctDonation(
       ),
     ],
   });
-}
-
-/**
- * Applies a correction via the `at_apply_correction` DB function (migration
- * 0023): reads the current value, writes the new one, and inserts the
- * at_corrections audit row, all inside one Postgres transaction. Replaces
- * what used to be a separate `.update()` + `.insert()` pair — that left a
- * window where the score changed but the audit insert could still fail,
- * leaving the correction applied-but-unaudited and poisoning old_value on
- * retry. The row-existence checks in correctParticipation/correctDonation
- * still run first so a genuinely missing target gets the friendly
- * message instead of this function's generic "not found" error (P0002),
- * which is only reachable via a TOCTOU race (row deleted between that check
- * and this call) — rare enough not to special-case here.
- */
-async function applyCorrection(params: {
-  targetTable: 'at_participations' | 'at_donations';
-  targetId: string;
-  field: Field;
-  newValue: number;
-  allianceId: string;
-  playerId: string;
-  correctedBy: string;
-}): Promise<{ oldValue: number | null; newValue: number }> {
-  const { data, error } = await supabase
-    .rpc('at_apply_correction', {
-      p_target_table: params.targetTable,
-      p_target_id: params.targetId,
-      p_field: params.field,
-      p_new_value: params.newValue,
-      p_alliance_id: params.allianceId,
-      p_player_id: params.playerId,
-      p_corrected_by: params.correctedBy,
-    })
-    .single();
-
-  if (error) throw new Error(`Failed to apply correction: ${error.message}`);
-  const row = data as { old_value: number | null; new_value: number };
-  return { oldValue: row.old_value, newValue: row.new_value };
 }
 
 function buildCorrectionEmbed(
