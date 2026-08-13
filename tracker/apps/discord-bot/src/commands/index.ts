@@ -20,6 +20,7 @@ import * as merge from './merge.js';
 import * as setupAlliance from './setup-alliance.js';
 import * as correct from './correct.js';
 import * as findDuplicates from './find-duplicates.js';
+import * as review from './review.js';
 
 export type Command = {
   data: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder | SlashCommandOptionsOnlyBuilder;
@@ -47,6 +48,7 @@ export const commands = new Collection<string, Command>([
   ['setup-alliance', setupAlliance],
   ['correct', correct],
   ['find-duplicates', findDuplicates],
+  ['review', review],
 ]);
 
 // Button handlers keyed by customId prefix (first segment before |)
@@ -55,4 +57,5 @@ export const buttonHandlers: ButtonHandler[] = [
   { prefix: 'lb', handle: leaderboard.handleButton },
   { prefix: 'dlb', handle: donation.handleButton },
   { prefix: 'dup', handle: findDuplicates.handleButton },
+  { prefix: 'rv', handle: review.handleButton },
 ];

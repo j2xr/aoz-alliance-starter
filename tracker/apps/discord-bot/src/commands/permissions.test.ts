@@ -40,6 +40,10 @@ const SENSITIVE_COMMANDS = [
   'setup-alliance',
   'correct',
   'find-duplicates',
+  // review: mostly a diagnostic worklist, but `review resolve` clears a row's
+  // needs_review flag and it feeds /merge decisions — admin bar, same as
+  // find-duplicates.
+  'review',
 ];
 
 describe('sensitive command permissions', () => {
