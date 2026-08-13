@@ -64,6 +64,26 @@ def test_low_confidence_row_is_corrected() -> None:
     assert out.members[0].confidence == -1.0  # flagged as LLM-corrected
 
 
+def test_vision_engine_replaces_llm_when_enabled() -> None:
+    """OCR_VISION_FALLBACK_ENABLED routes the row to Cloud Vision, not Ollama.
+
+    The Vision function returns the same `str | None` shape, so the merge/flag
+    logic downstream is unchanged — only the engine differs.
+    """
+    result = _event_result([_member("Mjolnir", 0.20)])
+    with (
+        patch("app.vision_fallback.vision_enabled", return_value=True),
+        patch("app.vision_fallback.vision_fallback", return_value="Mjölnir") as mock_vision,
+        patch("app.llm_fallback.llm_fallback") as mock_llm,
+    ):
+        out = _apply_llm_fallback(_IMG, result, _StubParser())
+
+    mock_vision.assert_called_once()
+    mock_llm.assert_not_called()  # local LLM is bypassed
+    assert out.members[0].name == "Mjölnir"
+    assert out.members[0].confidence == -1.0
+
+
 def test_high_confidence_row_is_skipped() -> None:
     """A confident, clean-looking row never reaches the LLM and is preserved."""
     result = _event_result([_member("Confident", 0.99)])

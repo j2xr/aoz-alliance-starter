@@ -239,7 +239,17 @@ def _apply_llm_fallback(
     event (MemberResult) and donation (DonationMember) shapes — only the `name`
     field is rewritten; all other fields are preserved verbatim.
     """
+    from app import vision_fallback
     from app.llm_fallback import llm_fallback, llm_fallback_donation
+
+    # Opt-in engine swap (OCR_VISION_FALLBACK_ENABLED): route the rows that would
+    # go to Ollama to Google Cloud Vision instead. Vision returns the same shapes
+    # (name / (name, score)), so the honor gate, _rewrite_name and the
+    # consecutive-failure breaker below all apply unchanged. Off by default: the
+    # local LLM path is untouched. See vision_fallback.py for the why (measured).
+    if vision_fallback.vision_enabled():
+        llm_fallback = vision_fallback.vision_fallback
+        llm_fallback_donation = vision_fallback.vision_fallback_donation
 
     row_height: int = getattr(parser, "row_height", 225)
     member_list_top: int = getattr(parser, "member_list_top", 400)
