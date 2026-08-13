@@ -11,6 +11,7 @@ import { findFuzzyMatch, type RosterPlayer } from './name-resolve.js';
 import {
   compareNames,
   findRosterCollisions,
+  ESTABLISHED_CAPTURE_COUNT,
   type NameComparison,
   type RosterCollision,
 } from './duplicate-scan.js';
@@ -193,6 +194,10 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
   aliasedMembers: T[];
   aliasToCanonicalId: Map<string, string>;
   canonicalNameById: Map<string, string>;
+  // OCR names created as brand-new players that closely resemble an ESTABLISHED
+  // roster entry (Q3): almost certainly a misread of it, so their credited row
+  // is routed to needs_review. Never rewrites the canonical — flag only.
+  suspectedMisreadNames: Set<string>;
 }> {
   const uniqueMembers = [
     ...members
@@ -243,16 +248,23 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
   // variant (stray glyph, non-deterministic LLM correction, etc.). Only
   // redirects on a single candidate; ≥2 candidates or 0 → left as-is (new
   // player), never a risky merge.
+  const suspectedMisreadNames = new Set<string>();
   const stillUnresolved = uniqueMembers.filter((m) => !aliasToCanonicalId.has(m.name));
   if (stillUnresolved.length > 0) {
+    // Read the roster from at_v_player_frequency (0027) instead of the bare
+    // at_players table: same one-row-per-player shape, plus each player's
+    // capture frequency — so a new name resembling an OFTEN-seen roster entry
+    // can be flagged as a likely misread (Q3), without a second query.
     const { data: rosterRows, error: rosterError } = await supabase
-      .from('at_players')
-      .select('id, name')
+      .from('at_v_player_frequency')
+      .select('player_id, name, occurrences')
       .eq('alliance_id', allianceId);
 
     if (rosterError) throw new Error(`Roster query failed: ${rosterError.message}`);
 
-    const roster = (rosterRows ?? []) as RosterPlayer[];
+    const rosterFreq = (rosterRows ?? []) as { player_id: string; name: string; occurrences: number | null }[];
+    const roster: RosterPlayer[] = rosterFreq.map((r) => ({ id: r.player_id, name: r.name }));
+    const freqById = new Map<string, number>(rosterFreq.map((r) => [r.player_id, r.occurrences ?? 0]));
     const newAliasRows: { alliance_id: string; raw_name: string; player_id: string; created_by: string }[] =
       [];
 
@@ -294,14 +306,25 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
       } else {
         const near = findNearDuplicateInRoster(m.name, roster);
         if (near) {
+          const nearFrequency = freqById.get(near.player.id) ?? 0;
+          // The resembled entry is well-established (seen in many captures) but
+          // this spelling is new: far more likely a misread of it than a
+          // genuinely new player. Route the credited row to needs_review (Q3).
+          // Still NOT auto-merged — the discipline stays "human decides /merge".
+          const established = nearFrequency >= ESTABLISHED_CAPTURE_COUNT;
+          if (established) suspectedMisreadNames.add(m.name);
           logger.warn(
             {
               rawName: m.name,
               existingName: near.player.name,
+              existingSeenCaptures: nearFrequency,
               similarity: Number(near.comparison.similarity.toFixed(2)),
               reason: near.comparison.reason,
+              flaggedForReview: established,
             },
-            'New player name resembles an existing roster entry — check /find-duplicates before trusting this as a genuinely new player',
+            established
+              ? 'New player name resembles an ESTABLISHED roster entry — flagged for review as a likely misread (verify via /find-duplicates)'
+              : 'New player name resembles an existing roster entry — check /find-duplicates before trusting this as a genuinely new player',
           );
         }
       }
@@ -330,7 +353,14 @@ async function resolveAndDedup<T extends { name: string; confidence: number }>(
     );
   }
 
-  return { uniqueMembers, directMembers, aliasedMembers, aliasToCanonicalId, canonicalNameById };
+  return {
+    uniqueMembers,
+    directMembers,
+    aliasedMembers,
+    aliasToCanonicalId,
+    canonicalNameById,
+    suspectedMisreadNames,
+  };
 }
 
 /**
@@ -632,8 +662,14 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
 
   // 4. Batch UPSERT at_players — also updates last_power, last_rank, last_seen_at
   // Deduplicate by name: OCR errors can produce identical names; keep highest confidence.
-  const { uniqueMembers, directMembers, aliasedMembers, aliasToCanonicalId, canonicalNameById } =
-    await resolveAndDedup(ocr.members, allianceId);
+  const {
+    uniqueMembers,
+    directMembers,
+    aliasedMembers,
+    aliasToCanonicalId,
+    canonicalNameById,
+    suspectedMisreadNames,
+  } = await resolveAndDedup(ocr.members, allianceId);
 
   // 4b. A single upsert batch for both direct AND aliased members: aliased
   // rows target the canonical player by name (alliance_id,name conflict →
@@ -712,7 +748,10 @@ export async function upsertEventResult(params: UpsertParams): Promise<UpsertRes
         power: m.power,
         points: m.points,
         ocr_confidence: m.confidence,
-        needs_review: needsReview(m.confidence),
+        // needs_review on low OCR confidence OR when this name is a suspected
+        // misread of an established roster player (Q3) — the latter escapes the
+        // confidence gate (the 5 measured misreads scored 0.81–0.93).
+        needs_review: needsReview(m.confidence) || suspectedMisreadNames.has(p.name),
         raw_ocr: m as unknown as Record<string, unknown>,
       },
     ];
@@ -964,8 +1003,14 @@ export async function upsertDonationResult(
   const periodId = (periodRow as { id: string }).id;
 
   // 4. Deduplicate members by name (keep highest confidence) and resolve aliases
-  const { uniqueMembers, directMembers, aliasedMembers, aliasToCanonicalId, canonicalNameById } =
-    await resolveAndDedup(ocr.members, allianceId, 'donation OCR result');
+  const {
+    uniqueMembers,
+    directMembers,
+    aliasedMembers,
+    aliasToCanonicalId,
+    canonicalNameById,
+    suspectedMisreadNames,
+  } = await resolveAndDedup(ocr.members, allianceId, 'donation OCR result');
 
   // 5. A single upsert batch (direct + aliased via their canonical name) —
   // donations only refresh last_rank, not last_seen_at/last_power.
@@ -1044,7 +1089,9 @@ export async function upsertDonationResult(
       alliance_tag: m.alliance_tag,
       leaderboard_position: m.leaderboard_position ?? null,
       ocr_confidence: m.confidence,
-      needs_review: needsReview(m.confidence),
+      // See upsertEventResult: also flag suspected misreads of an established
+      // roster player (Q3), which the confidence gate alone misses.
+      needs_review: needsReview(m.confidence) || suspectedMisreadNames.has(p.name),
       raw_ocr: m as unknown as Record<string, unknown>,
       source_message_id: messageId,
       source_upload_id: uploadId,

@@ -133,6 +133,12 @@ describe('/find-duplicates execute', () => {
       { event_id: 'ev1', player_id: 'p4', points: 600, ocr_confidence: 0.9, at_players: { name: 'Moud' } },
     ]); // at_participations
     queueFrom([]); // at_donation_periods
+    // at_v_player_frequency (Q3): the ZAIBYX spelling has been seen far more
+    // often than the ГАШВУХ one — the reviewer should keep it as canonical.
+    queueFrom([
+      { player_id: 'p1', occurrences: 1 },
+      { player_id: 'p2', occurrences: 7 },
+    ]);
 
     const interaction = fakeInteraction('channel-1', 'low'); // include LOW tier too
     await execute(interaction);
@@ -146,6 +152,9 @@ describe('/find-duplicates execute', () => {
     expect(description).toContain('kotarou');
     // HIGH-tier pair must render before the LOW-tier coincidence.
     expect(description.indexOf('ГАШВУХMARKHOR')).toBeLessThan(description.indexOf('kotarou'));
+    // Frequency annotation + keep-the-most-seen-spelling hint (Q3).
+    expect(description).toContain('seen 7×');
+    expect(description).toContain('keep `ZAIBYXMARKHOR` (seen more often)');
   });
 
   it('min_tier=high filters out LOW-tier same-value coincidences', async () => {

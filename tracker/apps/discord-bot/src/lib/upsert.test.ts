@@ -423,10 +423,15 @@ describe('upsertEventResult', () => {
     const result = await upsertEventResult(params);
     expect(result.status).toBe('processed');
 
-    // 2 calls to 'at_players': the roster read for fuzzy resolution,
-    // and a single upsert batch (no more per-alias UPDATE).
+    // A single 'at_players' call — one upsert batch (no more per-alias UPDATE).
+    // The roster read for fuzzy resolution now goes to at_v_player_frequency
+    // (0027), which carries each player's capture count alongside id/name.
     const playerCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_players');
-    expect(playerCalls).toHaveLength(2);
+    expect(playerCalls).toHaveLength(1);
+    const rosterCalls = vi.mocked(supabase.from).mock.calls.filter(
+      ([t]) => t === 'at_v_player_frequency',
+    );
+    expect(rosterCalls).toHaveLength(1);
     expect(playersChain['upsert']).toHaveBeenCalledTimes(1);
 
     const upsertMock = playersChain['upsert'] as ReturnType<typeof vi.fn>;
@@ -442,9 +447,10 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'et-1', display_name: 'Polar Invasion' }); // at_event_types
     queueFrom({ id: 'event-1' }); // at_events upsert
     queueFrom([]); // at_player_aliases: no exact alias for '6ig§teelCurtain'
-    // roster fetch: an earlier capture of the same player already exists,
-    // itself misread ('§' standing in for 'S') but consistently so.
-    queueFrom([{ id: 'p1', name: 'Big§teelCurtain' }]);
+    // roster fetch (at_v_player_frequency): an earlier capture of the same
+    // player already exists, itself misread ('§' standing in for 'S') but
+    // consistently so.
+    queueFrom([{ player_id: 'p1', name: 'Big§teelCurtain', occurrences: 4 }]);
     // at_player_aliases upsert: the auto-resolved alias gets persisted
     const aliasInsertChain = mkChain(null);
     vi.mocked(supabase.from).mockReturnValueOnce(
@@ -500,8 +506,8 @@ describe('upsertEventResult', () => {
     queueFrom([]); // at_player_aliases: no exact alias
     // roster fetch: two existing players are both within edit distance 1
     queueFrom([
-      { id: 'p1', name: 'Somethin_kool' },
-      { id: 'p2', name: 'Somethin_kooI' },
+      { player_id: 'p1', name: 'Somethin_kool', occurrences: 3 },
+      { player_id: 'p2', name: 'Somethin_kooI', occurrences: 3 },
     ]);
     // No alias insert call: ambiguous match is left unresolved.
     queueFrom([{ id: 'p3', name: 'Somethin-koo1' }]); // at_players upsert: a genuinely new player
@@ -548,7 +554,10 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
     queueFrom({ id: 'event-1' });
     queueFrom([]); // at_player_aliases: no exact alias
-    queueFrom([{ id: 'p-existing', name: 'ZAIBYXMARKHOR' }]); // roster fetch
+    // roster fetch (at_v_player_frequency): the twin is only seen twice, i.e.
+    // NOT yet established (< ESTABLISHED_CAPTURE_COUNT) — so this stays a
+    // warn-only near-duplicate, not a needs_review flag (that case is below).
+    queueFrom([{ player_id: 'p-existing', name: 'ZAIBYXMARKHOR', occurrences: 2 }]);
     queueFrom([{ id: 'p-new', name: 'ГАШВУХMARKHOR' }]); // at_players upsert: still a genuinely new player
     queueFrom([]);   // at_alliance_memberships select
     queueFrom(null); // at_alliance_memberships upsert
@@ -579,6 +588,61 @@ describe('upsertEventResult', () => {
     expect(aliasCalls).toHaveLength(1); // the only call is the exact-alias lookup, not an insert
   });
 
+  it('routes a new name resembling an ESTABLISHED player to needs_review, despite high OCR confidence (Q3)', async () => {
+    // The frequency prior: ZAIBYXMARKHOR has been seen in 5 distinct captures
+    // (>= ESTABLISHED_CAPTURE_COUNT), so a brand-new ГАШВУХMARKHOR that folds
+    // onto it is far more likely a misread than a genuinely new player. The
+    // read is confident (0.9 — like the 0.81–0.93 misreads measured in prod),
+    // so needsReview(confidence) alone would NOT flag it; the suspect prior does.
+    // Still created as a new player (no alias) — the flag only raises review.
+    queueFrom(null);
+    queueFrom({ id: 'upload-1' });
+    queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
+    queueFrom({ id: 'event-1' });
+    queueFrom([]); // at_player_aliases: no exact alias
+    queueFrom([{ player_id: 'p-existing', name: 'ZAIBYXMARKHOR', occurrences: 5 }]); // roster: established twin
+    queueFrom([{ id: 'p-new', name: 'ГАШВУХMARKHOR' }]); // at_players upsert: still a new player
+    queueFrom([]);   // at_alliance_memberships select
+    queueFrom(null); // at_alliance_memberships upsert
+    queueFrom([]);   // existing at_participations fetch: none
+    const participationsChain = mkChain(null);
+    vi.mocked(supabase.from).mockReturnValueOnce(
+      participationsChain as unknown as ReturnType<SupabaseFrom>,
+    );
+    queueFrom(null); // at_screenshot_uploads update
+
+    const params = {
+      ...BASE_EVENT_PARAMS,
+      ocr: {
+        ...BASE_EVENT_PARAMS.ocr,
+        members: [
+          { name: 'ГАШВУХMARKHOR', rank: 'R2', power: 700_000, points: 10_000, confidence: 0.9 },
+        ],
+      },
+    };
+
+    const result = await upsertEventResult(params);
+    expect(result.status).toBe('processed');
+
+    const upsertMock = participationsChain['upsert'] as ReturnType<typeof vi.fn>;
+    const payload = upsertMock.mock.calls[0]?.[0] as { player_id: string; needs_review: boolean }[];
+    expect(payload.find((r) => r.player_id === 'p-new')?.needs_review).toBe(true);
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawName: 'ГАШВУХMARKHOR',
+        existingName: 'ZAIBYXMARKHOR',
+        existingSeenCaptures: 5,
+        flaggedForReview: true,
+      }),
+      expect.stringContaining('ESTABLISHED'),
+    );
+
+    // Never auto-merged: no alias inserted, only the exact-alias lookup.
+    const aliasCalls = vi.mocked(supabase.from).mock.calls.filter(([t]) => t === 'at_player_aliases');
+    expect(aliasCalls).toHaveLength(1);
+  });
+
   it('warns when an OCR name exact-matches one player but collides with a homoglyph twin', async () => {
     // The silent-misattribution case the exact-match path used to wave through:
     // OCR reads "LEON", which exactly matches the LEON row, so nothing looks
@@ -590,8 +654,8 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'event-1' });
     queueFrom([]); // at_player_aliases: no exact alias
     queueFrom([
-      { id: 'p-leon', name: 'LEON' },
-      { id: 'p-leon-accent', name: 'LEÓN' },
+      { player_id: 'p-leon', name: 'LEON', occurrences: 6 },
+      { player_id: 'p-leon-accent', name: 'LEÓN', occurrences: 5 },
     ]); // roster fetch: the exact match AND its twin
     queueFrom([{ id: 'p-leon', name: 'LEON' }]); // at_players upsert: credited to the exact match
     queueFrom([]); // at_alliance_memberships select
@@ -627,7 +691,7 @@ describe('upsertEventResult', () => {
     queueFrom({ id: 'et-1', display_name: 'Polar Invasion' });
     queueFrom({ id: 'event-1' });
     queueFrom([]); // at_player_aliases: no exact alias
-    queueFrom([{ id: 'p-existing', name: 'CompletelyUnrelated' }]); // roster fetch
+    queueFrom([{ player_id: 'p-existing', name: 'CompletelyUnrelated', occurrences: 9 }]); // roster fetch
     queueFrom([{ id: 'p-new', name: 'Zephyrion' }]); // at_players upsert: genuinely new player
     queueFrom([]);
     queueFrom(null);

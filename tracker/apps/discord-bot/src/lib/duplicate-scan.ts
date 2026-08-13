@@ -23,10 +23,20 @@ import { normalizeOcrName, levenshtein, type RosterPlayer } from './name-resolve
 // distance threshold on the raw code points can catch that; homoglyph folding
 // is required.
 //
-// Table derived from AMBIGUOUS_CYRILLIC (ocr-service/app/parsers/name_ocr.py):
-// exactly the Cyrillic letters whose glyph is identical to a Latin one at
-// screenshot resolution. Lowercase, since normalizeOcrName has already
-// lowercased.
+// Two classes of glyph-identical confusions, both folded to one canonical form:
+//
+//  1. Cyrillic → Latin, derived from AMBIGUOUS_CYRILLIC
+//     (ocr-service/app/parsers/name_ocr.py): exactly the Cyrillic letters whose
+//     glyph is identical to a Latin one at screenshot resolution.
+//  2. Digit → letter (0→o, 1→i): the OCR reads a handle's digit as its
+//     look-alike letter from one screenshot to the next. Measured in the
+//     2026-08-10 reprocess run: doradora12→doradorai2 (1→i) and THOR,01→THOR,O1
+//     (0→o) — the exact misreads a raw Levenshtein already flagged as distance
+//     1, but that folding here promotes to an identical key so /find-duplicates
+//     ranks them at the top tier and the credit-time near-duplicate check sees
+//     them. Only 0 and 1 are folded (the measured confusions); other digits are
+//     left as-is to avoid inventing collisions between real digit-bearing
+//     handles. Keys are lowercased already (normalizeOcrName).
 const CONFUSABLE_FOLD: Record<string, string> = {
   а: 'a',
   в: 'b',
@@ -40,13 +50,24 @@ const CONFUSABLE_FOLD: Record<string, string> = {
   т: 't',
   х: 'x',
   у: 'y',
+  '0': 'o',
+  '1': 'i',
 };
+
+// The credit path treats a roster entry a new OCR name resembles as
+// "established" — i.e. trusted enough that the new name is more likely a misread
+// of it than a genuinely new player — once it has been credited in at least this
+// many distinct captures (at_v_player_frequency.occurrences). Conservative on
+// purpose: a real new player also starts at low frequency, so this only fires
+// when the new name ALSO closely resembles the established one. Tune here.
+export const ESTABLISHED_CAPTURE_COUNT = 3;
 
 /**
  * NFD + stripping combining marks (diacritics), then folding the Cyrillic
- * homoglyphs above. `Mjölnir` ≡ `Mjolnir`, `LEÓN` ≡ `LEON` — two OCR
- * degradations already observed in production — and `Аня` ends up close to
- * `aha` instead of staying at maximum distance from `AHA`.
+ * homoglyphs and digit look-alikes above. `Mjölnir` ≡ `Mjolnir`, `LEÓN` ≡
+ * `LEON` — two OCR degradations already observed in production — `Аня` ends up
+ * close to `aha` instead of staying at maximum distance from `AHA`, and
+ * `doradora12` ≡ `doradorai2` (digit 1 read as i).
  */
 export function foldConfusables(key: string): string {
   const stripped = key.normalize('NFD').replace(/\p{Mn}/gu, '');
