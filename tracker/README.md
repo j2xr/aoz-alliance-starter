@@ -12,7 +12,8 @@ Two Docker services:
   then UPSERTs the results into Supabase.
 - **`ocr-service`** (Python 3.12, FastAPI, OpenCV, Tesseract) — deterministic
   field extraction (power, points, donations, military stats, player names)
-  with an optional local LLM fallback via Ollama.
+  with an optional vision fallback: a local LLM via Ollama, or, opt-in, Google
+  Cloud Vision as an escalation.
 
 > All times are stored and processed in **UTC**.
 
@@ -34,7 +35,8 @@ graph TB
         OCR["ocr-service<br/>FastAPI + OpenCV + Tesseract"]
     end
 
-    Ollama["Ollama<br/>(optional LLM fallback)"]
+    Ollama["Ollama<br/>(optional local LLM fallback)"]
+    Vision["Cloud Vision<br/>(optional, opt-in escalation)"]
     Supabase[(Supabase<br/>at_* tables)]
     Dashboard["frontend<br/>/tracking dashboard"]
 
@@ -46,6 +48,7 @@ graph TB
     Bot -->|POST /extract| OCR
     OCR -->|JSON kind=event/donation/player_stats| Bot
     OCR -.->|confidence below threshold| Ollama
+    OCR -.->|"OCR_VISION_FALLBACK_ENABLED=true"| Vision
 
     Bot -->|idempotent UPSERT<br/>service_role_key| Supabase
     Supabase ==>|RLS, read-only| Dashboard
@@ -118,7 +121,7 @@ pnpm --filter @alliance-tracker/discord-bot test
 | Military stats | `at_player_stats` |
 | Corrections | `at_corrections` (audit log of manual `/correct` fixes) |
 | Pipeline | `at_screenshot_uploads` (sha256 dedup) |
-| Views | `at_v_event_leaderboard`, `at_v_player_participation_rate`, `at_v_donation_leaderboard`, `at_v_donation_player_totals`, `at_v_player_stats_latest`, `at_v_player_stats_history`, `at_v_probable_leavers`, `at_v_event_import_delta`, `at_v_needs_review` |
+| Views | `at_v_event_leaderboard`, `at_v_player_participation_rate`, `at_v_donation_leaderboard`, `at_v_donation_player_totals`, `at_v_player_stats_latest`, `at_v_player_stats_history`, `at_v_probable_leavers`, `at_v_event_import_delta`, `at_v_needs_review`, `at_v_player_frequency` |
 
 All writes go through idempotent UPSERTs. Re-uploading the same screenshot is a
 no-op; re-uploading for the same period overwrites (latest-wins for donations
@@ -173,18 +176,26 @@ three points:
    `R1`–`R5`, and it auto-repairs a swapped power/points pair), `base.py` flags a
    `possible_truncation`, and a page is rejected outright if fewer than half its
    rows read cleanly. Low-confidence player names can optionally be re-read by a
-   local LLM (`LLM_FALLBACK_ENABLED`); the confidence thresholds are env vars
+   vision fallback: a local LLM via Ollama (`LLM_FALLBACK_ENABLED`) or, opt-in,
+   Google Cloud Vision (`OCR_VISION_FALLBACK_ENABLED`) — same gates either way,
+   only the engine differs. The confidence thresholds are env vars
    (`OCR_CONFIDENCE_THRESHOLD*`, see [`docs/SETUP.md`](../docs/SETUP.md)).
 2. **At storage** — names are matched against known aliases
    (`at_player_aliases`), and a close fuzzy match is auto-saved as a new alias,
    so the system keeps learning. A row read below the confidence threshold is
-   stored anyway but flagged `needs_review`.
+   stored anyway but flagged `needs_review` — and so is a *confident* new name
+   that closely resembles an established player (seen in ≥3 captures), since a
+   clean-looking misread (`Axa` for `Аня`) passes the confidence gate outright.
+   Opt-in (`REVIEW_LLM_CORRECTIONS`): also flag every accepted vision-fallback
+   name correction, the highest-risk reads (a model can return a confident,
+   wrong name) with no low-confidence signal otherwise.
 3. **After the fact** — the dashboard's 🔍 **Review** page (`at_v_needs_review`)
-   lists every flagged row worst-first, and a per-event **import-completeness**
-   check (`at_v_event_import_delta`) compares the game's own header totals against
-   the imported rows. Fix a value with `/correct` (audited in `at_corrections`),
-   map a misread name with `/player-alias`, or merge duplicate players with
-   `/merge`.
+   and the Discord `/review` command work off the same flag, and a per-event
+   **import-completeness** check (`at_v_event_import_delta`, surfaced by
+   `/event list` and `/event incomplete`) compares the game's own header totals
+   against the imported rows. Fix a value with `/correct` (audited in
+   `at_corrections`), map a misread name with `/player-alias`, merge duplicate
+   players with `/merge`, or re-read a single row with `/reprocess-line`.
 
 **Caveat on the import check:** the completeness verdict uses the **row count**
 only (`total_battlers` vs imported rows). `total_points` is *not* the sum of
@@ -199,20 +210,25 @@ totals as raw context and computes no points delta.
 
 | Command | Effect |
 |---------|--------|
-| `/upload kind:<type>` | Force the type if auto-detection fails |
-| `/event list` | Latest events for the alliance |
+| `/upload kind:<type> [image] [force_llm]` | Force the type if auto-detection fails; optionally target one image in a multi-image message, or force the vision fallback on every row |
+| `/event list [type]` | Latest events for the alliance, each marked with its import completeness |
+| `/event incomplete` | Worklist of boards where fewer rows were imported than the game reported |
 | `/player <name>` | Player card (participation rate, history) |
 | `/leaderboard` | Leaderboard for an event |
-| `/reprocess <message_url>` | Re-run a single screenshot |
-| `/reprocess-channel` | Re-run every screenshot in a channel |
+| `/reprocess <message_url> [image] [force_llm]` | Re-run a screenshot — all its images, or just one |
+| `/reprocess-channel [force_llm]` | Re-run every screenshot in a channel |
+| `/reprocess-line <message_url> rank:<n> [image]` | Re-read one on-screen row with the vision fallback and fix its score |
 | `/membership <player> <joined\|left>` | Manually mark a join/leave |
 | `/donation leaderboard` | Top contributors of the week |
 | `/donation player <name>` | A player's donation history |
 | `/donation list` | Recorded donation periods |
 | `/player-alias` | Manage a player's OCR aliases |
-| `/merge` | Merge two duplicate players |
+| `/merge alias:<name> into:<name>` | Merge two duplicate players, recording a sticky alias |
 | `/correct` | Manually correct a score misread by OCR (audited in `at_corrections`) |
-| `/find-duplicates` | List likely duplicate players (read-only, no merging) |
+| `/find-duplicates [min_tier]` | List likely duplicate players (read-only, no merging) |
+| `/review list` | Every row flagged `needs_review`, most recent first |
+| `/review names` | Flagged rows whose name resembles an established player — likely misreads to `/merge` |
+| `/review resolve id:<id>` | Clear a flagged row's `needs_review` once checked |
 | `/setup-alliance` | Create the alliance linked to this Discord channel |
 
 Automatic ingestion fires on any message with an attachment in a channel listed

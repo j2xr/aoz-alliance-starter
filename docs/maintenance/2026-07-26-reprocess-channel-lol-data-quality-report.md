@@ -111,7 +111,7 @@ Event `151f51b3` (`polar_invasion`, 2026-04-28): `total_battlers=43` but only 17
 leaderboard, rather than the full sequence) — but `possible_truncation` is **not persisted** to
 the database (it's advisory-only, surfaced in the Discord message at ingestion time and then
 lost), so there's no way to confirm after the fact whether the flag fired for this capture. This
-is the same architectural gap noted as a "reste à couvrir" item in the original PR #22 review
+is the same architectural gap noted as a "still to cover" item in the original PR #22 review
 (`~/.claude/plans/archive/donation-ocr-pr22-review-followup.md`) — this is a concrete instance of
 it costing real diagnostic information here.
 

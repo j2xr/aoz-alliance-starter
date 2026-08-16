@@ -221,6 +221,7 @@ below).
 | `OCR_POLL_INTERVAL_MS` | `5000` | Delay between two `GET /jobs/<id>` polls. |
 | `DATA_INBOX_DIR` | `/data/inbox` | Where incoming screenshots are staged (sha256 dedup). |
 | `REPROCESS_CONCURRENCY` | `3` | Screenshots processed in parallel by `/reprocess-channel` and `/reprocess`. |
+| `REVIEW_LLM_CORRECTIONS` | `false` | Also flag accepted vision-fallback name corrections for review. They carry a `-1` confidence sentinel and so escape the low-confidence gate, yet are the highest-risk reads. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 
 **`apps/ocr-service`**
@@ -233,6 +234,7 @@ below).
 | `LOG_LEVEL` | `INFO` | Python `logging` level name. |
 | `LLM_FALLBACK_ENABLED` | `false` | Set `true` (+ configure `OLLAMA_*`) to re-OCR low-confidence names via a vision LLM. |
 | `LLM_MAX_CONSECUTIVE_FAILURES` | `2` | Stop calling the LLM after this many *consecutive* failures within one image. |
+| `JOB_TIMEOUT_SECONDS` | `900` (15 min) | Force-errors a job stuck in `pending` past this long, so the bot stops polling instead of waiting out its own budget. |
 | `OCR_BACKEND` | `tesserocr` | `tesserocr` (in-process) or `pytesseract` (subprocess rollback). |
 | `OCR_TESS_POOL_SIZE` | `16` | Size of the `tesserocr` `PyTessBaseAPI` instance pool. |
 | `OCR_CONFIDENCE_THRESHOLD` | `0.75` | Global fallback threshold used when a field-specific one below is unset. |
@@ -244,6 +246,8 @@ below).
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Only used when `LLM_FALLBACK_ENABLED=true`. |
 | `OLLAMA_API_KEY` | *(empty)* | Leave empty for a loopback Ollama with no auth. |
 | `OLLAMA_MODEL` | `moondream` | Vision model name. |
+| `OCR_LLM_UPSCALE` | `2.5` | Upscale factor applied to the cropped name band before it's sent to the model. Model-dependent: `qwen3-vl` re-normalises any input to a fixed token budget (barely moves latency); `qwen3.5` scales prefill with pixel count, so `1.0` is ~4x faster with equal-or-better reads. |
+| `OLLAMA_MAX_CONCURRENT_REQUESTS` | `1` | Caps concurrent `/api/generate` calls this service issues. Ollama itself has one active vision-inference slot by default; raise only if `OLLAMA_NUM_PARALLEL` is also raised on the Ollama server. |
 | `OLLAMA_NUM_CTX` | `2048` | Context window size. |
 | `OLLAMA_NUM_PREDICT` | `256` | Max generated tokens per request. |
 | `OLLAMA_THINK` | `false` | Only affects "thinking" models; ignored by e.g. moondream. |
@@ -252,6 +256,16 @@ below).
 | `OLLAMA_PLAYER_STATS_TIMEOUT_SECONDS` | `90` | Separate timeout for the one-shot full-image player-stats path. |
 | `OLLAMA_PLAYER_STATS_MAX_WIDTH` | `720` | Max width (px) of the image sent to the LLM for player stats. |
 | `OLLAMA_PLAYER_STATS_MAX_HEIGHT` | `960` | Max height (px), same reasoning. |
+| `OCR_KEEP_CROPS` | `false` | Diagnostic crop retention. When true, every row the vision fallback singles out has its exact row crop saved under `OCR_CROP_DIR/<job_id>/` with a manifest line — for inspecting a doubtful read, re-feeding it to `/reprocess-line`, or offline benchmarking. |
+| `OCR_CROP_DIR` | `/data/crops` | Where retained crops are written. |
+| `OCR_CROP_TTL_DAYS` | `7` | Crops older than this are swept. |
+| `OCR_CROP_MAX_MB` | `200` | Size cap for the crop directory; oldest job dirs are deleted first. |
+| `OCR_CROP_SWEEP_INTERVAL_SECONDS` | `3600` | Minimum interval between throttled sweeps (a full sweep always runs at startup). |
+| `OCR_VISION_FALLBACK_ENABLED` | `false` | Opt-in. Routes the same rows the local LLM would handle to Google Cloud Vision instead — one row crop per call (never a full screenshot) to the synchronous `images:annotate` endpoint, processed in memory and not persisted by Google. This is data egress to a third party; the local Ollama path stays fully offline. Requires `OCR_VISION_API_KEY` or `OCR_VISION_API_KEY_FILE`. |
+| `OCR_VISION_API_KEY` / `OCR_VISION_API_KEY_FILE` | *(required if enabled)* | The Cloud Vision API key, or a path to a file containing it (preferred, so the secret isn't baked into the environment). |
+| `OCR_VISION_MONTHLY_UNIT_CAP` | `900` | Stops calling Vision once this many units (1 per call) are used in a month — keeps a runaway `/reprocess-channel` under the free tier's 1000/month. Counter persisted at `OCR_VISION_USAGE_FILE`. |
+| `OCR_VISION_USAGE_FILE` | `/data/vision_usage.json` | Where the monthly unit counter is persisted (survives container recreation if on the `/data` volume). |
+| `OCR_VISION_TIMEOUT_SECONDS` | `30` | HTTP timeout per Cloud Vision call. |
 
 ---
 
