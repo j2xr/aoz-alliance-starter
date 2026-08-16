@@ -27,7 +27,8 @@ graph TB
     end
 
     Discord{{Discord}}
-    Ollama["Ollama<br/>(optional LLM fallback)"]
+    Ollama["Ollama<br/>(optional local LLM fallback)"]
+    Vision["Cloud Vision<br/>(optional, opt-in escalation)"]
     Supabase[("Supabase<br/>events + at_*")]
 
     User --> Frontend
@@ -39,6 +40,7 @@ graph TB
     Bot -->|POST /extract| OCR
     OCR -->|JSON kind=event/donation/player_stats| Bot
     OCR -.->|low confidence| Ollama
+    OCR -.->|"low confidence, OCR_VISION_FALLBACK_ENABLED=true"| Vision
     Bot ==>|"UPSERT at_* (service_role, bypasses RLS)"| Supabase
 ```
 
@@ -64,7 +66,9 @@ graph TB
 3. The OCR service classifies the screen (`event`, `donation`, or
    `player_stats`), extracts the fields deterministically with Tesseract, and
    returns JSON. Low-confidence player names can optionally be re-read by a
-   local Ollama vision model.
+   vision fallback — a local Ollama model, or, opt-in, Google Cloud Vision as
+   an escalation for the classes the local model still misses (never sent a
+   full screenshot, always a single row crop).
 4. The bot UPSERTs the result into the relevant `at_*` tables (idempotent —
    re-uploading the same capture is a no-op).
 5. The dashboard reads those tables through Supabase with RLS applied.
