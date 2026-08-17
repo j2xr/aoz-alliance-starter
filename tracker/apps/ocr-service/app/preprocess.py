@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -7,22 +8,62 @@ logger = logging.getLogger(__name__)
 
 TARGET_WIDTH = 1080
 
-# The only layout profile the parsers understand: phone screenshots, width
-# normalized to TARGET_WIDTH, height anywhere in the band real devices shipped
-# in production (1080x1920 up to 1080x2400 — see polar_invasion_v1's
-# CANONICAL_HEIGHT=2400 fixed pixel positions and contribution_ranking_v1's
-# CANONICAL_HEIGHT=2400 height-scaled crops, both calibrated against captures
-# in this range). Expressed as height/width so it survives the width
-# normalization below unchanged. A source outside this band isn't a smaller
-# version of the same layout — the parsers' row pitch and fixed pixel
-# positions silently drift against it instead of raising, corrupting data
-# quietly (see aoz-alliance-starter#91) — so it must be rejected explicitly.
-_MIN_ASPECT_RATIO = 1920 / 1080  # 1.778
-_MAX_ASPECT_RATIO = 2400 / 1080  # 2.222
+
+@dataclass(frozen=True)
+class LayoutProfile:
+    """A source whose aspect ratio (height/width) parsers know how to crop.
+
+    Width is always normalized to TARGET_WIDTH before parsing, so the ratio
+    (not the raw resolution) is what identifies a profile — see preprocess().
+    """
+
+    name: str
+    min_ratio: float
+    max_ratio: float
+
+
+# Phone screenshots: real devices shipped in production at heights from
+# 1080x1920 up to 1080x2400 (see polar_invasion_v1's CANONICAL_HEIGHT=2400
+# fixed pixel positions and contribution_ranking_v1's CANONICAL_HEIGHT=2400
+# height-scaled crops, both calibrated against captures in this range). The
+# wide tolerance reflects genuine device variation, not measurement slop.
+PHONE_PROFILE = LayoutProfile("phone", min_ratio=1920 / 1080, max_ratio=2400 / 1080)
+
+# Android emulator captures driven by an external automation pipeline (see
+# aoz-alliance-starter#91): unlike real devices, this source has one fixed
+# native resolution (400x652, ratio 1.63) that can't vary, so the tolerance
+# is tight (±0.02) — just enough to absorb resize rounding, not device
+# diversity. A wider band here would risk silently swallowing a genuinely
+# different, uncalibrated source instead of rejecting it.
+EMULATOR_PROFILE = LayoutProfile("emulator_400x652", min_ratio=1.61, max_ratio=1.65)
+
+_KNOWN_PROFILES = (PHONE_PROFILE, EMULATOR_PROFILE)
 
 
 class UnsupportedAspectRatioError(ValueError):
     """Raised when the source image's aspect ratio matches no known layout profile."""
+
+
+def detect_layout_profile(w: int, h: int) -> LayoutProfile:
+    """Return the LayoutProfile matching this source's aspect ratio.
+
+    Raises UnsupportedAspectRatioError listing every profile checked — a
+    source outside all known bands isn't a smaller/larger version of a known
+    layout, so a parser's fixed pixel positions and row pitch would silently
+    drift against it instead of raising, corrupting data quietly (see
+    aoz-alliance-starter#91). Reject explicitly instead.
+    """
+    aspect_ratio = h / w
+    for profile in _KNOWN_PROFILES:
+        if profile.min_ratio <= aspect_ratio <= profile.max_ratio:
+            return profile
+    checked = ", ".join(
+        f"{p.name} ({p.min_ratio:.2f}-{p.max_ratio:.2f})" for p in _KNOWN_PROFILES
+    )
+    raise UnsupportedAspectRatioError(
+        f"source is {w}x{h} (ratio {aspect_ratio:.2f}); "
+        f"matches no known profile — checked {checked}"
+    )
 
 
 def preprocess_image(image_path: str) -> np.ndarray:
@@ -42,12 +83,7 @@ def preprocess(image: np.ndarray) -> np.ndarray:
     Tesseract achieves better accuracy on the inverted grayscale directly.
     """
     h, w = image.shape[:2]
-    aspect_ratio = h / w
-    if not (_MIN_ASPECT_RATIO <= aspect_ratio <= _MAX_ASPECT_RATIO):
-        raise UnsupportedAspectRatioError(
-            f"source is {w}x{h} (ratio {aspect_ratio:.2f}); expected "
-            f"~1080x[1920-2400] (ratio {_MIN_ASPECT_RATIO:.2f}-{_MAX_ASPECT_RATIO:.2f})"
-        )
+    detect_layout_profile(w, h)
 
     if w != TARGET_WIDTH:
         scale = TARGET_WIDTH / w
