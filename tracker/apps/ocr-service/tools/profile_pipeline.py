@@ -95,30 +95,30 @@ _name_call_count = [0]
 _points_call_count = [0]
 
 
-def _timed_parse_header(self, image):  # type: ignore[no-untyped-def]
+def _timed_parse_header(self, image, event_code, layout):  # type: ignore[no-untyped-def]
     with _Stage("header_ocr"):
-        return _orig_parse_header(self, image)
+        return _orig_parse_header(self, image, event_code, layout)
 
 
-def _timed_detect_list_top(self, image):  # type: ignore[no-untyped-def]
+def _timed_detect_list_top(self, image, layout):  # type: ignore[no-untyped-def]
     with _Stage("detect_list_top"):
-        return _orig_detect_list_top(self, image)
+        return _orig_detect_list_top(self, image, layout)
 
 
-def _timed_detect_rank(self, image, y, **kwargs):  # type: ignore[no-untyped-def]
+def _timed_detect_rank(self, image, y, layout, **kwargs):  # type: ignore[no-untyped-def]
     _rank_call_count[0] += 1
     with _Stage("rank_detection"):
-        return _orig_detect_rank(self, image, y, **kwargs)
+        return _orig_detect_rank(self, image, y, layout, **kwargs)
 
 
-def _timed_detect_power(self, image, y, **kwargs):  # type: ignore[no-untyped-def]
+def _timed_detect_power(self, image, y, layout, **kwargs):  # type: ignore[no-untyped-def]
     _power_call_count[0] += 1
     with _Stage("power_detection"):
-        return _orig_detect_power(self, image, y, **kwargs)
+        return _orig_detect_power(self, image, y, layout, **kwargs)
 
 
 # Instrument name + points inside _parse_row via a wrapper
-def _timed_parse_row(self, image, y, row_h, **kwargs):  # type: ignore[no-untyped-def]
+def _timed_parse_row(self, image, y, row_h, layout, **kwargs):  # type: ignore[no-untyped-def]
     # We split the row timing manually: rank and power are already wrapped,
     # so we only need to capture name and points from within _parse_row.
     # Strategy: snapshot call count before and after key sub-sections.
@@ -127,7 +127,7 @@ def _timed_parse_row(self, image, y, row_h, **kwargs):  # type: ignore[no-untype
     # and subtract rank+power time.
     t0 = time.perf_counter()
     calls_before = len(_tess_calls)
-    result = _orig_parse_row(self, image, y, row_h, **kwargs)
+    result = _orig_parse_row(self, image, y, row_h, layout, **kwargs)
     elapsed = time.perf_counter() - t0
     _stage_times["row_total"] = _stage_times.get("row_total", 0.0) + elapsed
     new_calls = len(_tess_calls) - calls_before

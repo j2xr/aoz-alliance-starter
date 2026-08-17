@@ -7,8 +7,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.parsers.polar_invasion_v1 import _MEMBER_LIST_TOP, _NAME_Y_OFF, _POWER_Y_OFF, _ROW_HEIGHT
+from app.parsers.polar_invasion_v1 import _PHONE_LAYOUT
 from app.preprocess import preprocess
+
+_MEMBER_LIST_TOP = _PHONE_LAYOUT.member_list_top
+_ROW_HEIGHT = _PHONE_LAYOUT.row_height
+_NAME_Y_OFF = _PHONE_LAYOUT.name_y_off
+_POWER_Y_OFF = _PHONE_LAYOUT.power_y_off
 
 FIXTURES = sorted(
     (Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "polar_invasion").glob("*.jpg")

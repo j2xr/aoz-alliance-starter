@@ -2,6 +2,7 @@ import logging
 import os
 import re
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -25,27 +26,142 @@ logger = logging.getLogger(__name__)
 
 # ── Layout constants at TARGET_WIDTH=1080px ──────────────────────────────────
 # Used by extract.py for LLM fallback row slicing.
-# After preprocess() the image is always 1080px wide and the game UI elements
-# are at fixed pixel positions regardless of total image height (different
-# device aspect ratios change the visible bottom area, not the UI element
-# pitch). So we use absolute pixel positions, not scaled by height.
+# After preprocess() the image is always 1080px wide, but the game UI
+# elements' pixel positions depend on which source produced the image: real
+# phone screenshots (device aspect ratio only changes the visible bottom
+# area, not the UI element pitch) vs. the 400x652 emulator source
+# (aoz-alliance-starter#91), whose UI chrome has different proportions
+# entirely — not just "less screen". `_Layout` bundles one profile's worth
+# of crop constants; `parse()` selects which one applies per image (see
+# `_layout_for_height`) rather than assuming a single fixed layout.
 
 CANONICAL_HEIGHT = 2400
 
-# Header crop y-coordinates
-_DATE_Y = (135, 195)
-_STATS_Y = (278, 340)
 
-# Header crop x-coordinates for the 3-column layout (Battlers | Alliance
-# Ranking | Alliance Points) used by polar_invasion and elite_wars.
-_DATE_X = (380, 710)
-_BATTLERS_X = (200, 310)
-_ALLIANCE_RANK_X = (480, 595)
-_TOTAL_POINTS_X = (720, 925)
+@dataclass(frozen=True)
+class _Layout:
+    """Crop constants for one source's Polar-Invasion-family screen layout.
+
+    All coordinates are pixel positions in the 1080-wide preprocessed image.
+    y-offsets inside a row (name_y_off, power fields, rank badge) are
+    relative to that row's top; everything else is an absolute image
+    coordinate.
+    """
+
+    # Header crop y-coordinates
+    date_y: tuple[int, int]
+    stats_y: tuple[int, int]
+    # Header crop x-coordinates for the 3-column layout (Battlers | Alliance
+    # Ranking | Alliance Points) used by polar_invasion and elite_wars.
+    date_x: tuple[int, int]
+    battlers_x: tuple[int, int]
+    alliance_rank_x: tuple[int, int]
+    total_points_x: tuple[int, int]
+
+    # Member list layout
+    member_list_top: int  # fallback y-start of first row when detection fails
+    row_height: int
+
+    # _detect_list_top's dynamic gap-detection: a right-edge column band
+    # sampled for narrow bright zones (row separators), and the pitch range
+    # between consecutive zones that confirms a real row boundary (vs. noise).
+    list_top_edge_x: tuple[int, int]
+    list_top_search_start: int
+    row_gap_pitch: tuple[int, int]
+
+    # Column crops within each row (y-offsets relative to row top, x absolute)
+    name_y_off: tuple[int, int]  # primary crop
+    name_y_off_wide: tuple[int, int]  # fallback crop when primary reads <2 words
+    name_x: tuple[int, int]
+    power_y_off: tuple[int, int]  # used only for parse()'s usable_end truncation guard
+    power_fallback_y_off: tuple[int, int]  # _detect_power's PSM-8/normalized crops
+    power_fallback_x: tuple[int, int]  # _detect_power's PSM-8 crop x-range
+    power_x: tuple[int, int]  # _detect_power's normalized-contrast crop x-range
+    points_x: tuple[int, int]
+
+    # Tight badge crop: inner R-disc only, no avatar overlap.
+    rank_badge_x: tuple[int, int]
+    rank_badge_y: tuple[int, int]
+
+
+# Phone screenshots (1080x[1920-2400]) — values unchanged from before the
+# emulator profile existed; this is a pure refactor of the phone path.
+_PHONE_LAYOUT = _Layout(
+    date_y=(135, 195),
+    stats_y=(278, 340),
+    date_x=(380, 710),
+    battlers_x=(200, 310),
+    alliance_rank_x=(480, 595),
+    total_points_x=(720, 925),
+    member_list_top=411,
+    row_height=179,
+    list_top_edge_x=(970, 1070),
+    list_top_search_start=380,
+    row_gap_pitch=(175, 185),
+    name_y_off=(50, 103),
+    name_y_off_wide=(45, 130),
+    name_x=(220, 680),
+    power_y_off=(100, 165),
+    power_fallback_y_off=(85, 175),
+    power_fallback_x=(100, 545),
+    power_x=(240, 545),
+    points_x=(720, 1060),
+    rank_badge_x=(38, 90),
+    rank_badge_y=(33, 80),
+)
+
+# Emulator source (400x652, ratio 1.63 — aoz-alliance-starter#91). Measured
+# directly on 4 real captures at the 1080-wide preprocessed scale (row pitch
+# 153px, list_top 399px; see the fixtures under
+# tests/fixtures/polar_invasion_emulator/ and its README for the ground
+# truth these were calibrated against). Not a uniform rescale of the phone
+# layout — this source's UI chrome has different proportions, so every value
+# was measured independently rather than derived by scaling _PHONE_LAYOUT.
+_EMULATOR_LAYOUT = _Layout(
+    date_y=(130, 185),
+    stats_y=(260, 310),
+    date_x=(280, 650),
+    battlers_x=(230, 350),
+    alliance_rank_x=(490, 610),
+    total_points_x=(700, 900),
+    member_list_top=399,
+    row_height=153,
+    list_top_edge_x=(970, 1070),
+    list_top_search_start=380,
+    row_gap_pitch=(148, 158),
+    name_y_off=(28, 60),
+    name_y_off_wide=(25, 85),
+    name_x=(285, 730),
+    power_y_off=(74, 112),
+    power_fallback_y_off=(65, 150),
+    power_fallback_x=(90, 650),
+    power_x=(285, 650),
+    points_x=(750, 1010),
+    rank_badge_x=(78, 158),
+    rank_badge_y=(2, 55),
+)
+
+# Post-preprocess image height that distinguishes the two known profiles:
+# preprocess() only accepts ratios that resolve to phone (h >= 1920 at
+# TARGET_WIDTH=1080) or emulator (h ~= 1760, since that source's native
+# resolution is fixed) — see app.preprocess.detect_layout_profile. Any image
+# reaching parse() has already been gated into one of these two bands, so a
+# single height cutoff between them (1760 and 1920 leave a wide margin)
+# unambiguously identifies which layout produced it.
+_EMULATOR_MAX_HEIGHT = 1850
+
+
+def _layout_for_height(h: int) -> _Layout:
+    return _EMULATOR_LAYOUT if h < _EMULATOR_MAX_HEIGHT else _PHONE_LAYOUT
+
 
 # Header crop x-coordinates for the 2-column layout (Battlers or
 # "Alliance Members" | Alliance Points) used by wasteland_showdown,
 # battle_frenzy, void_war — these screens don't show an alliance ranking.
+# Phone-only: not yet verified against any emulator capture of a 2-column
+# event (only polar_invasion, a 3-column screen, has been observed from that
+# source). Reused unchanged for the emulator profile if this path is ever
+# hit for it — flagged here as an explicit follow-up, not a silent gap.
 _BATTLERS_X_2COL = (350, 500)
 _TOTAL_POINTS_X_2COL = (550, 800)
 
@@ -58,9 +174,6 @@ _TOTAL_POINTS_X_2COL = (550, 800)
 _THREE_COL_EVENTS = frozenset({"polar_invasion", "elite_wars", "ironblood_battlefield"})
 _TWO_COL_EVENTS = frozenset({"wasteland_showdown", "battle_frenzy", "void_war"})
 
-# Member list layout
-_MEMBER_LIST_TOP = 411  # fallback y-start of first row when detection fails
-_ROW_HEIGHT = 179  # row height in pixels (constant in 1080-wide images)
 _MAX_ROWS = 12
 
 # Column crops within each row (y-offsets, x-coordinates)
@@ -69,22 +182,12 @@ _RANK_CROPS: list[tuple[int, int, int, int]] = [
     (30, 80, 40, 120),
     (40, 75, 50, 110),
 ]
-_NAME_Y_OFF = (50, 103)  # primary crop (event-1 layout)
-_NAME_Y_OFF_WIDE = (45, 130)  # fallback crop (event-2 layout, ~15px lower)
-_NAME_X = (220, 680)
-_POWER_Y_OFF = (100, 165)
-_POWER_X = (240, 545)
-_POINTS_X = (720, 1060)
 
 # Public aliases expected by extract.py
-MEMBER_LIST_TOP = _MEMBER_LIST_TOP
-ROW_HEIGHT = _ROW_HEIGHT
+MEMBER_LIST_TOP = _PHONE_LAYOUT.member_list_top
+ROW_HEIGHT = _PHONE_LAYOUT.row_height
 
 _DIGIT_MAP = {"I": "1", "i": "1", "l": "1", "L": "1", "|": "1", "!": "1", "D": "1", "d": "1"}
-
-# Tight badge crop: Inner R-disc only, no avatar overlap.
-_RANK_BADGE_X = (38, 90)
-_RANK_BADGE_Y = (33, 80)
 
 # Rank OCR (threshold, psm) combos ordered by empirical first-hit rate on the
 # fixture set: combos at the front yield a strong R[1-5] reading more often,
@@ -263,12 +366,15 @@ class PolarInvasionV1Parser(BaseParser):
         event_code: str | None = None,
     ) -> ParseResult:
         h = image.shape[0]
+        layout = _layout_for_height(h)
 
-        dt, battlers, alliance_rank, total_points = self._parse_header(image, event_code)
+        dt, battlers, alliance_rank, total_points = self._parse_header(
+            image, event_code, layout
+        )
         event_datetime = _paris_isoformat(dt) if dt else None
 
-        row_h = _ROW_HEIGHT
-        list_top = self._detect_list_top(image)
+        row_h = layout.row_height
+        list_top = self._detect_list_top(image, layout)
 
         members: list[MemberResult] = []
         # Local across the whole image: the (threshold, psm) combo that
@@ -276,13 +382,13 @@ class PolarInvasionV1Parser(BaseParser):
         # constant within a screenshot, so re-trying that combo first on
         # the next row usually lets _detect_rank exit after 1–2 attempts.
         rank_cache: dict[str, tuple[int, int] | None] = {"last": None}
-        # Require enough of the power crop (y + 145, i.e. _POWER_Y_OFF[1] - 20)
+        # Require enough of the power crop (y + 145, i.e. layout.power_y_off[1] - 20)
         # to be inside the image. Allowing up to 20 px of overhang accepts the
         # last row even when it's slightly clipped, but rejects rows where the
         # power digits are too truncated to read reliably — without this, OCR
         # on the partial power line returns noise and validate_member spuriously
         # accepts it (e.g. void_war-002 row 10 returning a 49M garbage value).
-        usable_end = h - (_POWER_Y_OFF[1] - 20)
+        usable_end = h - (layout.power_y_off[1] - 20)
         for i in range(_MAX_ROWS):
             y = list_top + i * row_h
             if y > usable_end:
@@ -291,6 +397,7 @@ class PolarInvasionV1Parser(BaseParser):
                 image,
                 y,
                 row_h,
+                layout,
                 emit_trace=emit_trace,
                 list_top=list_top,
                 row_index=i,
@@ -337,20 +444,21 @@ class PolarInvasionV1Parser(BaseParser):
 
     # ── List top detection ────────────────────────────────────────────────────
 
-    def _detect_list_top(self, image: np.ndarray) -> int:
+    def _detect_list_top(self, image: np.ndarray, layout: _Layout) -> int:
         """Detect y-start of row 0 by locating the row-separator gap pattern.
 
-        Each member row is a panel ~155px tall followed by a ~20px bright
-        gap (= row separator); the row-to-row pitch is consistently 179px in
-        1080-wide images. We sample the right-edge column (x=970-1070) where
-        no text intrudes, find narrow bright zones (5–30px wide), and pick
-        the first pair whose pitch is ≈179. The first zone of that pair is
-        the gap between row 0 and row 1, so row 0 top = first_gap_start - 179.
+        Each member row is a panel followed by a bright gap (= row
+        separator); the row-to-row pitch is consistent within one layout
+        profile (see layout.row_height). We sample a right-edge column band
+        (layout.list_top_edge_x) where no text intrudes, find narrow bright
+        zones (5–30px wide), and pick the first pair whose pitch falls in
+        layout.row_gap_pitch. The first zone of that pair is the gap between
+        row 0 and row 1, so row 0 top = first_gap_start - row_height.
 
-        Width filtering excludes the wide (~47px) bright zone that sits
-        above row 0 (a mix of stats/header background and the gap below the
-        Member/Points column titles). Falls back to the canonical
-        _MEMBER_LIST_TOP when no qualifying pair is found.
+        Width filtering excludes the wide bright zone that sits above row 0
+        (a mix of stats/header background and the gap below the
+        Member/Points column titles). Falls back to layout.member_list_top
+        when no qualifying pair is found.
         """
         h = int(image.shape[0])
 
@@ -359,20 +467,22 @@ class PolarInvasionV1Parser(BaseParser):
         else:
             gray = image
 
-        right_edge = gray[:, 970:1070].mean(axis=1)
+        edge_x0, edge_x1 = layout.list_top_edge_x
+        right_edge = gray[:, edge_x0:edge_x1].mean(axis=1)
 
         # Bright zones (brightness ≥ 226) of width 5–30 are row separators.
-        # drop_clipped_start=False: this scan starts at a fixed offset (380),
-        # not the array origin, so a zone already bright there is a
-        # legitimate start, not an artifact of the window boundary (contrast
-        # ContributionRankingV1Parser._detect_list_top, which has no such
-        # fixed offset and so needs the opposite default). include_clipped_end
-        # keeps a zone still bright at y=h, provided it's already narrow
-        # enough to qualify.
-        search_mask = right_edge[380:h] >= 226.0
+        # drop_clipped_start=False: this scan starts at a fixed offset
+        # (layout.list_top_search_start), not the array origin, so a zone
+        # already bright there is a legitimate start, not an artifact of the
+        # window boundary (contrast ContributionRankingV1Parser._detect_list_top,
+        # which has no such fixed offset and so needs the opposite default).
+        # include_clipped_end keeps a zone still bright at y=h, provided it's
+        # already narrow enough to qualify.
+        start = layout.list_top_search_start
+        search_mask = right_edge[start:h] >= 226.0
         zones = [
-            (380 + start, 380 + end)
-            for start, end in find_runs(
+            (start + s, start + e)
+            for s, e in find_runs(
                 search_mask,
                 min_len=5,
                 max_len=30,
@@ -381,12 +491,13 @@ class PolarInvasionV1Parser(BaseParser):
             )
         ]
 
+        pitch_min, pitch_max = layout.row_gap_pitch
         for i in range(len(zones) - 1):
             z1 = zones[i]
             z2 = zones[i + 1]
             pitch = z2[0] - z1[0]
-            if 175 <= pitch <= 185:
-                row_0_top = z1[0] - _ROW_HEIGHT
+            if pitch_min <= pitch <= pitch_max:
+                row_0_top = z1[0] - layout.row_height
                 result = max(0, min(h - 1, row_0_top))
                 logger.debug(
                     "list_top: zone[%d]=%s pitch=%d row_0_top=%d",
@@ -397,20 +508,26 @@ class PolarInvasionV1Parser(BaseParser):
                 )
                 return result
 
-        logger.debug("list_top: no ~179 zone pair found, using fallback %d", _MEMBER_LIST_TOP)
-        return _MEMBER_LIST_TOP
+        logger.debug(
+            "list_top: no %d-%d zone pair found, using fallback %d",
+            pitch_min,
+            pitch_max,
+            layout.member_list_top,
+        )
+        return layout.member_list_top
 
     # ── Header ────────────────────────────────────────────────────────────────
 
     def _parse_header(
-        self, image: np.ndarray, event_code: str | None = None
+        self, image: np.ndarray, event_code: str | None, layout: _Layout
     ) -> tuple[str | None, int | None, int | None, int | None]:
+        date_x0, date_x1 = layout.date_x
         date_text = pytesseract.image_to_string(
-            image[_DATE_Y[0] : _DATE_Y[1], _DATE_X[0] : _DATE_X[1]], config="--psm 7"
+            image[layout.date_y[0] : layout.date_y[1], date_x0:date_x1], config="--psm 7"
         ).strip()
         dt = _parse_datetime(date_text)
 
-        sy1, sy2 = _STATS_Y
+        sy1, sy2 = layout.stats_y
 
         def _ocr_number(x_range: tuple[int, int]) -> int | None:
             return parse_number(
@@ -426,9 +543,9 @@ class PolarInvasionV1Parser(BaseParser):
         if event_code in _THREE_COL_EVENTS:
             return (
                 dt,
-                _ocr_number(_BATTLERS_X),
-                _ocr_number(_ALLIANCE_RANK_X),
-                _ocr_number(_TOTAL_POINTS_X),
+                _ocr_number(layout.battlers_x),
+                _ocr_number(layout.alliance_rank_x),
+                _ocr_number(layout.total_points_x),
             )
         if event_code in _TWO_COL_EVENTS:
             return dt, _ocr_number(_BATTLERS_X_2COL), None, _ocr_number(_TOTAL_POINTS_X_2COL)
@@ -436,11 +553,11 @@ class PolarInvasionV1Parser(BaseParser):
         # Fallback (code absent : appels directs des tests/outils) — heuristique
         # historique durcie : un chiffre dans la cellule rang ne suffit plus,
         # il faut aussi que la lecture 3 colonnes soit plausible.
-        alliance_rank = _ocr_number(_ALLIANCE_RANK_X)
+        alliance_rank = _ocr_number(layout.alliance_rank_x)
         if alliance_rank is not None and 1 <= alliance_rank <= 9999:
-            battlers = _ocr_number(_BATTLERS_X)
+            battlers = _ocr_number(layout.battlers_x)
             if battlers is None or battlers <= 999:
-                total_points = _ocr_number(_TOTAL_POINTS_X)
+                total_points = _ocr_number(layout.total_points_x)
                 return dt, battlers, alliance_rank, total_points
 
         # 2-column layout: Battlers (or "Alliance Members") | Alliance Points.
@@ -457,6 +574,7 @@ class PolarInvasionV1Parser(BaseParser):
         image: np.ndarray,
         y: int,
         row_h: int,
+        layout: _Layout,
         emit_trace: bool = False,
         list_top: int = 0,
         row_index: int = 0,
@@ -469,25 +587,25 @@ class PolarInvasionV1Parser(BaseParser):
         power crop, x≈210–270, y_off≈115–160, preprocessed with preprocess().
         """
         # Local copy of the row band (mask_sword_icon draws into it). Limited
-        # to x < _POINTS_X[0]: everything that reads row_img (rank badge
-        # x=38-90, name x=220-680, power x<720, icon search band x=180-320)
-        # stays under this bound; the points column is read further down
-        # directly on `image`. Copying the full width wasted ~33%.
-        row_img = image[y : y + row_h, : _POINTS_X[0]].copy()
+        # to x < layout.points_x[0]: everything that reads row_img (rank
+        # badge, name, power, icon search band) stays under this bound; the
+        # points column is read further down directly on `image`. Copying
+        # the full width wasted ~33%.
+        row_img = image[y : y + row_h, : layout.points_x[0]].copy()
         # Mask the crossed-swords icon if present
         row_img = mask_sword_icon(row_img, 1.0)
 
         # Detection functions use row-relative coordinates
         # Adapt calls to use row_img instead of image, and y=0
-        rank = self._detect_rank(row_img, 0, rank_cache=rank_cache)
+        rank = self._detect_rank(row_img, 0, layout, rank_cache=rank_cache)
 
         # Detect power before name so we can strip it from the name string when
         # OCR bleeds across column boundaries (e.g. "Ye12,034,411" → "Ye").
-        power = self._detect_power(row_img, 0)
+        power = self._detect_power(row_img, 0, layout)
 
-        ny1, ny2 = _NAME_Y_OFF
-        name_y_off_used = _NAME_Y_OFF
-        crop = row_img[ny1:ny2, _NAME_X[0] : _NAME_X[1]]
+        ny1, ny2 = layout.name_y_off
+        name_y_off_used = layout.name_y_off
+        crop = row_img[ny1:ny2, layout.name_x[0] : layout.name_x[1]]
         crop_2x = cv2.resize(crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         if _ASCII_FAST_PATH_ENABLED:
             _fp_data = pytesseract.image_to_data(
@@ -526,9 +644,9 @@ class PolarInvasionV1Parser(BaseParser):
             name = _words_from_data(name_data, min_conf=10)
         if len(name) < 2:
             # Event-2 layout: name sits ~15px lower — use wider crop
-            ny1w, ny2w = _NAME_Y_OFF_WIDE
-            name_y_off_used = _NAME_Y_OFF_WIDE
-            crop_w = row_img[ny1w:ny2w, _NAME_X[0] : _NAME_X[1]]
+            ny1w, ny2w = layout.name_y_off_wide
+            name_y_off_used = layout.name_y_off_wide
+            crop_w = row_img[ny1w:ny2w, layout.name_x[0] : layout.name_x[1]]
             crop_w2x = cv2.resize(crop_w, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
             name_data = pytesseract.image_to_data(
                 crop_w2x,
@@ -594,7 +712,7 @@ class PolarInvasionV1Parser(BaseParser):
         # Include "-" in the whitelist so Tesseract returns it when the cell
         # shows the non-participant marker instead of a score.
         pts_data = pytesseract.image_to_data(
-            image[y : y + row_h, _POINTS_X[0] : _POINTS_X[1]],
+            image[y : y + row_h, layout.points_x[0] : layout.points_x[1]],
             config="--psm 6 -c tessedit_char_whitelist=0123456789,-",
             output_type=Output.DICT,
         )
@@ -633,18 +751,20 @@ class PolarInvasionV1Parser(BaseParser):
                 list_top=list_top,
                 row_index=row_index,
                 row_height=row_h,
-                name=FieldBox(y1=y + ny1u, y2=y + ny2u, x1=_NAME_X[0], x2=_NAME_X[1]),
+                name=FieldBox(y1=y + ny1u, y2=y + ny2u, x1=layout.name_x[0], x2=layout.name_x[1]),
                 rank=FieldBox(
-                    y1=y + _RANK_BADGE_Y[0],
-                    y2=y + _RANK_BADGE_Y[1],
-                    x1=_RANK_BADGE_X[0],
-                    x2=_RANK_BADGE_X[1],
+                    y1=y + layout.rank_badge_y[0],
+                    y2=y + layout.rank_badge_y[1],
+                    x1=layout.rank_badge_x[0],
+                    x2=layout.rank_badge_x[1],
                 ),
                 # Power: record the primary PSM-11 sweep region (full-row strip
                 # left of the points column). The sword-icon mask is applied to
                 # this strip before OCR; the trace box is the pre-mask extent.
-                power=FieldBox(y1=y, y2=y + row_h, x1=0, x2=_POINTS_X[0]),
-                points=FieldBox(y1=y, y2=y + row_h, x1=_POINTS_X[0], x2=_POINTS_X[1]),
+                power=FieldBox(y1=y, y2=y + row_h, x1=0, x2=layout.points_x[0]),
+                points=FieldBox(
+                    y1=y, y2=y + row_h, x1=layout.points_x[0], x2=layout.points_x[1]
+                ),
             )
 
         return MemberResult(
@@ -660,18 +780,18 @@ class PolarInvasionV1Parser(BaseParser):
 
     # ── Power detection ───────────────────────────────────────────────────────
 
-    def _detect_power(self, image: np.ndarray, y: int) -> int | None:
-        """Detect power using PSM 11 full-row scan (x=260–560), with PSM 8 fallback."""
+    def _detect_power(self, image: np.ndarray, y: int, layout: _Layout) -> int | None:
+        """Detect power using PSM 11 full-row scan, with PSM 8 fallback."""
         h = image.shape[0]
-        row_end = min(y + _ROW_HEIGHT, h)
+        row_end = min(y + layout.row_height, h)
 
         # Primary: PSM 11 sparse text on the left portion of the row only.
-        # The points column starts at _POINTS_X[0]=720 and is excluded so that
-        # events like Ironblood Battlefield (where scores exceed 1 M) don't
-        # return a score value instead of the actual power.  The power column
-        # sits well within x<720 on all observed layouts.
+        # The points column start is excluded so that events like Ironblood
+        # Battlefield (where scores exceed 1 M) don't return a score value
+        # instead of the actual power. The power column sits well within
+        # that bound on all observed layouts.
         data = pytesseract.image_to_data(
-            image[y:row_end, : _POINTS_X[0]],
+            image[y:row_end, : layout.points_x[0]],
             config="--psm 11 -c tessedit_char_whitelist=0123456789,",
             output_type=Output.DICT,
         )
@@ -686,12 +806,13 @@ class PolarInvasionV1Parser(BaseParser):
             if val is not None and val >= 1_000_000:
                 return val
 
-        # Fallback: PSM 8 on fixed crop — left margin widened to 100 to catch power
-        # numbers whose leading digits start near x=120 on some layouts.
-        py1 = y + 85
-        py2 = y + 175
+        # Fallback: PSM 8 on fixed crop — left margin widened to catch power
+        # numbers whose leading digits start further left on some layouts.
+        py1 = y + layout.power_fallback_y_off[0]
+        py2 = y + layout.power_fallback_y_off[1]
+        fx0, fx1 = layout.power_fallback_x
         data = pytesseract.image_to_data(
-            image[py1:py2, 100:545],
+            image[py1:py2, fx0:fx1],
             config="--psm 8 -c tessedit_char_whitelist=0123456789,",
             output_type=Output.DICT,
         )
@@ -702,9 +823,10 @@ class PolarInvasionV1Parser(BaseParser):
         # Normalized fallback: coloured power text (e.g. green R3) appears as medium
         # gray (~121) after the standard grayscale+inversion preprocess — same root
         # cause as the name detection failure for the same row. Stretching the power
-        # crop to [0, 255] makes the digits legible. Use _POWER_X to skip the avatar
-        # and the masked sword-icon area, both of which would corrupt normalization.
-        power_crop = image[py1:py2, _POWER_X[0] : _POWER_X[1]]
+        # crop to [0, 255] makes the digits legible. Use layout.power_x to skip the
+        # avatar and the masked sword-icon area, both of which would corrupt
+        # normalization.
+        power_crop = image[py1:py2, layout.power_x[0] : layout.power_x[1]]
         if power_crop.size > 0:
             norm_power = cv2.normalize(power_crop, None, 0, 255, cv2.NORM_MINMAX)  # type: ignore[call-overload]
             data = pytesseract.image_to_data(
@@ -729,6 +851,7 @@ class PolarInvasionV1Parser(BaseParser):
         self,
         image: np.ndarray,
         y: int,
+        layout: _Layout,
         rank_cache: dict[str, tuple[int, int] | None] | None = None,
     ) -> str | None:
         """Detect R1–R5 badge via tight-crop OCR with empirical-order early exit.
@@ -740,11 +863,11 @@ class PolarInvasionV1Parser(BaseParser):
         would otherwise cause validate_member() to drop the entire row.
         """
         h = image.shape[0]
-        y1 = y + _RANK_BADGE_Y[0]
-        y2 = y + _RANK_BADGE_Y[1]
+        y1 = y + layout.rank_badge_y[0]
+        y2 = y + layout.rank_badge_y[1]
         if y1 >= h or y2 > h:
             return None
-        crop = image[y1:y2, _RANK_BADGE_X[0] : _RANK_BADGE_X[1]]
+        crop = image[y1:y2, layout.rank_badge_x[0] : layout.rank_badge_x[1]]
         if crop.size == 0:
             return None
 

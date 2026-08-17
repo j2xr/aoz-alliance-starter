@@ -19,18 +19,20 @@ import cv2
 
 from app.parsers.polar_invasion_v1 import (
     _MAX_ROWS,
-    _NAME_X,
-    _NAME_Y_OFF,
-    _NAME_Y_OFF_WIDE,
-    _POINTS_X,
-    _POWER_X,
-    _POWER_Y_OFF,
+    _PHONE_LAYOUT,
     _RANK_CROPS,
-    _ROW_HEIGHT,
     CANONICAL_HEIGHT,
     PolarInvasionV1Parser,
 )
 from app.preprocess import preprocess
+
+_NAME_X = _PHONE_LAYOUT.name_x
+_NAME_Y_OFF = _PHONE_LAYOUT.name_y_off
+_NAME_Y_OFF_WIDE = _PHONE_LAYOUT.name_y_off_wide
+_POINTS_X = _PHONE_LAYOUT.points_x
+_POWER_X = _PHONE_LAYOUT.power_x
+_POWER_Y_OFF = _PHONE_LAYOUT.power_y_off
+_ROW_HEIGHT = _PHONE_LAYOUT.row_height
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "polar_invasion"
 OUT_DIR = Path("/tmp")
@@ -43,7 +45,7 @@ def annotate(image_path: Path) -> Path:
     scale = h / CANONICAL_HEIGHT
 
     parser = PolarInvasionV1Parser()
-    list_top = parser._detect_list_top(gray)
+    list_top = parser._detect_list_top(gray, _PHONE_LAYOUT)
     row_h = _ROW_HEIGHT
 
     # Convert to BGR for drawing
