@@ -1,0 +1,18 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-08-11T23:00:00+02:00",
+  "alliance_rank": 6,
+  "total_battlers": 16,
+  "total_points": 3725,
+  "source_file": "20260811T2300_001.png",
+  "members": [
+    { "name": "StarGrove", "rank": "R1", "power": 21760717, "points": 24890 },
+    { "name": "Darkseid", "rank": "R1", "power": 14008936, "points": 18657 },
+    { "name": "ShadowBlade", "rank": "R1", "power": 19168982, "points": 13133 },
+    { "name": "RUS.Arcabalieno", "rank": "R1", "power": 13978652, "points": 12561 },
+    { "name": "CarlosEstrella", "rank": "R1", "power": 19514728, "points": 11821 },
+    { "name": "SNIPER", "rank": "R1", "power": 22949286, "points": 11111 },
+    { "name": "Madara⁶⁹Uchiha", "rank": "R1", "power": 16221806, "points": 11014 },
+    { "name": "3jr", "rank": "R2", "power": 16720136, "points": 10709 }
+  ]
+}
