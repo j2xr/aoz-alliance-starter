@@ -57,9 +57,7 @@ def detect_layout_profile(w: int, h: int) -> LayoutProfile:
     for profile in _KNOWN_PROFILES:
         if profile.min_ratio <= aspect_ratio <= profile.max_ratio:
             return profile
-    checked = ", ".join(
-        f"{p.name} ({p.min_ratio:.2f}-{p.max_ratio:.2f})" for p in _KNOWN_PROFILES
-    )
+    checked = ", ".join(f"{p.name} ({p.min_ratio:.2f}-{p.max_ratio:.2f})" for p in _KNOWN_PROFILES)
     raise UnsupportedAspectRatioError(
         f"source is {w}x{h} (ratio {aspect_ratio:.2f}); "
         f"matches no known profile — checked {checked}"

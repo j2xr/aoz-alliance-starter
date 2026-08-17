@@ -380,9 +380,7 @@ class PolarInvasionV1Parser(BaseParser):
         h = image.shape[0]
         layout = _layout_for_height(h)
 
-        dt, battlers, alliance_rank, total_points = self._parse_header(
-            image, event_code, layout
-        )
+        dt, battlers, alliance_rank, total_points = self._parse_header(image, event_code, layout)
         event_datetime = _paris_isoformat(dt) if dt else None
 
         row_h = layout.row_height
@@ -778,9 +776,7 @@ class PolarInvasionV1Parser(BaseParser):
                 # left of the points column). The sword-icon mask is applied to
                 # this strip before OCR; the trace box is the pre-mask extent.
                 power=FieldBox(y1=y, y2=y + row_h, x1=0, x2=layout.points_x[0]),
-                points=FieldBox(
-                    y1=y, y2=y + row_h, x1=layout.points_x[0], x2=layout.points_x[1]
-                ),
+                points=FieldBox(y1=y, y2=y + row_h, x1=layout.points_x[0], x2=layout.points_x[1]),
             )
 
         return MemberResult(

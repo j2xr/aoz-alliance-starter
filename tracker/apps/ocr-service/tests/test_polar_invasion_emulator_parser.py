@@ -176,8 +176,7 @@ def test_member_field_accuracy_meets_floor() -> None:
         f"name(Latin) {name_hits}/{name_total}={name_rate:.1%}, "
         f"rank {rank_hits}/{rank_total}={rank_rate:.1%}, "
         f"power {power_hits}/{power_total}={power_rate:.1%}, "
-        f"points {points_hits}/{points_total}={points_rate:.1%}\n"
-        + "\n".join(mismatches)
+        f"points {points_hits}/{points_total}={points_rate:.1%}\n" + "\n".join(mismatches)
     )
 
     # Floors are regression guards at today's measured accuracy (with margin
