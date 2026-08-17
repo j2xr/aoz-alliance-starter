@@ -65,6 +65,13 @@ class _Layout:
     # _detect_list_top's dynamic gap-detection: a right-edge column band
     # sampled for narrow bright zones (row separators), and the pitch range
     # between consecutive zones that confirms a real row boundary (vs. noise).
+    # use_dynamic_list_top=False skips the scan entirely and always returns
+    # member_list_top — appropriate for a source with one fixed native
+    # resolution (no device variation to detect around), and necessary here:
+    # the emulator layout's header/stats band produces a coincidental bright
+    # run at the scan's start offset that satisfies the pitch check by pure
+    # chance, landing list_top inside the header instead of the member list.
+    use_dynamic_list_top: bool
     list_top_edge_x: tuple[int, int]
     list_top_search_start: int
     row_gap_pitch: tuple[int, int]
@@ -95,6 +102,7 @@ _PHONE_LAYOUT = _Layout(
     total_points_x=(720, 925),
     member_list_top=411,
     row_height=179,
+    use_dynamic_list_top=True,
     list_top_edge_x=(970, 1070),
     list_top_search_start=380,
     row_gap_pitch=(175, 185),
@@ -112,26 +120,30 @@ _PHONE_LAYOUT = _Layout(
 
 # Emulator source (400x652, ratio 1.63 — aoz-alliance-starter#91). Measured
 # directly on 4 real captures at the 1080-wide preprocessed scale (row pitch
-# 153px, list_top 399px; see the fixtures under
-# tests/fixtures/polar_invasion_emulator/ and its README for the ground
-# truth these were calibrated against). Not a uniform rescale of the phone
-# layout — this source's UI chrome has different proportions, so every value
-# was measured independently rather than derived by scaling _PHONE_LAYOUT.
+# 164px confirmed via full-width brightness autocorrelation and cross-checked
+# against all 8 visible rows of a fixture — an initial manual pixel-grid
+# reading of 153 drifted by 11px/row and was wrong; list_top 399px; see the
+# fixtures under tests/fixtures/polar_invasion_emulator/ and its README for
+# the ground truth these were calibrated against). Not a uniform rescale of
+# the phone layout — this source's UI chrome has different proportions, so
+# every value was measured independently rather than derived by scaling
+# _PHONE_LAYOUT.
 _EMULATOR_LAYOUT = _Layout(
     date_y=(130, 185),
     stats_y=(260, 310),
-    date_x=(280, 650),
+    date_x=(270, 700),
     battlers_x=(230, 350),
     alliance_rank_x=(490, 610),
     total_points_x=(700, 900),
     member_list_top=399,
-    row_height=153,
+    row_height=164,
+    use_dynamic_list_top=False,
     list_top_edge_x=(970, 1070),
     list_top_search_start=380,
-    row_gap_pitch=(148, 158),
+    row_gap_pitch=(159, 169),
     name_y_off=(28, 60),
     name_y_off_wide=(25, 85),
-    name_x=(285, 730),
+    name_x=(245, 730),
     power_y_off=(74, 112),
     power_fallback_y_off=(65, 150),
     power_fallback_x=(90, 650),
@@ -458,8 +470,12 @@ class PolarInvasionV1Parser(BaseParser):
         Width filtering excludes the wide bright zone that sits above row 0
         (a mix of stats/header background and the gap below the
         Member/Points column titles). Falls back to layout.member_list_top
-        when no qualifying pair is found.
+        when no qualifying pair is found, or immediately when
+        layout.use_dynamic_list_top is False.
         """
+        if not layout.use_dynamic_list_top:
+            return layout.member_list_top
+
         h = int(image.shape[0])
 
         if image.ndim == 3:
