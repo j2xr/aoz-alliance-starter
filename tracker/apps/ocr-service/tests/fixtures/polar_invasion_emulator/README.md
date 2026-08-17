@@ -71,10 +71,11 @@ specific, understood cause (see `test_polar_invasion_emulator_parser.py`'s
 module docstring for the full breakdown and the exact test-floor
 rationale):
 
-- **power**: all 3 misses trace to one avatar (`Madara⁶⁹Uchiha`'s
+- **power**: 3 of the 4 misses trace to one avatar (`Madara⁶⁹Uchiha`'s
   decorative red chain-link frame OCRs as a stray leading `"1"` digit
   prepended to the real power value) — no other avatar in the set
-  reproduces it.
+  reproduces it. The 4th (`.AL3X.`, `32623004` vs `32623044`) is an
+  unrelated two-digit misread, not yet diagnosed.
 - **rank**: `_RANK_OCR_ORDER` (the threshold/psm sweep in
   `polar_invasion_v1.py`) was tuned on phone-resolution badges; several
   emulator badges that are clearly legible to a human still miss. Needs

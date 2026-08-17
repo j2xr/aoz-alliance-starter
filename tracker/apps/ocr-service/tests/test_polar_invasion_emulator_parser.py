@@ -28,10 +28,14 @@ targets (see ../polar_invasion/README.md):
   - header (battlers/rank/points/datetime): 100% (16/16) — meets 100%
   - points: 100% (32/32) — meets >=95%
   - name, Latin-only: 90.3% (28/31) — meets >=90%
-  - power: 87.5% (28/32) — below >=95%. All 3 misses trace to one avatar
-    (Madara's decorative red chain-link frame OCRs as a stray leading "1"
-    digit prepended to the real power value) — not reproduced by any other
-    avatar in the fixture set, so not a crop-position issue.
+  - power: 87.5% (28/32) — below >=95%. 3 of the 4 misses trace to one
+    avatar (Madara's decorative red chain-link frame OCRs as a stray
+    leading "1" digit prepended to the real power value, e.g. 116927699
+    vs. 16927699) — not reproduced by any other avatar in the fixture set,
+    so not a crop-position issue. The 4th (.AL3X., 32623004 vs 32623044)
+    is a plain two-digit misread unrelated to the avatar pattern and not
+    yet diagnosed — even a full fix for Madara's frame would only reach
+    31/32 (96.9%), not 100%.
   - rank: 78.1% (25/32) — below >=98%. `_RANK_OCR_ORDER`'s threshold/psm
     sweep was tuned on phone-resolution badges; several emulator badges
     that are clearly legible to a human still miss. Needs its own
