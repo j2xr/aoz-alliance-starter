@@ -31,7 +31,7 @@ from app.parsers.contribution_ranking_v1 import (
     _strip_alliance_tag,
     tab_zone_stats,
 )
-from app.preprocess import preprocess_image
+from app.preprocess import UnsupportedAspectRatioError, preprocess_image
 from app.validators import validate_donation_member
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "contribution_ranking"
@@ -103,6 +103,18 @@ def test_strip_alliance_tag(raw: str, expected_tag: str | None, expected_name: s
     tag, name = _strip_alliance_tag(raw)
     assert tag == expected_tag
     assert name == expected_name
+
+
+# ── Layout profile guard ─────────────────────────────────────────────────────
+
+
+def test_parse_rejects_emulator_profile_image() -> None:
+    """This parser only has phone-calibrated crop constants (aoz-alliance-starter#91):
+    an emulator-profile image (1080 wide, ~1760 tall) must fail loudly via
+    require_profile() rather than being silently parsed with wrong positions."""
+    image = np.full((1760, 1080), 200, dtype=np.uint8)
+    with pytest.raises(UnsupportedAspectRatioError):
+        ContributionRankingV1Parser().parse(image)
 
 
 # ── Leaderboard position (best-effort, informational) ───────────────────────────

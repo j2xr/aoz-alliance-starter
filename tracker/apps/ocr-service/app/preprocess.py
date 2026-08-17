@@ -64,6 +64,29 @@ def detect_layout_profile(w: int, h: int) -> LayoutProfile:
     )
 
 
+def require_profile(image: np.ndarray, profile: LayoutProfile) -> None:
+    """Raise UnsupportedAspectRatioError if `image` wasn't produced by `profile`.
+
+    preprocess() accepts every known profile globally (aspect ratio alone
+    can't tell it which event screen a capture shows), but a parser with
+    crop constants for only one profile must not silently apply them to a
+    different one — see aoz-alliance-starter#91's contribution_ranking /
+    player_stats gap: those parsers only have phone-calibrated positions, so
+    an emulator-sourced donation screenshot would otherwise be parsed with
+    the wrong crops instead of failing loudly. Call this at the top of a
+    single-profile parser's parse() once its input is already the
+    TARGET_WIDTH-normalized image (width is fixed, so the ratio check here
+    reduces to height alone).
+    """
+    h, w = image.shape[:2]
+    actual = detect_layout_profile(w, h)
+    if actual is not profile:
+        raise UnsupportedAspectRatioError(
+            f"this parser only supports the {profile.name!r} profile, "
+            f"but the image is {w}x{h} ({actual.name!r})"
+        )
+
+
 def preprocess_image(image_path: str) -> np.ndarray:
     """Load image from disk and return a preprocessed grayscale array."""
     raw: np.ndarray | None = cv2.imread(image_path)

@@ -8,6 +8,7 @@ from app.preprocess import (
     UnsupportedAspectRatioError,
     detect_layout_profile,
     preprocess,
+    require_profile,
 )
 
 
@@ -92,3 +93,16 @@ def test_detect_layout_profile_emulator() -> None:
 def test_detect_layout_profile_unknown_raises_with_checked_profiles() -> None:
     with pytest.raises(UnsupportedAspectRatioError, match="phone.*emulator_400x652"):
         detect_layout_profile(1080, 1900)
+
+
+def test_require_profile_accepts_matching_profile() -> None:
+    phone_image = np.zeros((2400, TARGET_WIDTH), dtype=np.uint8)
+    require_profile(phone_image, PHONE_PROFILE)  # must not raise
+
+
+def test_require_profile_rejects_mismatched_profile() -> None:
+    """A phone-only parser fed an emulator-profile image must fail loudly,
+    not silently apply phone crop positions (aoz-alliance-starter#91)."""
+    emulator_image = np.zeros((1760, TARGET_WIDTH), dtype=np.uint8)
+    with pytest.raises(UnsupportedAspectRatioError, match="phone"):
+        require_profile(emulator_image, PHONE_PROFILE)

@@ -55,6 +55,7 @@ from app.parsers.name_ocr import (
 )
 from app.parsers.polar_invasion_v1 import _detect_rank_from_crop
 from app.parsers.run_detection import find_runs
+from app.preprocess import PHONE_PROFILE, require_profile
 from app.tess_engine import Output
 from app.validators import (
     parse_number,
@@ -379,6 +380,12 @@ class ContributionRankingV1Parser(BaseParser):
         emit_trace: bool = False,
         event_code: str | None = None,
     ) -> DonationParseResult:
+        # This parser's crop constants are calibrated for the phone profile
+        # only (see CANONICAL_HEIGHT below) — an emulator-sourced donation
+        # screenshot must fail loudly here rather than be silently parsed
+        # with the wrong positions (aoz-alliance-starter#91).
+        require_profile(image, PHONE_PROFILE)
+
         h = image.shape[0]
         scale = h / CANONICAL_HEIGHT
 
