@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from app import crop_retention
 from app.dispatcher import UnknownEventError, refresh_title_patterns_from_supabase
 from app.extract import extract
-from app.preprocess import preprocess_image
+from app.preprocess import UnsupportedAspectRatioError, preprocess_image
 from app.tess_engine import current_backend, health_check, shutdown_pool
 
 # Honour LOG_LEVEL from .env so app loggers (extract, parsers, llm_fallback)
@@ -221,7 +221,13 @@ async def health() -> JSONResponse:
 def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: bool) -> None:
     """Synchronous worker; FastAPI runs sync background tasks in a threadpool."""
     try:
-        image = preprocess_image(str(tmp_path))
+        try:
+            image = preprocess_image(str(tmp_path))
+        except UnsupportedAspectRatioError as exc:
+            logger.info("Job %s: unsupported aspect ratio (%s)", job_id, exc)
+            payload = {"error": "unsupported_aspect_ratio", "detail": str(exc)}
+            _submit(_set_job(job_id, "error", payload))
+            return
         try:
             result = extract(
                 image, event_type_override=event_type, force_llm=force_llm, job_id=job_id
