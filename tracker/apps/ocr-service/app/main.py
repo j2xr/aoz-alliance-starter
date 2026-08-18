@@ -238,9 +238,13 @@ def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: boo
             return
         except UnsupportedAspectRatioError as exc:
             # Same aspect-ratio band as the preprocess()-stage check above,
-            # but raised by a single-profile parser (e.g. contribution_ranking)
+            # but raised by a parser after preprocess() already accepted the
+            # image: either a single-profile parser (e.g. contribution_ranking)
             # that received an image outside the one profile it knows how to
-            # crop — see require_profile() in preprocess.py.
+            # crop (see require_profile() in preprocess.py), or a
+            # multi-profile parser handling an event_code with no verified
+            # crop positions for the incoming profile (e.g. polar_invasion_v1
+            # rejecting a 2-column event on the emulator profile).
             logger.info("Job %s: unsupported aspect ratio for this event type (%s)", job_id, exc)
             payload = {"error": "unsupported_aspect_ratio", "detail": str(exc)}
             _submit(_set_job(job_id, "error", payload))

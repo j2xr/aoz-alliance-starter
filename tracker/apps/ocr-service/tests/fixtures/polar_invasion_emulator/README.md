@@ -63,21 +63,30 @@ Targets are the same ones the phone fixtures use (see
 | `total_battlers`, `total_points`, `alliance_rank`, `event_datetime` | 100% | 100% (16/16) | met |
 | `points` | ≥95% | 100% (32/32) | met |
 | `name` (fuzzy, Latin-only — `中本` excluded, see phone convention) | ≥90% | 90.3% (28/31) | met |
-| `power` | ≥95% | 87.5% (28/32) | **below target** |
+| `power` | ≥95% | 100% (32/32) | met |
 | `rank` | ≥98% | 78.1% (25/32) | **below target** |
 
-The two below-target fields are not crop-position bugs — both have a
-specific, understood cause (see `test_polar_invasion_emulator_parser.py`'s
-module docstring for the full breakdown and the exact test-floor
-rationale):
+Numbers measured in the CI-equivalent Docker environment (`tracker-ocr-service:latest`
+with the full tessdata language set) — a bare local `.venv` without `tesserocr`
+and the extra language packs measures meaningfully different numbers and
+should not be trusted for these targets.
 
-- **power**: 3 of the 4 misses trace to one avatar (`Madara⁶⁹Uchiha`'s
-  decorative red chain-link frame OCRs as a stray leading `"1"` digit
-  prepended to the real power value) — no other avatar in the set
-  reproduces it. The 4th (`.AL3X.`, `32623004` vs `32623044`) is an
-  unrelated two-digit misread, not yet diagnosed.
+`rank` is not a crop-position bug — it has a specific, understood cause
+(see `test_polar_invasion_emulator_parser.py`'s module docstring for the
+full breakdown and the exact test-floor rationale):
+
 - **rank**: `_RANK_OCR_ORDER` (the threshold/psm sweep in
   `polar_invasion_v1.py`) was tuned on phone-resolution badges; several
   emulator badges that are clearly legible to a human still miss. Needs
   its own resolution-specific re-tuning pass with a larger badge corpus —
   this 4-image set is too small to retune safely without overfitting.
+
+`power` was previously 87.5% (28/32): the primary detection stage (a
+PSM-11 scan of the full row) includes the avatar on this profile, and
+`Madara⁶⁹Uchiha`'s decorative frame was read as a leading `"1"` fused onto
+the value on all 3 of its rows. Fixed by `_Layout.power_narrow_crop_first`
+— the emulator layout now tries the narrow, avatar-excluding
+contrast-normalized crop first. This also resolved a `.AL3X.` power
+misread an earlier version of this README described as a separate,
+undiagnosed miss: it shared the same root cause and did not reproduce once
+measured in the CI-equivalent environment.

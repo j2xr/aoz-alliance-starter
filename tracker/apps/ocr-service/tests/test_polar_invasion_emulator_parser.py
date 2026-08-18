@@ -8,19 +8,21 @@ Unlike test_polar_invasion_parser.py's per-row strict-equality style, the
 member-field assertions here are AGGREGATE accuracy floors, not per-row
 exact matches. Rationale: this profile's crop constants were calibrated
 against only 4 real captures (32 member rows total) in a single tuning
-pass, and several remaining mismatches trace to specific decorative avatar
-art (not a crop-position bug — see inline notes below) rather than a
-systematic error a wider crop could fix. Per-row strict assertions would
-turn this suite red for known, understood, avatar-specific noise instead of
-tracking real regressions.
+pass, and the one remaining below-target field (rank) needs its own
+retuning pass on more data rather than a crop-position fix. Per-row strict
+assertions would turn this suite red for that known, understood gap
+instead of tracking real regressions.
 
 The floors below are set a few points BELOW what this implementation
-currently measures locally (documented per field), both to leave margin
-against Tesseract version drift between environments (see the sibling
-polar_invasion fixtures' README for a documented case of exactly this) and,
-for rank/power, because current accuracy is honestly below the phone
-parser's targets — not papered over by lowering the target, but reported
-as a known gap with its cause:
+currently measures (documented per field, in a CI-equivalent environment —
+see the `tracker-ocr-service:latest` Docker recipe in this repo's session
+notes; a bare `.venv` without tesserocr and the extra language packs
+measures meaningfully different numbers and must not be used to set these
+floors), both to leave margin against Tesseract version drift between
+environments (see the sibling polar_invasion fixtures' README for a
+documented case of exactly this) and, for rank, because current accuracy
+is honestly below the phone parser's target — not papered over by
+lowering the target, but reported as a known gap with its cause:
 
 Measured on these 4 fixtures (32 member rows), vs. the phone parser's own
 targets (see ../polar_invasion/README.md):
@@ -28,14 +30,18 @@ targets (see ../polar_invasion/README.md):
   - header (battlers/rank/points/datetime): 100% (16/16) — meets 100%
   - points: 100% (32/32) — meets >=95%
   - name, Latin-only: 90.3% (28/31) — meets >=90%
-  - power: 87.5% (28/32) — below >=95%. 3 of the 4 misses trace to one
-    avatar (Madara's decorative red chain-link frame OCRs as a stray
-    leading "1" digit prepended to the real power value, e.g. 116927699
-    vs. 16927699) — not reproduced by any other avatar in the fixture set,
-    so not a crop-position issue. The 4th (.AL3X., 32623004 vs 32623044)
-    is a plain two-digit misread unrelated to the avatar pattern and not
-    yet diagnosed — even a full fix for Madara's frame would only reach
-    31/32 (96.9%), not 100%.
+  - power: 100% (32/32) — meets >=95%. Previously 87.5% (28/32): the
+    primary detection stage (a PSM-11 scan of the full row, x=0 up to the
+    points column) includes the avatar on this profile, and
+    `Madara⁶⁹Uchiha`'s decorative frame was read as a leading "1" fused
+    onto the value on all 3 of its rows (e.g. 116927699 vs. 16927699).
+    Fixed by `_Layout.power_narrow_crop_first`: the emulator layout now
+    tries the narrow, avatar-excluding contrast-normalized crop first (see
+    `_detect_power` / `_power_from_normalized_crop` in polar_invasion_v1.py).
+    This also resolved a `.AL3X.` power misread noted in an earlier version
+    of this docstring as a separate, undiagnosed miss — it shared the same
+    root cause and did not reproduce once measured in a CI-equivalent
+    environment.
   - rank: 78.1% (25/32) — below >=98%. `_RANK_OCR_ORDER`'s threshold/psm
     sweep was tuned on phone-resolution badges; several emulator badges
     that are clearly legible to a human still miss. Needs its own
@@ -182,8 +188,9 @@ def test_member_field_accuracy_meets_floor() -> None:
     # Floors are regression guards at today's measured accuracy (with margin
     # for Tesseract version drift across environments), not the aspirational
     # phone-parity targets documented in the module docstring — see there for
-    # the gap and its cause on rank/power.
+    # the gap and its cause on rank (power now meets its phone-parity target,
+    # see aoz-alliance-starter#91's power_narrow_crop_first fix).
     assert name_rate >= 0.85, report
     assert points_rate >= 0.95, report
-    assert power_rate >= 0.80, report
+    assert power_rate >= 0.95, report
     assert rank_rate >= 0.70, report

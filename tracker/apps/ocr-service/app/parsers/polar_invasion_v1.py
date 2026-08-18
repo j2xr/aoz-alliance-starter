@@ -17,6 +17,7 @@ from app.parsers.name_ocr import fix_name_substitutions as _fix_name_substitutio
 from app.parsers.name_ocr import mean_word_conf as _mean_word_conf
 from app.parsers.name_ocr import words_from_data as _words_from_data
 from app.parsers.run_detection import find_runs
+from app.preprocess import UnsupportedAspectRatioError
 from app.tess_engine import Output
 from app.validators import maybe_swap_power_points, parse_number, validate_member
 
@@ -86,6 +87,21 @@ class _Layout:
     power_x: tuple[int, int]  # _detect_power's normalized-contrast crop x-range
     points_x: tuple[int, int]
 
+    # _detect_power tries 3 crops of decreasing width (full-row scan, PSM-8
+    # fixed crop, contrast-normalized crop) and returns the first >=1M value.
+    # False (phone): widest first — the full-row PSM-11 sweep wins there, and
+    # running the narrow normalized crop first regresses 2 of 181 fixture
+    # rows (polar_invasion/20260414T2300_001 row 4 "Yojimbo": the normalized
+    # crop tokenizes 23,324,091 as '23,324,09' + '1', and the first >=1M
+    # token wins, giving 2,332,409; 20260407T1500_005 row 3
+    # "BakersBakedd27": 13,888,203 -> 13,888,208 at conf 41 vs 96). True
+    # (emulator): narrowest first — the full-row sweep spans x=0..points_x[0],
+    # which on this profile includes the avatar, and "Madara⁶⁹Uchiha"'s
+    # decorative frame is read as a leading "1" fused onto the value
+    # (115,806,413 for 15,806,413) on all 3 of its rows in the fixture set.
+    # The normalized power_x crop excludes the avatar and reads correctly.
+    power_narrow_crop_first: bool
+
     # Tight badge crop: inner R-disc only, no avatar overlap.
     rank_badge_x: tuple[int, int]
     rank_badge_y: tuple[int, int]
@@ -116,6 +132,7 @@ _PHONE_LAYOUT = _Layout(
     points_x=(720, 1060),
     rank_badge_x=(38, 90),
     rank_badge_y=(33, 80),
+    power_narrow_crop_first=False,
 )
 
 # Emulator source (400x652, ratio 1.63 — aoz-alliance-starter#91). Measured
@@ -151,6 +168,7 @@ _EMULATOR_LAYOUT = _Layout(
     points_x=(750, 1010),
     rank_badge_x=(78, 158),
     rank_badge_y=(2, 55),
+    power_narrow_crop_first=True,
 )
 
 # Post-preprocess image height that distinguishes the two known profiles:
@@ -170,10 +188,13 @@ def _layout_for_height(h: int) -> _Layout:
 # Header crop x-coordinates for the 2-column layout (Battlers or
 # "Alliance Members" | Alliance Points) used by wasteland_showdown,
 # battle_frenzy, void_war — these screens don't show an alliance ranking.
-# Phone-only: not yet verified against any emulator capture of a 2-column
-# event (only polar_invasion, a 3-column screen, has been observed from that
-# source). Reused unchanged for the emulator profile if this path is ever
-# hit for it — flagged here as an explicit follow-up, not a silent gap.
+# Phone-only, and unlike every other crop constant in this module, has no
+# emulator-profile counterpart: no emulator capture of any 2-column event
+# has ever been checked against ground truth. parse() rejects the emulator
+# profile for these three event codes (see the guard near the top of
+# parse()) specifically so these bands can never be silently applied to it —
+# measured corruption if they were: total_points 5780 read as 57, 4565 as
+# 451 (aoz-alliance-starter#91).
 _BATTLERS_X_2COL = (350, 500)
 _TOTAL_POINTS_X_2COL = (550, 800)
 
@@ -367,6 +388,90 @@ def _strip_trailing_power_digits(name: str) -> tuple[str, bool]:
     return cleaned, True
 
 
+# ── Power detection stages ────────────────────────────────────────────────────
+# Three crops of decreasing width, each tried by _detect_power in an order
+# chosen per layout (see _Layout.power_narrow_crop_first).
+
+
+def _power_from_row_scan(image: np.ndarray, y: int, layout: _Layout) -> int | None:
+    """PSM 11 sparse text on the left portion of the row, up to the points
+    column. Widest crop, most robust when nothing but power ink is in it.
+
+    The points column start is excluded so that events like Ironblood
+    Battlefield (where scores exceed 1 M) don't return a score value instead
+    of the actual power. The power column sits well within that bound on all
+    observed layouts.
+    """
+    h = image.shape[0]
+    row_end = min(y + layout.row_height, h)
+    data = pytesseract.image_to_data(
+        image[y:row_end, : layout.points_x[0]],
+        config="--psm 11 -c tessedit_char_whitelist=0123456789,",
+        output_type=Output.DICT,
+    )
+    for i, t in enumerate(data["text"]):
+        t = t.strip()
+        if not t:
+            continue
+        conf = int(data["conf"][i])
+        if conf < 0:
+            continue
+        val = parse_number(t)
+        if val is not None and val >= 1_000_000:
+            return val
+    return None
+
+
+def _power_from_psm8_crop(image: np.ndarray, y: int, layout: _Layout) -> int | None:
+    """PSM 8 on a fixed crop — left margin widened to catch power numbers
+    whose leading digits start further left on some layouts."""
+    py1 = y + layout.power_fallback_y_off[0]
+    py2 = y + layout.power_fallback_y_off[1]
+    fx0, fx1 = layout.power_fallback_x
+    data = pytesseract.image_to_data(
+        image[py1:py2, fx0:fx1],
+        config="--psm 8 -c tessedit_char_whitelist=0123456789,",
+        output_type=Output.DICT,
+    )
+    val = parse_number(_words_from_data(data, min_conf=0))
+    if val is not None and val >= 1_000_000:
+        return val
+    return None
+
+
+def _power_from_normalized_crop(image: np.ndarray, y: int, layout: _Layout) -> int | None:
+    """Contrast-normalized PSM 11 on layout.power_x — coloured power text
+    (e.g. green R3) appears as medium gray (~121) after the standard
+    grayscale+inversion preprocess — same root cause as the name detection
+    failure for the same row. Stretching the power crop to [0, 255] makes
+    the digits legible. layout.power_x skips the avatar and the masked
+    sword-icon area, both of which would corrupt normalization — this is
+    also the narrowest of the 3 crops, which is why it's promoted first on
+    layouts where the avatar bleeds into the wider row-scan crop instead.
+    """
+    py1 = y + layout.power_fallback_y_off[0]
+    py2 = y + layout.power_fallback_y_off[1]
+    power_crop = image[py1:py2, layout.power_x[0] : layout.power_x[1]]
+    if power_crop.size == 0:
+        return None
+    norm_power = cv2.normalize(power_crop, None, 0, 255, cv2.NORM_MINMAX)  # type: ignore[call-overload]
+    data = pytesseract.image_to_data(
+        norm_power,
+        config="--psm 11 -c tessedit_char_whitelist=0123456789,",
+        output_type=Output.DICT,
+    )
+    for i, t in enumerate(data["text"]):
+        t = t.strip()
+        if not t:
+            continue
+        if int(data["conf"][i]) < 0:
+            continue
+        nval = parse_number(t)
+        if nval is not None and nval >= 1_000_000:
+            return nval
+    return None
+
+
 class PolarInvasionV1Parser(BaseParser):
     member_list_top: int = MEMBER_LIST_TOP
     row_height: int = ROW_HEIGHT
@@ -379,6 +484,26 @@ class PolarInvasionV1Parser(BaseParser):
     ) -> ParseResult:
         h = image.shape[0]
         layout = _layout_for_height(h)
+
+        # The 2-column header (_BATTLERS_X_2COL/_TOTAL_POINTS_X_2COL below)
+        # has no emulator-profile equivalent — it's phone-only, unlike the
+        # rest of `layout`, which is fully profile-aware. Applying it to an
+        # emulator image mixes an emulator y-band with phone x-bands and
+        # produces plausible-looking but silently wrong totals (measured:
+        # total_points 5780 read as 57, 4565 as 451 — see aoz-alliance-starter#91).
+        # event_code=None (dev-tools/tests calling parse() directly, never
+        # production — extract.py always supplies a code via REGISTRY) is
+        # deliberately left ungated: its 3-column heuristic happens to
+        # succeed on every known emulator fixture, and gating it would break
+        # existing direct calls with no equivalent production risk to close.
+        if layout is _EMULATOR_LAYOUT and event_code in _TWO_COL_EVENTS:
+            raise UnsupportedAspectRatioError(
+                f"event_code={event_code!r} uses the 2-column header layout, which has "
+                "no verified emulator-profile crop positions (only polar_invasion / "
+                "elite_wars / ironblood_battlefield share polar_invasion's calibrated "
+                f"3-column geometry) — refusing to parse a 1080x{h} image with "
+                "phone-only header bands"
+            )
 
         dt, battlers, alliance_rank, total_points = self._parse_header(image, event_code, layout)
         event_datetime = _paris_isoformat(dt) if dt else None
@@ -772,9 +897,15 @@ class PolarInvasionV1Parser(BaseParser):
                     x1=layout.rank_badge_x[0],
                     x2=layout.rank_badge_x[1],
                 ),
-                # Power: record the primary PSM-11 sweep region (full-row strip
-                # left of the points column). The sword-icon mask is applied to
-                # this strip before OCR; the trace box is the pre-mask extent.
+                # Power: record the widest region any _detect_power stage
+                # scans (the full-row strip left of the points column, see
+                # _power_from_row_scan) — this is the primary stage on the
+                # phone layout, but the last-resort one on the emulator
+                # layout (layout.power_narrow_crop_first), so this box is a
+                # superset for visual debugging, not necessarily what
+                # actually decided the value. The sword-icon mask is applied
+                # to this strip before OCR; the trace box is the pre-mask
+                # extent.
                 power=FieldBox(y1=y, y2=y + row_h, x1=0, x2=layout.points_x[0]),
                 points=FieldBox(y1=y, y2=y + row_h, x1=layout.points_x[0], x2=layout.points_x[1]),
             )
@@ -793,68 +924,22 @@ class PolarInvasionV1Parser(BaseParser):
     # ── Power detection ───────────────────────────────────────────────────────
 
     def _detect_power(self, image: np.ndarray, y: int, layout: _Layout) -> int | None:
-        """Detect power using PSM 11 full-row scan, with PSM 8 fallback."""
-        h = image.shape[0]
-        row_end = min(y + layout.row_height, h)
-
-        # Primary: PSM 11 sparse text on the left portion of the row only.
-        # The points column start is excluded so that events like Ironblood
-        # Battlefield (where scores exceed 1 M) don't return a score value
-        # instead of the actual power. The power column sits well within
-        # that bound on all observed layouts.
-        data = pytesseract.image_to_data(
-            image[y:row_end, : layout.points_x[0]],
-            config="--psm 11 -c tessedit_char_whitelist=0123456789,",
-            output_type=Output.DICT,
+        """Detect power by trying 3 crops of decreasing width, in an order
+        chosen per layout (see layout.power_narrow_crop_first): the widest
+        crop is the most robust when it's clean, but on a layout where it
+        can pick up non-power ink (e.g. an avatar bleeding into the sweep),
+        the narrowest crop that excludes that ink is tried first instead.
+        Returns the first stage's value, or None if all three come up empty.
+        """
+        stages = (
+            (_power_from_normalized_crop, _power_from_psm8_crop, _power_from_row_scan)
+            if layout.power_narrow_crop_first
+            else (_power_from_row_scan, _power_from_psm8_crop, _power_from_normalized_crop)
         )
-        for i, t in enumerate(data["text"]):
-            t = t.strip()
-            if not t:
-                continue
-            conf = int(data["conf"][i])
-            if conf < 0:
-                continue
-            val = parse_number(t)
-            if val is not None and val >= 1_000_000:
+        for stage in stages:
+            val = stage(image, y, layout)
+            if val is not None:
                 return val
-
-        # Fallback: PSM 8 on fixed crop — left margin widened to catch power
-        # numbers whose leading digits start further left on some layouts.
-        py1 = y + layout.power_fallback_y_off[0]
-        py2 = y + layout.power_fallback_y_off[1]
-        fx0, fx1 = layout.power_fallback_x
-        data = pytesseract.image_to_data(
-            image[py1:py2, fx0:fx1],
-            config="--psm 8 -c tessedit_char_whitelist=0123456789,",
-            output_type=Output.DICT,
-        )
-        val = parse_number(_words_from_data(data, min_conf=0))
-        if val is not None and val >= 1_000_000:
-            return val
-
-        # Normalized fallback: coloured power text (e.g. green R3) appears as medium
-        # gray (~121) after the standard grayscale+inversion preprocess — same root
-        # cause as the name detection failure for the same row. Stretching the power
-        # crop to [0, 255] makes the digits legible. Use layout.power_x to skip the
-        # avatar and the masked sword-icon area, both of which would corrupt
-        # normalization.
-        power_crop = image[py1:py2, layout.power_x[0] : layout.power_x[1]]
-        if power_crop.size > 0:
-            norm_power = cv2.normalize(power_crop, None, 0, 255, cv2.NORM_MINMAX)  # type: ignore[call-overload]
-            data = pytesseract.image_to_data(
-                norm_power,
-                config="--psm 11 -c tessedit_char_whitelist=0123456789,",
-                output_type=Output.DICT,
-            )
-            for i, t in enumerate(data["text"]):
-                t = t.strip()
-                if not t:
-                    continue
-                if int(data["conf"][i]) < 0:
-                    continue
-                nval = parse_number(t)
-                if nval is not None and nval >= 1_000_000:
-                    return nval
         return None
 
     # ── Rank detection ────────────────────────────────────────────────────────
