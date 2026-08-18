@@ -19,20 +19,12 @@ import cv2
 
 from app.parsers.polar_invasion_v1 import (
     _MAX_ROWS,
-    _PHONE_LAYOUT,
     _RANK_CROPS,
     CANONICAL_HEIGHT,
     PolarInvasionV1Parser,
+    _layout_for_image,
 )
 from app.preprocess import preprocess
-
-_NAME_X = _PHONE_LAYOUT.name_x
-_NAME_Y_OFF = _PHONE_LAYOUT.name_y_off
-_NAME_Y_OFF_WIDE = _PHONE_LAYOUT.name_y_off_wide
-_POINTS_X = _PHONE_LAYOUT.points_x
-_POWER_X = _PHONE_LAYOUT.power_x
-_POWER_Y_OFF = _PHONE_LAYOUT.power_y_off
-_ROW_HEIGHT = _PHONE_LAYOUT.row_height
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "polar_invasion"
 OUT_DIR = Path("/tmp")
@@ -44,9 +36,15 @@ def annotate(image_path: Path) -> Path:
     h, w = gray.shape[:2]
     scale = h / CANONICAL_HEIGHT
 
+    # Resolved per image rather than hardwired to _PHONE_LAYOUT, so this tool
+    # draws the right crop rectangles if ever pointed at the emulator
+    # fixtures (tests/fixtures/polar_invasion_emulator/) instead of just the
+    # phone ones FIXTURES_DIR defaults to.
+    layout = _layout_for_image(gray)
+
     parser = PolarInvasionV1Parser()
-    list_top = parser._detect_list_top(gray, _PHONE_LAYOUT)
-    row_h = _ROW_HEIGHT
+    list_top = parser._detect_list_top(gray, layout)
+    row_h = layout.row_height
 
     # Convert to BGR for drawing
     vis = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -73,23 +71,31 @@ def annotate(image_path: Path) -> Path:
         cv2.putText(vis, f"row {i}", (5, y + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         # NAME (red)
-        ny1 = y + _NAME_Y_OFF[0]
-        ny2 = y + _NAME_Y_OFF[1]
-        cv2.rectangle(vis, (_NAME_X[0], ny1), (_NAME_X[1], ny2), (0, 0, 255), 2)
+        ny1 = y + layout.name_y_off[0]
+        ny2 = y + layout.name_y_off[1]
+        cv2.rectangle(vis, (layout.name_x[0], ny1), (layout.name_x[1], ny2), (0, 0, 255), 2)
 
         # NAME_WIDE fallback (orange)
-        nyw1 = y + _NAME_Y_OFF_WIDE[0]
-        nyw2 = y + _NAME_Y_OFF_WIDE[1]
-        cv2.rectangle(vis, (_NAME_X[0] + 2, nyw1), (_NAME_X[1] - 2, nyw2), (0, 128, 255), 1)
+        nyw1 = y + layout.name_y_off_wide[0]
+        nyw2 = y + layout.name_y_off_wide[1]
+        cv2.rectangle(
+            vis, (layout.name_x[0] + 2, nyw1), (layout.name_x[1] - 2, nyw2), (0, 128, 255), 1
+        )
 
-        # POWER (blue) — y range shown uses the "fallback" constants 85..175
-        # but primary power detection scans the full row. Draw the typical power zone.
-        py1 = y + _POWER_Y_OFF[0]
-        py2 = y + _POWER_Y_OFF[1]
-        cv2.rectangle(vis, (_POWER_X[0], py1), (_POWER_X[1], py2), (255, 0, 0), 2)
+        # POWER (blue) — y range shown uses the "fallback" constants but
+        # primary power detection scans the full row. Draw the typical power zone.
+        py1 = y + layout.power_y_off[0]
+        py2 = y + layout.power_y_off[1]
+        cv2.rectangle(vis, (layout.power_x[0], py1), (layout.power_x[1], py2), (255, 0, 0), 2)
 
         # POINTS (green) — full row y, specific x
-        cv2.rectangle(vis, (_POINTS_X[0], y), (_POINTS_X[1], min(y + row_h, h - 1)), (0, 200, 0), 2)
+        cv2.rectangle(
+            vis,
+            (layout.points_x[0], y),
+            (layout.points_x[1], min(y + row_h, h - 1)),
+            (0, 200, 0),
+            2,
+        )
 
         # RANK (yellow) — primary crop only
         yo1, yo2, xo1, xo2 = _RANK_CROPS[0]

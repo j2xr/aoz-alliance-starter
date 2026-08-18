@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import cv2
@@ -17,9 +18,14 @@ from app.parsers.name_ocr import fix_name_substitutions as _fix_name_substitutio
 from app.parsers.name_ocr import mean_word_conf as _mean_word_conf
 from app.parsers.name_ocr import words_from_data as _words_from_data
 from app.parsers.run_detection import find_runs
-from app.preprocess import UnsupportedAspectRatioError
+from app.preprocess import (
+    EMULATOR_PROFILE,
+    PHONE_PROFILE,
+    UnsupportedAspectRatioError,
+    detect_layout_profile,
+)
 from app.tess_engine import Output
-from app.validators import maybe_swap_power_points, parse_number, validate_member
+from app.validators import MIN_POWER, maybe_swap_power_points, parse_number, validate_member
 
 from .sword_icon_utils import mask_sword_icon
 
@@ -34,7 +40,7 @@ logger = logging.getLogger(__name__)
 # (aoz-alliance-starter#91), whose UI chrome has different proportions
 # entirely — not just "less screen". `_Layout` bundles one profile's worth
 # of crop constants; `parse()` selects which one applies per image (see
-# `_layout_for_height`) rather than assuming a single fixed layout.
+# `_layout_for_image`) rather than assuming a single fixed layout.
 
 CANONICAL_HEIGHT = 2400
 
@@ -72,10 +78,18 @@ class _Layout:
     # the emulator layout's header/stats band produces a coincidental bright
     # run at the scan's start offset that satisfies the pitch check by pure
     # chance, landing list_top inside the header instead of the member list.
+    #
+    # The 3 fields below are only meaningful when use_dynamic_list_top=True —
+    # they're Optional (None when the scan is off) rather than always
+    # populated, specifically so a layout with the scan disabled can't carry
+    # unmeasured values that read as measured. _detect_list_top asserts them
+    # non-None before use, so turning the scan on for a layout without real
+    # numbers here fails loudly instead of scanning a band calibrated for a
+    # different profile's UI chrome.
     use_dynamic_list_top: bool
-    list_top_edge_x: tuple[int, int]
-    list_top_search_start: int
-    row_gap_pitch: tuple[int, int]
+    list_top_edge_x: tuple[int, int] | None
+    list_top_search_start: int | None
+    row_gap_pitch: tuple[int, int] | None
 
     # Column crops within each row (y-offsets relative to row top, x absolute)
     name_y_off: tuple[int, int]  # primary crop
@@ -143,8 +157,9 @@ _PHONE_LAYOUT = _Layout(
 # fixtures under tests/fixtures/polar_invasion_emulator/ and its README for
 # the ground truth these were calibrated against). Not a uniform rescale of
 # the phone layout — this source's UI chrome has different proportions, so
-# every value was measured independently rather than derived by scaling
-# _PHONE_LAYOUT.
+# every field actually in use was measured independently rather than derived
+# by scaling _PHONE_LAYOUT (the 3 dynamic-list-top fields below are the
+# exception — they're unused here and deliberately None, see _Layout).
 _EMULATOR_LAYOUT = _Layout(
     date_y=(130, 185),
     stats_y=(260, 310),
@@ -155,9 +170,13 @@ _EMULATOR_LAYOUT = _Layout(
     member_list_top=399,
     row_height=164,
     use_dynamic_list_top=False,
-    list_top_edge_x=(970, 1070),
-    list_top_search_start=380,
-    row_gap_pitch=(159, 169),
+    # Never read while use_dynamic_list_top=False (see _detect_list_top).
+    # No real emulator measurement exists for a row-separator scan on this
+    # profile — deliberately None rather than phone's values, so enabling
+    # this scan here later can't silently run on unmeasured phone bands.
+    list_top_edge_x=None,
+    list_top_search_start=None,
+    row_gap_pitch=None,
     name_y_off=(28, 60),
     name_y_off_wide=(25, 85),
     name_x=(245, 730),
@@ -171,18 +190,19 @@ _EMULATOR_LAYOUT = _Layout(
     power_narrow_crop_first=True,
 )
 
-# Post-preprocess image height that distinguishes the two known profiles:
-# preprocess() only accepts ratios that resolve to phone (h >= 1920 at
-# TARGET_WIDTH=1080) or emulator (h ~= 1760, since that source's native
-# resolution is fixed) — see app.preprocess.detect_layout_profile. Any image
-# reaching parse() has already been gated into one of these two bands, so a
-# single height cutoff between them (1760 and 1920 leave a wide margin)
-# unambiguously identifies which layout produced it.
-_EMULATOR_MAX_HEIGHT = 1850
+# Which _Layout backs each known profile. Single source of truth for the
+# profile <-> layout mapping: `app.preprocess.detect_layout_profile` is the
+# only place that classifies an image by aspect ratio/height, so this module
+# must ask it rather than re-derive its own height cutoff — a second,
+# independently-maintained cutoff here would silently drift out of sync with
+# preprocess.py's actual bands (e.g. a third profile added there would fall
+# through this module's binary choice unnoticed).
+_LAYOUT_BY_PROFILE = {PHONE_PROFILE: _PHONE_LAYOUT, EMULATOR_PROFILE: _EMULATOR_LAYOUT}
 
 
-def _layout_for_height(h: int) -> _Layout:
-    return _EMULATOR_LAYOUT if h < _EMULATOR_MAX_HEIGHT else _PHONE_LAYOUT
+def _layout_for_image(image: np.ndarray) -> _Layout:
+    h, w = image.shape[:2]
+    return _LAYOUT_BY_PROFILE[detect_layout_profile(w, h)]
 
 
 # Header crop x-coordinates for the 2-column layout (Battlers or
@@ -393,6 +413,25 @@ def _strip_trailing_power_digits(name: str) -> tuple[str, bool]:
 # chosen per layout (see _Layout.power_narrow_crop_first).
 
 
+def _first_number_at_least(data: dict[str, list[Any]], floor: int) -> int | None:
+    """Return the first token in a pytesseract image_to_data dict that parses
+    to a number >= floor (skipping empty text and negative-confidence
+    tokens), or None if none qualifies. Shared by the two stages below that
+    scan every token looking for a plausible power value — _power_from_psm8_crop
+    doesn't use this: it joins the crop's words into one string and parses
+    once, a different algorithm, not the same duplication."""
+    for i, t in enumerate(data["text"]):
+        t = t.strip()
+        if not t:
+            continue
+        if int(data["conf"][i]) < 0:
+            continue
+        val = parse_number(t)
+        if val is not None and val >= floor:
+            return val
+    return None
+
+
 def _power_from_row_scan(image: np.ndarray, y: int, layout: _Layout) -> int | None:
     """PSM 11 sparse text on the left portion of the row, up to the points
     column. Widest crop, most robust when nothing but power ink is in it.
@@ -409,17 +448,7 @@ def _power_from_row_scan(image: np.ndarray, y: int, layout: _Layout) -> int | No
         config="--psm 11 -c tessedit_char_whitelist=0123456789,",
         output_type=Output.DICT,
     )
-    for i, t in enumerate(data["text"]):
-        t = t.strip()
-        if not t:
-            continue
-        conf = int(data["conf"][i])
-        if conf < 0:
-            continue
-        val = parse_number(t)
-        if val is not None and val >= 1_000_000:
-            return val
-    return None
+    return _first_number_at_least(data, MIN_POWER)
 
 
 def _power_from_psm8_crop(image: np.ndarray, y: int, layout: _Layout) -> int | None:
@@ -434,7 +463,7 @@ def _power_from_psm8_crop(image: np.ndarray, y: int, layout: _Layout) -> int | N
         output_type=Output.DICT,
     )
     val = parse_number(_words_from_data(data, min_conf=0))
-    if val is not None and val >= 1_000_000:
+    if val is not None and val >= MIN_POWER:
         return val
     return None
 
@@ -460,16 +489,7 @@ def _power_from_normalized_crop(image: np.ndarray, y: int, layout: _Layout) -> i
         config="--psm 11 -c tessedit_char_whitelist=0123456789,",
         output_type=Output.DICT,
     )
-    for i, t in enumerate(data["text"]):
-        t = t.strip()
-        if not t:
-            continue
-        if int(data["conf"][i]) < 0:
-            continue
-        nval = parse_number(t)
-        if nval is not None and nval >= 1_000_000:
-            return nval
-    return None
+    return _first_number_at_least(data, MIN_POWER)
 
 
 class PolarInvasionV1Parser(BaseParser):
@@ -483,7 +503,7 @@ class PolarInvasionV1Parser(BaseParser):
         event_code: str | None = None,
     ) -> ParseResult:
         h = image.shape[0]
-        layout = _layout_for_height(h)
+        layout = _layout_for_image(image)
 
         # The 2-column header (_BATTLERS_X_2COL/_TOTAL_POINTS_X_2COL below)
         # has no emulator-profile equivalent — it's phone-only, unlike the
@@ -598,6 +618,17 @@ class PolarInvasionV1Parser(BaseParser):
         """
         if not layout.use_dynamic_list_top:
             return layout.member_list_top
+
+        # These 3 fields are None on any layout with use_dynamic_list_top
+        # False — reaching here with one unset means a layout turned the
+        # scan on without ever measuring a real row-separator band for its
+        # own UI chrome (see _Layout's docstring). Fail loudly rather than
+        # scan whatever band happens to be left over from another profile.
+        assert layout.list_top_edge_x is not None, "use_dynamic_list_top=True needs list_top_edge_x"
+        assert layout.list_top_search_start is not None, (
+            "use_dynamic_list_top=True needs list_top_search_start"
+        )
+        assert layout.row_gap_pitch is not None, "use_dynamic_list_top=True needs row_gap_pitch"
 
         h = int(image.shape[0])
 
