@@ -26,6 +26,7 @@ import { capDiscordContent } from '../lib/discord-limits.js';
 const OCR_ROUTING_MESSAGES: OcrRoutingMessages = {
   screenUnrecognized: messages.screenUnrecognized,
   ocrError: messages.ocrError,
+  unsupportedAspectRatio: messages.unsupportedAspectRatio,
   databaseError: (filename) => messages.databaseError(filename),
   unknownEventType: messages.unknownEventType,
   missingDatetime: messages.missingDatetime,

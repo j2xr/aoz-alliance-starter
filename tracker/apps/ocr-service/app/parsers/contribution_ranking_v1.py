@@ -206,10 +206,6 @@ _HONOR_Y_OFF = (40, 130)
 # succeeds.
 _Y_OFF_FALLBACK_MARGIN = 40
 
-# Public aliases consumed by extract.py for LLM-fallback row slicing.
-MEMBER_LIST_TOP = _MEMBER_LIST_TOP
-ROW_HEIGHT = _ROW_HEIGHT
-
 # "(SOD) jeinsolaya" → tag="SOD", name="jeinsolaya"
 # Tag is 1..5 alphanumerics inside parentheses, optionally followed by spaces.
 # Unanchored search (not match) over a bounded prefix window, rather than a
@@ -371,8 +367,11 @@ def tab_zone_stats(image: np.ndarray) -> tuple[list[float], float, int] | None:
 class ContributionRankingV1Parser(BaseParser):
     """Parser for the weekly Alliance Honor leaderboard (V1)."""
 
-    member_list_top: int = MEMBER_LIST_TOP
-    row_height: int = ROW_HEIGHT
+    # No member_list_top / row_height class attributes: this parser scales
+    # every crop by h/CANONICAL_HEIGHT, so canonical constants never match a
+    # real image's bands. extract.py used to read them as a fallback row band;
+    # it now skips the LLM re-read instead of cropping at a guessed position
+    # (see _apply_llm_fallback).
 
     def parse(
         self,

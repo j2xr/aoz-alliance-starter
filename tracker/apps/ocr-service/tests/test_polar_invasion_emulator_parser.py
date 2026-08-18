@@ -35,9 +35,14 @@ targets (see ../polar_invasion/README.md):
     points column) includes the avatar on this profile, and
     `Madara⁶⁹Uchiha`'s decorative frame was read as a leading "1" fused
     onto the value on all 3 of its rows (e.g. 116927699 vs. 16927699).
-    Fixed by `_Layout.power_narrow_crop_first`: the emulator layout now
-    tries the narrow, avatar-excluding contrast-normalized crop first (see
-    `_detect_power` / `_power_from_normalized_crop` in polar_invasion_v1.py).
+    Fixed by `_Layout.power_stages`, which lists per profile which
+    detection stages run at all: the emulator layout lists only the narrow,
+    avatar-excluding contrast-normalized crop, which reads all 32 rows on
+    its own. The full-row sweep is omitted rather than demoted (as a
+    fallback it would still corrupt those rows), and the PSM-8 stage is
+    omitted because it returned 0 correct values out of 32 at every x-band
+    tried while producing two plausible-but-wrong values above MIN_POWER.
+    See the field's docstring in polar_invasion_v1.py for the measurements.
     This also resolved a `.AL3X.` power misread noted in an earlier version
     of this docstring as a separate, undiagnosed miss — it shared the same
     root cause and did not reproduce once measured in a CI-equivalent
@@ -63,12 +68,20 @@ from pathlib import Path
 
 import pytest
 
+from app.dispatcher import detect_screen_kind
 from app.parsers.base import MemberResult
 from app.parsers.polar_invasion_v1 import PolarInvasionV1Parser
 from app.preprocess import UnsupportedAspectRatioError, preprocess_image
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "polar_invasion_emulator"
 _parser = PolarInvasionV1Parser()
+
+# Production always supplies an event code (extract.py resolves it via
+# REGISTRY), which selects _parse_header's deterministic 3-column branch.
+# Calling parse() without one takes a heuristic fallback branch that only
+# exists for direct dev-tool/test calls, so measuring the accuracy floors
+# through it would grade a path production never runs.
+_EVENT_CODE = "polar_invasion"
 
 # Names outside the Latin-alphabet accuracy floor (see module docstring).
 _NON_LATIN_NAMES = {"中本"}
@@ -108,7 +121,7 @@ def test_header_matches_fixture(fixture_path: Path) -> None:
         pytest.skip(f"Image not found: {image_path}")
 
     image = preprocess_image(str(image_path))
-    result = _parser.parse(image)
+    result = _parser.parse(image, event_code=_EVENT_CODE)
 
     assert result.event_type == expected["event_type"]
     exp_dt = expected.get("event_datetime", "")
@@ -140,7 +153,7 @@ def test_member_field_accuracy_meets_floor() -> None:
             continue
 
         image = preprocess_image(str(image_path))
-        result = _parser.parse(image)
+        result = _parser.parse(image, event_code=_EVENT_CODE)
         got_members: list[MemberResult] = result.members
         want_members = expected["members"]
 
@@ -189,8 +202,55 @@ def test_member_field_accuracy_meets_floor() -> None:
     # for Tesseract version drift across environments), not the aspirational
     # phone-parity targets documented in the module docstring — see there for
     # the gap and its cause on rank (power now meets its phone-parity target,
-    # see aoz-alliance-starter#91's power_narrow_crop_first fix).
+    # see aoz-alliance-starter#91's power_stages fix).
     assert name_rate >= 0.85, report
     assert points_rate >= 0.95, report
     assert power_rate >= 0.95, report
     assert rank_rate >= 0.70, report
+
+
+@pytest.mark.parametrize("fixture_path", _load_fixtures(), ids=lambda p: p.stem)
+def test_dispatcher_routes_emulator_captures_to_this_parser(fixture_path: Path) -> None:
+    """End-to-end guard on the step production reaches before the parser.
+
+    dispatcher._ocr_header reads image[:HEADER_HEIGHT] with HEADER_HEIGHT=200,
+    a constant tuned on 1080x2400 phone captures — and this profile's UI chrome
+    has different proportions, not just less screen. Nothing else in this file
+    exercises it: every other test calls _parser.parse() directly, so a header
+    band that stopped covering the emulator event title would leave the whole
+    feature dead in production (every upload rejected as unknown_event) with a
+    fully green suite.
+    """
+    with fixture_path.open(encoding="utf-8") as fh:
+        expected = json.load(fh)
+    image = preprocess_image(str(FIXTURES_DIR / expected["source_file"]))
+
+    assert detect_screen_kind(image) == ("event", _EVENT_CODE)
+
+
+@pytest.mark.parametrize("fixture_path", _load_fixtures(), ids=lambda p: p.stem)
+def test_header_heuristic_agrees_with_the_production_branch(fixture_path: Path) -> None:
+    """parse() without an event code must not silently diverge from production.
+
+    The no-code path takes _parse_header's heuristic branch, which has extra
+    plausibility gates and — when they fail — refuses the phone-only 2-column
+    bands rather than applying them to this profile. Dev tools and ad-hoc
+    debugging still use that path, so it is worth pinning that it reads the
+    same header as the code-supplied branch on every fixture.
+    """
+    with fixture_path.open(encoding="utf-8") as fh:
+        expected = json.load(fh)
+    image = preprocess_image(str(FIXTURES_DIR / expected["source_file"]))
+
+    heuristic = _parser.parse(image)
+    production = _parser.parse(image, event_code=_EVENT_CODE)
+
+    assert (
+        heuristic.total_battlers,
+        heuristic.alliance_rank,
+        heuristic.total_points,
+    ) == (
+        production.total_battlers,
+        production.alliance_rank,
+        production.total_points,
+    )

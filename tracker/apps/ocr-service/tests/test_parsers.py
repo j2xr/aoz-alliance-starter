@@ -12,6 +12,7 @@ from app.parsers.polar_invasion_v1 import (
     PolarInvasionV1Parser,
     _clean_rank,
     _parse_datetime,
+    _power_from_psm8_crop,
 )
 from app.preprocess import UnsupportedAspectRatioError
 
@@ -264,38 +265,82 @@ def test_fallback_header_rejects_implausible_rank() -> None:
 # ── Power detection crop order (aoz-alliance-starter#91) ─────────────────────
 
 
-def test_detect_power_prefers_narrow_crop_on_emulator_layout() -> None:
-    """_detect_power's crop order is controlled by layout.power_narrow_crop_first:
-    the emulator layout tries the narrow, avatar-excluding power_x crop
-    first, while the phone layout still tries the wide full-row scan first
-    (see the _Layout field's docstring for the measured regressions on
-    either layout getting the other's order unconditionally). Crops are told
-    apart by width alone -- the PSM-8 fallback crop's width never matches
-    any branch below, so it returns no words, matching measured reality
-    (that stage is inert on both layouts here)."""
+def _power_crop_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+    """image_to_data stand-in that answers by crop width, i.e. by stage.
+
+    Each layout's stages produce a distinct crop width, so the width alone
+    identifies which stage asked. The wrong-value branches below are the
+    measured misreads each layout's stage list exists to avoid.
+    """
+    width = crop.shape[1]
+    if width == _EMULATOR_LAYOUT.points_x[0]:
+        # Emulator "row_scan": wrong value (avatar ink bleeding into the sweep).
+        return _ocr_data("999999999", conf=90)
+    if width == _EMULATOR_LAYOUT.power_x[1] - _EMULATOR_LAYOUT.power_x[0]:
+        return _ocr_data("15,806,413", conf=90)
+    if width == _PHONE_LAYOUT.points_x[0]:
+        return _ocr_data("23,324,091", conf=96)
+    if width == _PHONE_LAYOUT.power_x[1] - _PHONE_LAYOUT.power_x[0]:
+        # Phone "normalized": wrong value, must never be reached.
+        return _ocr_data("2,332,409", conf=89)
+    return _ocr_data("", conf=-1)
+
+
+def test_detect_power_uses_each_layouts_own_stage_list() -> None:
+    """Each layout runs the stages in layout.power_stages, in that order.
+
+    Emulator lists only "normalized" (the narrow, avatar-excluding crop);
+    phone lists all three widest-first. See the _Layout field's docstring for
+    the measured regressions behind either list. The PSM-8 stage's crop width
+    matches no branch of the stand-in, so it contributes nothing -- matching
+    measured reality (inert on phone, not listed at all on emulator).
+    """
     image = np.zeros((300, 1080), dtype=np.uint8)
     parser = PolarInvasionV1Parser()
 
-    def data_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
-        width = crop.shape[1]
-        if width == _EMULATOR_LAYOUT.points_x[0]:
-            # Emulator full-row scan: wrong value (avatar ink bleeding in).
-            return _ocr_data("999999999", conf=90)
-        if width == _EMULATOR_LAYOUT.power_x[1] - _EMULATOR_LAYOUT.power_x[0]:
-            return _ocr_data("15,806,413", conf=90)
-        if width == _PHONE_LAYOUT.points_x[0]:
-            return _ocr_data("23,324,091", conf=96)
-        if width == _PHONE_LAYOUT.power_x[1] - _PHONE_LAYOUT.power_x[0]:
-            # Phone narrow crop: wrong value, must never be reached.
-            return _ocr_data("2,332,409", conf=89)
-        return _ocr_data("", conf=-1)
-
-    with patch(_OCR_DATA, side_effect=data_side_effect):
+    with patch(_OCR_DATA, side_effect=_power_crop_side_effect):
         emulator_power = parser._detect_power(image, 0, _EMULATOR_LAYOUT)
         phone_power = parser._detect_power(image, 0, _PHONE_LAYOUT)
 
     assert emulator_power == 15_806_413
     assert phone_power == 23_324_091
+
+
+def test_detect_power_returns_none_rather_than_an_unlisted_stages_value() -> None:
+    """An unlisted stage never runs, even as a last resort.
+
+    "row_scan" is absent from the emulator's power_stages because the only
+    thing it is measured to do on that profile is fuse the avatar frame into
+    the value. With the one listed stage yielding nothing, _detect_power must
+    return None -- the row is then dropped and counted by parse()'s
+    possible_truncation warning, rather than filled with row_scan's 999999999
+    (which clears MIN_POWER and would sail through validate_member).
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+    narrow = _EMULATOR_LAYOUT.power_x[1] - _EMULATOR_LAYOUT.power_x[0]
+
+    def side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+        if crop.shape[1] == narrow:
+            return _ocr_data("", conf=-1)  # the listed stage reads nothing
+        return _power_crop_side_effect(crop, config, output_type)
+
+    with patch(_OCR_DATA, side_effect=side_effect):
+        assert parser._detect_power(image, 0, _EMULATOR_LAYOUT) is None
+
+
+def test_psm8_stage_refuses_a_layout_with_no_measured_x_band() -> None:
+    """Listing "psm8" without measuring power_fallback_x must fail loudly.
+
+    The emulator layout carries power_fallback_x=None precisely because no
+    x-band was ever measured for that stage there; calling the stage anyway
+    (a future layout listing it by copy-paste) has to raise rather than crop
+    at whatever band another profile happened to use.
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="power_fallback_x"):
+        _power_from_psm8_crop(image, 0, _EMULATOR_LAYOUT)
 
 
 # ── Layout profile guard (aoz-alliance-starter#91) ────────────────────────────

@@ -81,12 +81,29 @@ full breakdown and the exact test-floor rationale):
   its own resolution-specific re-tuning pass with a larger badge corpus —
   this 4-image set is too small to retune safely without overfitting.
 
-`power` was previously 87.5% (28/32): the primary detection stage (a
-PSM-11 scan of the full row) includes the avatar on this profile, and
+`power` was previously 87.5% (28/32): the widest detection stage (a PSM-11
+scan of the full row) includes the avatar on this profile, and
 `Madara⁶⁹Uchiha`'s decorative frame was read as a leading `"1"` fused onto
-the value on all 3 of its rows. Fixed by `_Layout.power_narrow_crop_first`
-— the emulator layout now tries the narrow, avatar-excluding
-contrast-normalized crop first. This also resolved a `.AL3X.` power
+the value on all 3 of its rows. This also accounted for a `.AL3X.` power
 misread an earlier version of this README described as a separate,
-undiagnosed miss: it shared the same root cause and did not reproduce once
-measured in the CI-equivalent environment.
+undiagnosed miss: same root cause, and it did not reproduce once measured
+in the CI-equivalent environment.
+
+Fixed via `_Layout.power_stages`, which lists per profile *which* detection
+stages run rather than only their order. The emulator layout lists exactly
+one, the narrow, avatar-excluding contrast-normalized crop, and that stage
+alone reads all 32 rows correctly. The two omissions are measured, not
+stylistic:
+
+- **`row_scan`** (full-row PSM-11 sweep) is the stage that produced the
+  `Madara⁶⁹Uchiha` corruption above. Kept as a last-resort fallback it would
+  still corrupt those rows whenever the first stage came up empty, so it is
+  not listed at all — a dropped row is visible (`possible_truncation`),
+  a plausible wrong value is not.
+- **`psm8`** (fixed crop, PSM 8) returned **0 correct values out of 32** at
+  its own x-band and at three narrower candidates. At `(160, 650)` it
+  produced `18,200,959` and `1,980,082` — both above `MIN_POWER`, so both
+  would have passed `validate_member`. It has no measured value on this
+  profile at any band, only a measured failure mode. `_EMULATOR_LAYOUT`
+  therefore also carries `power_fallback_x=None`, and the stage raises if a
+  future layout lists it without measuring a real band first.

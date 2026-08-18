@@ -17,6 +17,7 @@ import { messages } from './messages.js';
 const MESSAGES: OcrRoutingMessages = {
   screenUnrecognized: messages.screenUnrecognized,
   ocrError: messages.ocrError,
+  unsupportedAspectRatio: messages.unsupportedAspectRatio,
   databaseError: (filename) => messages.databaseError(filename),
   unknownEventType: messages.unknownEventType,
   missingDatetime: messages.missingDatetime,

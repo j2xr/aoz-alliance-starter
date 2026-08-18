@@ -22,12 +22,23 @@ class LayoutProfile:
     max_ratio: float
 
 
-# Phone screenshots: real devices shipped in production at heights from
-# 1080x1920 up to 1080x2400 (see polar_invasion_v1's CANONICAL_HEIGHT=2400
-# fixed pixel positions and contribution_ranking_v1's CANONICAL_HEIGHT=2400
-# height-scaled crops, both calibrated against captures in this range). The
-# wide tolerance reflects genuine device variation, not measurement slop.
-PHONE_PROFILE = LayoutProfile("phone", min_ratio=1920 / 1080, max_ratio=2400 / 1080)
+# Phone screenshots. Both phone parsers are height-agnostic by construction:
+# polar_invasion_v1 uses absolute pixel positions because "device aspect
+# ratios change the visible bottom area, not the UI element pitch", and
+# contribution_ranking_v1 scales every crop by h/CANONICAL_HEIGHT. So this
+# band is NOT the range of heights the parsers can handle — it's the range of
+# shapes that are plausibly a phone screenshot at all.
+#
+# Bounds are set from shipping-device reality, deliberately not from the
+# fixture corpus (which holds only 1080x2400 and 1080x2340): a ceiling drawn
+# at the corpus maximum, 2400/1080 = 2.2222, rejects real devices that this
+# pipeline parsed correctly before the band existed — Pixel 9 (1080x2424 =
+# 2.244), Pixel 8 Pro (1344x2992 = 2.226), 21:9 Xperia (1644x3840 = 2.336).
+# 2.40 clears the tallest phone form factor sold (21:9) with headroom while
+# still rejecting the shapes that genuinely break the parsers: Android
+# scroll-capture stitches (ratio 3-5, several stacked headers and a list that
+# continues past one screen), tablets (~1.33) and landscape.
+PHONE_PROFILE = LayoutProfile("phone", min_ratio=1920 / 1080, max_ratio=2.40)
 
 # Android emulator captures driven by an external automation pipeline (see
 # aoz-alliance-starter#91): unlike real devices, this source has one fixed
@@ -70,13 +81,18 @@ def require_profile(image: np.ndarray, profile: LayoutProfile) -> None:
     preprocess() accepts every known profile globally (aspect ratio alone
     can't tell it which event screen a capture shows), but a parser with
     crop constants for only one profile must not silently apply them to a
-    different one — see aoz-alliance-starter#91's contribution_ranking /
-    player_stats gap: those parsers only have phone-calibrated positions, so
-    an emulator-sourced donation screenshot would otherwise be parsed with
-    the wrong crops instead of failing loudly. Call this at the top of a
-    single-profile parser's parse() once its input is already the
-    TARGET_WIDTH-normalized image (width is fixed, so the ratio check here
-    reduces to height alone).
+    different one — see aoz-alliance-starter#91's contribution_ranking gap:
+    that parser only has phone-calibrated positions, so an emulator-sourced
+    donation screenshot would otherwise be parsed with the wrong crops
+    instead of failing loudly. Call this at the top of a single-profile
+    parser's parse() once its input is already the TARGET_WIDTH-normalized
+    image (width is fixed, so the ratio check here reduces to height alone).
+
+    Only for parsers that crop by coordinate. player_stats_chat_v1 must NOT
+    call this: it runs one full-image PSM-4 OCR and a text state machine,
+    with no coordinate crops at all (see its module docstring), so it is
+    already resolution-independent — adding a guard there would reject chat
+    screenshots it parses correctly today.
     """
     h, w = image.shape[:2]
     actual = detect_layout_profile(w, h)
@@ -104,12 +120,29 @@ def preprocess(image: np.ndarray) -> np.ndarray:
     Tesseract achieves better accuracy on the inverted grayscale directly.
     """
     h, w = image.shape[:2]
-    detect_layout_profile(w, h)
 
     if w != TARGET_WIDTH:
         scale = TARGET_WIDTH / w
         interp = cv2.INTER_AREA if w > TARGET_WIDTH else cv2.INTER_LINEAR
-        image = cv2.resize(image, (TARGET_WIDTH, int(h * scale)), interpolation=interp)
+        # round(), not int(): truncation always rounds the height DOWN, so it
+        # can only lower the ratio, and a source sitting exactly on a band's
+        # lower edge falls out of that band purely from resize quantization
+        # (234x416 is ratio 1.777778 exactly, the phone floor, and truncates to
+        # 1080x1919 = 1.776852). Measured over every w in [200, 2600): 661
+        # in-band sources are pushed out by int(), zero by round().
+        image = cv2.resize(image, (TARGET_WIDTH, round(h * scale)), interpolation=interp)
+
+    # Classify AFTER the resize, on the exact array every downstream check
+    # sees. Classifying the raw dimensions instead splits the decision across
+    # two different values — preprocess() would accept an image that
+    # require_profile()/_layout_for_image then reject, mid-parse, quoting
+    # dimensions the user never uploaded. The source dimensions are appended to
+    # the message here so the error still names the file they did upload.
+    nh, nw = image.shape[:2]
+    try:
+        detect_layout_profile(nw, nh)
+    except UnsupportedAspectRatioError as exc:
+        raise UnsupportedAspectRatioError(f"{exc} (source: {w}x{h})") from exc
 
     gray: np.ndarray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
