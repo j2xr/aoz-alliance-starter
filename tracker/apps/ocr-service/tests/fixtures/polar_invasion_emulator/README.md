@@ -64,22 +64,41 @@ Targets are the same ones the phone fixtures use (see
 | `points` | ≥95% | 100% (32/32) | met |
 | `name` (fuzzy, Latin-only — `中本` excluded, see phone convention) | ≥90% | 90.3% (28/31) | met |
 | `power` | ≥95% | 100% (32/32) | met |
-| `rank` | ≥98% | 78.1% (25/32) | **below target** |
+| `rank` | ≥98% | 96.9% (31/32) | one badge short — see below |
 
 Numbers measured in the CI-equivalent Docker environment (`tracker-ocr-service:latest`
 with the full tessdata language set) — a bare local `.venv` without `tesserocr`
 and the extra language packs measures meaningfully different numbers and
 should not be trusted for these targets.
 
-`rank` is not a crop-position bug — it has a specific, understood cause
-(see `test_polar_invasion_emulator_parser.py`'s module docstring for the
-full breakdown and the exact test-floor rationale):
+`rank` was 78.1% (25/32) when this profile shared the phone parser's
+threshold/psm sweep. Retuned to 96.9% (31/32) via `_Layout.rank_ocr_order`,
+which gives each profile its own combo list while the vote logic stays
+shared and unchanged. The retune needed no new captures — the cause was
+visible in these 32 rows:
 
-- **rank**: `_RANK_OCR_ORDER` (the threshold/psm sweep in
-  `polar_invasion_v1.py`) was tuned on phone-resolution badges; several
-  emulator badges that are clearly legible to a human still miss. Needs
-  its own resolution-specific re-tuning pass with a larger badge corpus —
-  this 4-image set is too small to retune safely without overfitting.
+- The phone list steps thresholds by 20 (`60, 80, … 180`). Of the 7 badges
+  it missed, **not one** produced a single strong `R[1-5]` hit at any of
+  those thresholds, while 5 read correctly at **110, 150 or 170** — exactly
+  the midpoints that grid steps over. The badge carries 30×20 source pixels
+  against phone's 52×47 (4.2× less ink), which narrows the usable threshold
+  window rather than shifting it.
+- **psm 6** is added (never tried on phone; here it reads badges psm 11/7
+  return nothing for) and **psm 8** dropped (0 strong hits in 416 attempts —
+  32 badges × 13 thresholds — so at this glyph size it is pure cost).
+- The crop box is unchanged. Padding it by −6…+6 px was measured too: −4
+  raises per-combo precision but loses evidence overall and scores 28/32
+  end-to-end, worse than leaving it alone.
+
+The one remaining miss (`20260721T1500_001` row 2) is a **legibility floor,
+not a tuning gap**: its true rank is produced by no combo of a 114-combo
+grid, at any of those paddings. Reaching ≥98% on 32 rows would require a
+clean sweep, so lifting it needs a different mechanism — the LLM vision
+fallback already used for unreadable names — rather than more sweep tuning.
+
+See `_EMULATOR_RANK_OCR_ORDER` in `polar_invasion_v1.py` for the full
+measurement, and `test_polar_invasion_emulator_parser.py`'s module docstring
+for the test-floor rationale.
 
 `power` was previously 87.5% (28/32): the widest detection stage (a PSM-11
 scan of the full row) includes the avatar on this profile, and

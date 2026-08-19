@@ -151,6 +151,118 @@ class _Layout:
     rank_badge_x: tuple[int, int]
     rank_badge_y: tuple[int, int]
 
+    # (threshold, psm) sweep handed to _detect_rank_from_crop for this
+    # profile's badges. Per-profile because the phone list was tuned on
+    # 52x47 source-pixel badges and the emulator's are 30x20 — 4.2x less
+    # ink — which narrows the usable threshold window rather than shifting
+    # it: the phone list steps thresholds by 20 (60,80,...,180) and the
+    # emulator's readable values land on the midpoints that grid skips.
+    # See _EMULATOR_RANK_OCR_ORDER for the measurement.
+    rank_ocr_order: tuple[tuple[int, int], ...]
+
+
+# Rank OCR (threshold, psm) combos for the PHONE profile, ordered by empirical
+# first-hit rate on the fixture set: combos at the front yield a strong R[1-5]
+# reading more often, so trying them first lets us exit after ≤ 2-3 attempts on
+# most rows instead of running the full 7×3 = 21-call sweep. Order measured on
+# 181 rows across all event fixtures; (100, 11) and (120, 11) alone cover ~96%
+# of rows. The tail (combos that never produced a strong hit in measurement) is
+# kept as a safety net for outlier lighting conditions.
+_RANK_OCR_ORDER: tuple[tuple[int, int], ...] = (
+    (100, 11),
+    (120, 11),
+    (80, 11),
+    (160, 11),
+    (180, 11),
+    (160, 7),
+    (140, 11),
+    (120, 7),
+    (140, 7),
+    (100, 7),
+    (80, 7),
+    (180, 7),
+    (60, 7),
+    (60, 11),
+    (60, 8),
+    (80, 8),
+    (100, 8),
+    (120, 8),
+    (140, 8),
+    (160, 8),
+    (180, 8),
+)
+
+# Same idea for this profile, measured on its own 32 fixture badges — the
+# phone list above scores 25/32 = 78.1% here. Derived by replaying a
+# 19-threshold x 6-psm grid over every badge and re-running the vote logic
+# offline against ground truth; three axes moved, one deliberately did not:
+#
+#   * threshold step 20 -> 10. The phone grid's step is wider than this
+#     profile's usable window: of the 7 badges the phone list misses, not one
+#     produces a single strong R[1-5] hit at any phone threshold, while 5 read
+#     correctly at 110, 150 or 170 — precisely the midpoints it steps over.
+#     The badge carries 30x20 source pixels against phone's 52x47 (4.2x less
+#     ink), which narrows the usable window rather than shifting it.
+#   * psm 6 added. Never tried on phone, and here it reads badges that psm
+#     11/7 return nothing at all for.
+#   * psm 8 dropped. 0 strong hits in 416 attempts (32 badges x 13
+#     thresholds) — at this glyph size it is pure cost, and keeping it made a
+#     full parse 37% slower for no accuracy gain. The threshold axis is kept
+#     wide (60-180, including values with no measured yield) because
+#     brightness is the plausible thing to vary between captures; psm is a
+#     function of glyph geometry, which does not.
+#   * the crop box is unchanged. Padding it by -6..+6 px was measured too:
+#     -4 raises per-combo precision but loses evidence overall and scores
+#     28/32 end to end, worse than leaving it alone.
+#
+# Result: 31/32 = 96.9%, at +5.4% full-parse wall clock. That is the ceiling
+# for this crop rather than a stopping point chosen for convenience — the full
+# 114-combo grid also scores 31/32, and the one miss (20260721T1500_001 row 2)
+# yields its true rank under no combo in that grid at any padding. Front-loaded
+# by measured strong-hit yield; ordering is a speed choice only, since the
+# plain ladder order scores the same 31/32.
+_EMULATOR_RANK_OCR_ORDER: tuple[tuple[int, int], ...] = (
+    (150, 11),
+    (140, 11),
+    (160, 11),
+    (130, 11),
+    (130, 6),
+    (150, 6),
+    (120, 11),
+    (120, 6),
+    (120, 7),
+    (110, 11),
+    (170, 11),
+    (110, 6),
+    (140, 6),
+    (130, 7),
+    (180, 11),
+    (170, 6),
+    (180, 6),
+    (110, 7),
+    (150, 7),
+    (180, 7),
+    (100, 11),
+    (60, 6),
+    (70, 6),
+    (80, 6),
+    (90, 6),
+    (100, 6),
+    (160, 6),
+    (60, 7),
+    (70, 7),
+    (80, 7),
+    (90, 7),
+    (100, 7),
+    (140, 7),
+    (160, 7),
+    (170, 7),
+    (60, 11),
+    (70, 11),
+    (80, 11),
+    (90, 11),
+)
+
 
 # Phone screenshots (1080x[1920-2400]) — values unchanged from before the
 # emulator profile existed; this is a pure refactor of the phone path.
@@ -179,6 +291,7 @@ _PHONE_LAYOUT = _Layout(
     sword_icon_band=((100, 170), (180, 320)),
     rank_badge_x=(38, 90),
     rank_badge_y=(33, 80),
+    rank_ocr_order=_RANK_OCR_ORDER,
 )
 
 # Emulator source (400x652, ratio 1.63 — aoz-alliance-starter#91). Measured
@@ -223,6 +336,7 @@ _EMULATOR_LAYOUT = _Layout(
     sword_icon_band=None,
     rank_badge_x=(78, 158),
     rank_badge_y=(2, 55),
+    rank_ocr_order=_EMULATOR_RANK_OCR_ORDER,
 )
 
 # Which _Layout backs each known profile. Single source of truth for the
@@ -284,41 +398,11 @@ _RANK_CROPS: list[tuple[int, int, int, int]] = [
 
 _DIGIT_MAP = {"I": "1", "i": "1", "l": "1", "L": "1", "|": "1", "!": "1", "D": "1", "d": "1"}
 
-# Rank OCR (threshold, psm) combos ordered by empirical first-hit rate on the
-# fixture set: combos at the front yield a strong R[1-5] reading more often,
-# so trying them first lets us exit after ≤ 2-3 attempts on most rows instead
-# of running the full 7×3 = 21-call sweep. Order measured on 181 rows across
-# all event fixtures; (100, 11) and (120, 11) alone cover ~96% of rows. The
-# tail (combos that never produced a strong hit in measurement) is kept as a
-# safety net for outlier lighting conditions.
-_RANK_OCR_ORDER: tuple[tuple[int, int], ...] = (
-    (100, 11),
-    (120, 11),
-    (80, 11),
-    (160, 11),
-    (180, 11),
-    (160, 7),
-    (140, 11),
-    (120, 7),
-    (140, 7),
-    (100, 7),
-    (80, 7),
-    (180, 7),
-    (60, 7),
-    (60, 11),
-    (60, 8),
-    (80, 8),
-    (100, 8),
-    (120, 8),
-    (140, 8),
-    (160, 8),
-    (180, 8),
-)
-
 
 def _detect_rank_from_crop(
     crop: np.ndarray,
     last_winning_combo: tuple[int, int] | None = None,
+    order: tuple[tuple[int, int], ...] = _RANK_OCR_ORDER,
 ) -> tuple[str, tuple[int, int] | None]:
     """Run the multi-threshold × multi-PSM sweep on a pre-cropped badge.
 
@@ -331,21 +415,22 @@ def _detect_rank_from_crop(
     very likely to work on row N+1 too, letting the early-exit path fire on
     the first attempt.
 
+    ``order`` is the profile's (threshold, psm) sweep — ``_RANK_OCR_ORDER``
+    for phone badges (also the default, used by contribution_ranking_v1,
+    which is phone-only), ``_EMULATOR_RANK_OCR_ORDER`` for the smaller
+    emulator ones.  The vote logic below is deliberately shared and
+    identical across profiles; only the combo list differs.
+
     Early-exit strategy:
-        * Try combos in ``_RANK_OCR_ORDER`` (cached combo first if given).
+        * Try combos in ``order`` (cached combo first if given).
         * Collect strong matches (``R[1-5]``) and weak matches (lone digit).
         * Return as soon as the same strong rank has been seen ≥ 2 times
           (high-confidence majority).
         * Once all combos are exhausted, fall back to the most-voted strong
           match, then to the most-voted weak match, then to ``R1`` default.
     """
-    if last_winning_combo is not None and last_winning_combo in _RANK_OCR_ORDER:
-        order: tuple[tuple[int, int], ...] = (
-            last_winning_combo,
-            *(c for c in _RANK_OCR_ORDER if c != last_winning_combo),
-        )
-    else:
-        order = _RANK_OCR_ORDER
+    if last_winning_combo is not None and last_winning_combo in order:
+        order = (last_winning_combo, *(c for c in order if c != last_winning_combo))
 
     strong_hits: list[tuple[tuple[int, int], str]] = []  # (combo, "R<digit>")
     weak_hits: list[str] = []  # "R<digit>" reconstructed from lone digits
@@ -1094,7 +1179,9 @@ class PolarInvasionV1Parser(BaseParser):
             return None
 
         last = rank_cache["last"] if rank_cache is not None else None
-        rank, winning_combo = _detect_rank_from_crop(crop, last_winning_combo=last)
+        rank, winning_combo = _detect_rank_from_crop(
+            crop, last_winning_combo=last, order=layout.rank_ocr_order
+        )
         if rank_cache is not None and winning_combo is not None:
             rank_cache["last"] = winning_combo
         return rank

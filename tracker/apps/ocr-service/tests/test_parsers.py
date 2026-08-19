@@ -1,3 +1,4 @@
+import re
 from typing import Any
 from unittest.mock import patch
 
@@ -7,10 +8,13 @@ import pytest
 from app.parsers import sword_icon_utils
 from app.parsers.polar_invasion_v1 import (
     _EMULATOR_LAYOUT,
+    _EMULATOR_RANK_OCR_ORDER,
     _PHONE_LAYOUT,
+    _RANK_OCR_ORDER,
     _TWO_COL_EVENTS,
     PolarInvasionV1Parser,
     _clean_rank,
+    _detect_rank_from_crop,
     _parse_datetime,
     _power_from_psm8_crop,
 )
@@ -304,6 +308,63 @@ def test_detect_power_uses_each_layouts_own_stage_list() -> None:
 
     assert emulator_power == 15_806_413
     assert phone_power == 23_324_091
+
+
+def _psm_of(config: str) -> int:
+    """Pull the page-segmentation mode back out of a Tesseract config string."""
+    match = re.search(r"--psm (\d+)", config)
+    assert match is not None, config
+    return int(match.group(1))
+
+
+def test_detect_rank_sweeps_the_combos_its_layout_names() -> None:
+    """The badge sweep comes from the layout, not from a module-level default.
+
+    Each profile carries its own (threshold, psm) list because the emulator
+    badge holds 4.2x less ink than the phone one, which narrows the usable
+    threshold window -- see _EMULATOR_RANK_OCR_ORDER. The `order=` argument
+    carrying that list is easy to drop while refactoring, and nothing else
+    would notice: the phone list still reads emulator badges, just 25/32
+    instead of 31/32. So assert on the configs actually handed to Tesseract.
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+    seen: list[str] = []
+
+    def record(crop: Any, config: str) -> str:
+        seen.append(config)
+        return ""  # no hit, so the sweep runs to the end of the list
+
+    profiles = (
+        (_PHONE_LAYOUT, _RANK_OCR_ORDER),
+        (_EMULATOR_LAYOUT, _EMULATOR_RANK_OCR_ORDER),
+    )
+    for layout, expected in profiles:
+        seen.clear()
+        with patch(_OCR_STRING, side_effect=record):
+            parser._detect_rank(image, 0, layout)
+        # The threshold half of each combo is applied to the crop before OCR,
+        # so only the psm half reaches Tesseract's config -- that sequence
+        # (and, by list equality, the sweep length) is what is observable.
+        assert [_psm_of(c) for c in seen] == [psm for _, psm in expected]
+
+
+def test_detect_rank_orders_the_sweep_by_the_layouts_own_list() -> None:
+    """The cross-row combo cache must stay inside the layout's own list.
+
+    _detect_rank_from_crop moves a remembered winning combo to the front. A
+    combo remembered from another profile is not in this list and must be
+    ignored rather than prepended, or a phone-tuned threshold would silently
+    lead the emulator sweep.
+    """
+    crop = np.zeros((53, 80), dtype=np.uint8)
+    seen: list[str] = []
+
+    with patch(_OCR_STRING, side_effect=lambda c, config: seen.append(config) or ""):
+        _detect_rank_from_crop(crop, last_winning_combo=(180, 8), order=_EMULATOR_RANK_OCR_ORDER)
+
+    assert (180, 8) not in _EMULATOR_RANK_OCR_ORDER
+    assert [_psm_of(c) for c in seen] == [psm for _, psm in _EMULATOR_RANK_OCR_ORDER]
 
 
 def test_detect_power_returns_none_rather_than_an_unlisted_stages_value() -> None:
