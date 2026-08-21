@@ -251,9 +251,6 @@ def _apply_llm_fallback(
         llm_fallback = vision_fallback.vision_fallback
         llm_fallback_donation = vision_fallback.vision_fallback_donation
 
-    row_height: int = getattr(parser, "row_height", 225)
-    member_list_top: int = getattr(parser, "member_list_top", 400)
-
     updated: list[MemberResult | DonationMember] = []
     consecutive_failures = 0
     fallback_disabled = False
@@ -293,13 +290,31 @@ def _apply_llm_fallback(
 
         # Band actually cropped by the parser: the index in `members` doesn't
         # match the row's physical index (invalid rows are dropped), and the
-        # effective list_top / row_height differ from the class constants
-        # (dynamic _detect_list_top, donation parser's h/2400 scaling).
-        # Recomputing here used to shift the crop and attribute one player's
-        # name to another. The constants now only serve as a safety net if a
-        # parser didn't set row_y/row_h.
-        y = member.row_y if member.row_y is not None else member_list_top + i * row_height
-        crop_h = member.row_h if member.row_h is not None else row_height
+        # effective list_top / row_height are per-image, not constants —
+        # dynamic _detect_list_top, the donation parser's h/2400 scaling, and
+        # polar_invasion_v1's one layout per source profile. Recomputing the
+        # band here used to shift the crop and attribute one player's name to
+        # another; the parsers used to expose class-level constants for this
+        # fallback, and they have been removed because no single pair of them
+        # could be right for every profile.
+        #
+        # Both parsers always set row_y/row_h, so there is no band to guess.
+        # Skip the row rather than reconstruct one: losing an LLM re-read is
+        # recoverable, sending the LLM another player's row is not.
+        if member.row_y is None or member.row_h is None:
+            logger.warning(
+                "LLM fallback skipped for %r (row %d): %s did not report the row band "
+                "(row_y=%s, row_h=%s) — no reliable crop to send",
+                member.name,
+                row,
+                type(parser).__name__,
+                member.row_y,
+                member.row_h,
+            )
+            updated.append(member)
+            continue
+        y = member.row_y
+        crop_h = member.row_h
         row_crop: np.ndarray = image[y : y + crop_h, :]
         # F3: keep this candidate row's crop (off unless OCR_KEEP_CROPS). This is
         # exactly the crop the LLM will see, so no recomputation — captured here,

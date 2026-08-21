@@ -9,6 +9,7 @@ import app.main as main_module
 from app.dispatcher import UnknownEventError
 from app.main import _set_job, _sweep_stale_pending_jobs, app
 from app.parsers.base import MemberResult, ParseResult
+from app.preprocess import UnsupportedAspectRatioError
 
 
 def _make_png() -> bytes:
@@ -120,6 +121,33 @@ def test_extract_unknown_event_surfaces_via_job() -> None:
     body = poll.json()
     assert body["status"] == "error"
     assert body["error"] == "unknown_event"
+
+
+def test_extract_unsupported_profile_for_event_surfaces_via_job() -> None:
+    """A single-profile parser (e.g. contribution_ranking) rejecting an
+    emulator-profile image (aoz-alliance-starter#91) must surface as the
+    same unsupported_aspect_ratio code as preprocess()'s own gate, not
+    fall through to the generic internal_error path."""
+    with (
+        patch("app.main.preprocess_image") as mock_pre,
+        patch(
+            "app.main.extract",
+            side_effect=UnsupportedAspectRatioError("this parser only supports 'phone'"),
+        ),
+        TestClient(app) as client,
+    ):
+        mock_pre.return_value = np.zeros((100, 100), dtype=np.uint8)
+        resp = client.post(
+            "/extract",
+            files={"file": ("screenshot.png", _make_png(), "image/png")},
+        )
+        job_id = resp.json()["job_id"]
+        poll = client.get(f"/jobs/{job_id}")
+
+    assert poll.status_code == 200
+    body = poll.json()
+    assert body["status"] == "error"
+    assert body["error"] == "unsupported_aspect_ratio"
 
 
 def test_extract_internal_error_surfaces_via_job() -> None:

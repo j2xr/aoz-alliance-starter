@@ -14,10 +14,7 @@ import pytest
 from app.parsers._trace import FieldBox, RowTrace
 from app.parsers.contribution_ranking_v1 import ContributionRankingV1Parser
 from app.parsers.polar_invasion_v1 import (
-    _NAME_X,
-    _NAME_Y_OFF,
-    _NAME_Y_OFF_WIDE,
-    _ROW_HEIGHT,
+    _PHONE_LAYOUT,
     PolarInvasionV1Parser,
 )
 from app.preprocess import preprocess_image
@@ -80,14 +77,14 @@ def test_polar_parser_emits_trace_when_requested() -> None:
     assert result.members, "fixture should yield at least one member"
 
     # list_top from the parser's runtime _detect_list_top, identical across rows.
-    detected_top = parser._detect_list_top(image)
+    detected_top = parser._detect_list_top(image, _PHONE_LAYOUT)
     seen_list_tops: set[int] = set()
     seen_row_indices: list[int] = []
 
     for m in result.members:
         trace = m.trace
         assert isinstance(trace, RowTrace), "trace must be populated when emit_trace=True"
-        assert trace.row_height == _ROW_HEIGHT
+        assert trace.row_height == _PHONE_LAYOUT.row_height
         assert trace.list_top == detected_top
         seen_list_tops.add(trace.list_top)
         seen_row_indices.append(trace.row_index)
@@ -98,14 +95,14 @@ def test_polar_parser_emits_trace_when_requested() -> None:
 
         # Name box: y-extent must match either the primary or wide layout.
         name_h = trace.name.y2 - trace.name.y1
-        expected_primary = _NAME_Y_OFF[1] - _NAME_Y_OFF[0]
-        expected_wide = _NAME_Y_OFF_WIDE[1] - _NAME_Y_OFF_WIDE[0]
+        expected_primary = _PHONE_LAYOUT.name_y_off[1] - _PHONE_LAYOUT.name_y_off[0]
+        expected_wide = _PHONE_LAYOUT.name_y_off_wide[1] - _PHONE_LAYOUT.name_y_off_wide[0]
         assert name_h in (expected_primary, expected_wide), (
             f"name height {name_h} matches neither primary ({expected_primary}) "
             f"nor wide ({expected_wide})"
         )
-        assert trace.name.x1 == _NAME_X[0]
-        assert trace.name.x2 == _NAME_X[1]
+        assert trace.name.x1 == _PHONE_LAYOUT.name_x[0]
+        assert trace.name.x2 == _PHONE_LAYOUT.name_x[1]
 
         # All 4 field boxes must sit strictly inside the row band.
         assert _box_inside(trace.name, row_y1, row_y2)

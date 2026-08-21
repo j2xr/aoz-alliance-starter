@@ -1,0 +1,18 @@
+{
+  "event_type": "polar_invasion",
+  "event_datetime": "2026-07-21T15:00:00+02:00",
+  "alliance_rank": 4,
+  "total_battlers": 21,
+  "total_points": 4565,
+  "source_file": "20260721T1500_001.png",
+  "members": [
+    { "name": "Hollow", "rank": "R3", "power": 36695772, "points": 64500 },
+    { "name": "LimaFox", "rank": "R1", "power": 26853910, "points": 41254 },
+    { "name": "Madara⁶⁹Uchiha", "rank": "R1", "power": 16927699, "points": 27331 },
+    { "name": "StevenPham", "rank": "R1", "power": 18778907, "points": 26803 },
+    { "name": "TheOneKiller", "rank": "R4", "power": 29719933, "points": 22336 },
+    { "name": "MHGYM7000", "rank": "R2", "power": 16898803, "points": 22327 },
+    { "name": "ghaith89", "rank": "R1", "power": 7577106, "points": 16822 },
+    { "name": "rinshan5551", "rank": "R1", "power": 17740052, "points": 14917 }
+  ]
+}

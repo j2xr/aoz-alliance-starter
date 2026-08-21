@@ -1,3 +1,4 @@
+import re
 from typing import Any
 from unittest.mock import patch
 
@@ -6,10 +7,18 @@ import pytest
 
 from app.parsers import sword_icon_utils
 from app.parsers.polar_invasion_v1 import (
+    _EMULATOR_LAYOUT,
+    _EMULATOR_RANK_OCR_ORDER,
+    _PHONE_LAYOUT,
+    _RANK_OCR_ORDER,
+    _TWO_COL_EVENTS,
     PolarInvasionV1Parser,
     _clean_rank,
+    _detect_rank_from_crop,
     _parse_datetime,
+    _power_from_psm8_crop,
 )
+from app.preprocess import UnsupportedAspectRatioError
 
 _OCR_STRING = "app.parsers.polar_invasion_v1.pytesseract.image_to_string"
 _OCR_DATA = "app.parsers.polar_invasion_v1.pytesseract.image_to_data"
@@ -255,6 +264,176 @@ def test_fallback_header_rejects_implausible_rank() -> None:
         result = parser.parse(image)
 
     assert result.alliance_rank is None
+
+
+# ── Power detection crop order (aoz-alliance-starter#91) ─────────────────────
+
+
+def _power_crop_side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+    """image_to_data stand-in that answers by crop width, i.e. by stage.
+
+    Each layout's stages produce a distinct crop width, so the width alone
+    identifies which stage asked. The wrong-value branches below are the
+    measured misreads each layout's stage list exists to avoid.
+    """
+    width = crop.shape[1]
+    if width == _EMULATOR_LAYOUT.points_x[0]:
+        # Emulator "row_scan": wrong value (avatar ink bleeding into the sweep).
+        return _ocr_data("999999999", conf=90)
+    if width == _EMULATOR_LAYOUT.power_x[1] - _EMULATOR_LAYOUT.power_x[0]:
+        return _ocr_data("15,806,413", conf=90)
+    if width == _PHONE_LAYOUT.points_x[0]:
+        return _ocr_data("23,324,091", conf=96)
+    if width == _PHONE_LAYOUT.power_x[1] - _PHONE_LAYOUT.power_x[0]:
+        # Phone "normalized": wrong value, must never be reached.
+        return _ocr_data("2,332,409", conf=89)
+    return _ocr_data("", conf=-1)
+
+
+def test_detect_power_uses_each_layouts_own_stage_list() -> None:
+    """Each layout runs the stages in layout.power_stages, in that order.
+
+    Emulator lists only "normalized" (the narrow, avatar-excluding crop);
+    phone lists all three widest-first. See the _Layout field's docstring for
+    the measured regressions behind either list. The PSM-8 stage's crop width
+    matches no branch of the stand-in, so it contributes nothing -- matching
+    measured reality (inert on phone, not listed at all on emulator).
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+
+    with patch(_OCR_DATA, side_effect=_power_crop_side_effect):
+        emulator_power = parser._detect_power(image, 0, _EMULATOR_LAYOUT)
+        phone_power = parser._detect_power(image, 0, _PHONE_LAYOUT)
+
+    assert emulator_power == 15_806_413
+    assert phone_power == 23_324_091
+
+
+def _psm_of(config: str) -> int:
+    """Pull the page-segmentation mode back out of a Tesseract config string."""
+    match = re.search(r"--psm (\d+)", config)
+    assert match is not None, config
+    return int(match.group(1))
+
+
+def test_detect_rank_sweeps_the_combos_its_layout_names() -> None:
+    """The badge sweep comes from the layout, not from a module-level default.
+
+    Each profile carries its own (threshold, psm) list because the emulator
+    badge holds 4.2x less ink than the phone one, which narrows the usable
+    threshold window -- see _EMULATOR_RANK_OCR_ORDER. The `order=` argument
+    carrying that list is easy to drop while refactoring, and nothing else
+    would notice: the phone list still reads emulator badges, just 25/32
+    instead of 31/32. So assert on the configs actually handed to Tesseract.
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+    seen: list[str] = []
+
+    def record(crop: Any, config: str) -> str:
+        seen.append(config)
+        return ""  # no hit, so the sweep runs to the end of the list
+
+    profiles = (
+        (_PHONE_LAYOUT, _RANK_OCR_ORDER),
+        (_EMULATOR_LAYOUT, _EMULATOR_RANK_OCR_ORDER),
+    )
+    for layout, expected in profiles:
+        seen.clear()
+        with patch(_OCR_STRING, side_effect=record):
+            parser._detect_rank(image, 0, layout)
+        # The threshold half of each combo is applied to the crop before OCR,
+        # so only the psm half reaches Tesseract's config -- that sequence
+        # (and, by list equality, the sweep length) is what is observable.
+        assert [_psm_of(c) for c in seen] == [psm for _, psm in expected]
+
+
+def test_detect_rank_orders_the_sweep_by_the_layouts_own_list() -> None:
+    """The cross-row combo cache must stay inside the layout's own list.
+
+    _detect_rank_from_crop moves a remembered winning combo to the front. A
+    combo remembered from another profile is not in this list and must be
+    ignored rather than prepended, or a phone-tuned threshold would silently
+    lead the emulator sweep.
+    """
+    crop = np.zeros((53, 80), dtype=np.uint8)
+    seen: list[str] = []
+
+    with patch(_OCR_STRING, side_effect=lambda c, config: seen.append(config) or ""):
+        _detect_rank_from_crop(crop, last_winning_combo=(180, 8), order=_EMULATOR_RANK_OCR_ORDER)
+
+    assert (180, 8) not in _EMULATOR_RANK_OCR_ORDER
+    assert [_psm_of(c) for c in seen] == [psm for _, psm in _EMULATOR_RANK_OCR_ORDER]
+
+
+def test_detect_power_returns_none_rather_than_an_unlisted_stages_value() -> None:
+    """An unlisted stage never runs, even as a last resort.
+
+    "row_scan" is absent from the emulator's power_stages because the only
+    thing it is measured to do on that profile is fuse the avatar frame into
+    the value. With the one listed stage yielding nothing, _detect_power must
+    return None -- the row is then dropped and counted by parse()'s
+    possible_truncation warning, rather than filled with row_scan's 999999999
+    (which clears MIN_POWER and would sail through validate_member).
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+    narrow = _EMULATOR_LAYOUT.power_x[1] - _EMULATOR_LAYOUT.power_x[0]
+
+    def side_effect(crop: Any, config: str, output_type: Any) -> dict[str, list[Any]]:
+        if crop.shape[1] == narrow:
+            return _ocr_data("", conf=-1)  # the listed stage reads nothing
+        return _power_crop_side_effect(crop, config, output_type)
+
+    with patch(_OCR_DATA, side_effect=side_effect):
+        assert parser._detect_power(image, 0, _EMULATOR_LAYOUT) is None
+
+
+def test_psm8_stage_refuses_a_layout_with_no_measured_x_band() -> None:
+    """Listing "psm8" without measuring power_fallback_x must fail loudly.
+
+    The emulator layout carries power_fallback_x=None precisely because no
+    x-band was ever measured for that stage there; calling the stage anyway
+    (a future layout listing it by copy-paste) has to raise rather than crop
+    at whatever band another profile happened to use.
+    """
+    image = np.zeros((300, 1080), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="power_fallback_x"):
+        _power_from_psm8_crop(image, 0, _EMULATOR_LAYOUT)
+
+
+# ── Layout profile guard (aoz-alliance-starter#91) ────────────────────────────
+
+
+@pytest.mark.parametrize("event_code", sorted(_TWO_COL_EVENTS))
+def test_parse_rejects_two_col_event_on_emulator_profile(event_code: str) -> None:
+    """The 2-column header bands have no emulator-profile equivalent (see
+    _BATTLERS_X_2COL's docstring) -- parse() must refuse rather than mix an
+    emulator y-band with phone x-bands. Raises before any OCR runs."""
+    image = np.full((1760, 1080), 200, dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+
+    with pytest.raises(UnsupportedAspectRatioError, match=event_code):
+        parser.parse(image, event_code=event_code)
+
+
+@pytest.mark.parametrize(
+    "event_code", ["polar_invasion", "elite_wars", "ironblood_battlefield", None]
+)
+def test_parse_allows_three_col_events_on_emulator_profile(event_code: str | None) -> None:
+    """3-column events share polar_invasion's fully profile-aware geometry
+    (no event_code branching outside _parse_header's header cell), so they
+    are not gated even though only polar_invasion has real ground-truth
+    verification -- confirmed by the user as an accepted, documented risk.
+    event_code=None (the dev-tools/tests-only direct-call path) is included
+    here as the executable record of that decision too."""
+    image = np.full((1760, 1080), 200, dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+
+    with patch(_OCR_STRING, return_value=""), patch(_OCR_DATA, return_value=_ocr_data("")):
+        parser.parse(image, event_code=event_code)  # must not raise
 
 
 def test_sword_icon_sprite_is_packaged_with_app() -> None:

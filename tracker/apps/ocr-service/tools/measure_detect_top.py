@@ -7,8 +7,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.parsers.polar_invasion_v1 import _MEMBER_LIST_TOP, _NAME_Y_OFF, _POWER_Y_OFF, _ROW_HEIGHT
+from app.parsers.polar_invasion_v1 import _PHONE_LAYOUT
 from app.preprocess import preprocess
+
+# This tool replicates _detect_list_top()'s math by hand rather than calling
+# it, and its own scale math (scale = h / 2400 below) is phone-specific
+# throughout — so it references _PHONE_LAYOUT's fields directly rather than
+# via the layout selector used elsewhere; generalizing it to the emulator
+# profile would need a rewrite of this file's approach, not just its imports.
 
 FIXTURES = sorted(
     (Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "polar_invasion").glob("*.jpg")
@@ -20,10 +26,10 @@ def show(image_path: Path) -> None:
     gray = preprocess(raw)
     h, w = gray.shape[:2]
     scale = h / 2400
-    canonical_top = int(_MEMBER_LIST_TOP * scale)
+    canonical_top = int(_PHONE_LAYOUT.member_list_top * scale)
     search_start = max(0, canonical_top - 120)
     search_end = min(h, canonical_top + 120)
-    row_h = int(_ROW_HEIGHT * scale)
+    row_h = int(_PHONE_LAYOUT.row_height * scale)
 
     strip = gray[search_start:search_end, 45:115]
     row_means = strip.mean(axis=1)
@@ -50,10 +56,10 @@ def show(image_path: Path) -> None:
     print("\nPer-row expected crops (list_top, name_y1..y2, power_y1..y2):")
     for i in range(11):
         y = detected + i * row_h
-        ny1 = y + int(_NAME_Y_OFF[0] * scale)
-        ny2 = y + int(_NAME_Y_OFF[1] * scale)
-        py1 = y + int(_POWER_Y_OFF[0] * scale)
-        py2 = y + int(_POWER_Y_OFF[1] * scale)
+        ny1 = y + int(_PHONE_LAYOUT.name_y_off[0] * scale)
+        ny2 = y + int(_PHONE_LAYOUT.name_y_off[1] * scale)
+        py1 = y + int(_PHONE_LAYOUT.power_y_off[0] * scale)
+        py2 = y + int(_PHONE_LAYOUT.power_y_off[1] * scale)
         print(f"  row {i}: y={y} name_y=[{ny1},{ny2}] power_y=[{py1},{py2}]")
 
 

@@ -32,10 +32,13 @@ from app.parsers.base import (
 
 
 class _StubParser:
-    """Minimal stand-in exposing the row_height / member_list_top attributes."""
+    """Minimal stand-in for the parser _apply_llm_fallback was called for.
 
-    row_height = 175
-    member_list_top = 400
+    It carries no row geometry: _apply_llm_fallback crops each row from the
+    band the parser recorded on the member (row_y / row_h), never from parser
+    attributes, so every member built in this file sets that band the way both
+    real parsers unconditionally do.
+    """
 
 
 def _member(name: str, conf: float, row_y: int = 0) -> MemberResult:
@@ -191,7 +194,13 @@ def test_empty_llm_name_keeps_ocr_name() -> None:
 
 def test_donation_member_shape_only_name_rewritten() -> None:
     donor = DonationMember(
-        name="DarKKnight", alliance_tag="SOD", rank="R2", alliance_honor=4200, confidence=0.2
+        name="DarKKnight",
+        alliance_tag="SOD",
+        rank="R2",
+        alliance_honor=4200,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     # Donations go through llm_fallback_donation with a self-consistency gate:
@@ -216,7 +225,13 @@ def test_donation_correction_rejected_when_score_mismatches_honor() -> None:
     test_suspect_honor_replaced_by_llm_score_inside_window_real_production_cases
     for the suspect-honor case, where exact equality is no longer the standard."""
     donor = DonationMember(
-        name="고", alliance_tag=None, rank="R1", alliance_honor=1946, confidence=0.2
+        name="고",
+        alliance_tag=None,
+        rank="R1",
+        alliance_honor=1946,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     assert donor.suspect_honor_window is None  # precondition for this exact-match gate
     result = DonationParseResult(period_type="weekly", members=[donor])
@@ -236,7 +251,13 @@ def test_donation_correction_rejected_when_score_mismatches_honor() -> None:
 def test_donation_correction_rejected_when_score_missing() -> None:
     """No score to cross-check against → distrust the correction (conservative)."""
     donor = DonationMember(
-        name="garbled", alliance_tag=None, rank="R1", alliance_honor=800, confidence=0.2
+        name="garbled",
+        alliance_tag=None,
+        rank="R1",
+        alliance_honor=800,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     with patch("app.llm_fallback.llm_fallback_donation", return_value=("Plausible", None)):
@@ -251,7 +272,13 @@ def test_notification_banner_row_skips_llm_and_flags_review() -> None:
     transcribe the banner's *other* player (고 -> CEKATOP_1000) and even pass the honor
     gate (it still reads this row's real score). Keep the OCR name, flag needs_review."""
     donor = DonationMember(
-        name="고", alliance_tag=None, rank="R1", alliance_honor=1946, confidence=0.2
+        name="고",
+        alliance_tag=None,
+        rank="R1",
+        alliance_honor=1946,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     with (
@@ -279,7 +306,13 @@ def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:
     """A validated correction still runs through tag-stripping (the LLM returns
     the name verbatim, tag included)."""
     donor = DonationMember(
-        name="rs", alliance_tag=None, rank="R1", alliance_honor=2235, confidence=0.2
+        name="rs",
+        alliance_tag=None,
+        rank="R1",
+        alliance_honor=2235,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     with patch("app.llm_fallback.llm_fallback_donation", return_value=("(SOD) BenOVerbich", 2235)):
@@ -293,7 +326,13 @@ def test_donation_correction_strips_alliance_tag_from_llm_output() -> None:
 def test_donation_none_name_keeps_ocr_result() -> None:
     """Model abstains (name=null) → keep the OCR member unchanged."""
     donor = DonationMember(
-        name="Keeper", alliance_tag="SOD", rank="R1", alliance_honor=500, confidence=0.2
+        name="Keeper",
+        alliance_tag="SOD",
+        rank="R1",
+        alliance_honor=500,
+        confidence=0.2,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     with patch("app.llm_fallback.llm_fallback_donation", return_value=(None, None)):
@@ -327,6 +366,8 @@ def _suspect_donor(
         confidence=confidence,
         suspect_honor_window=window,
         row_index=row_index,
+        row_y=0,
+        row_h=175,
     )
 
 
@@ -424,7 +465,13 @@ def test_confident_non_suspect_donation_row_is_skipped() -> None:
     never reaches the LLM at all — the honor_suspect override must not widen
     the gate beyond suspect rows."""
     donor = DonationMember(
-        name="Confident", alliance_tag="SOD", rank="R1", alliance_honor=500, confidence=0.99
+        name="Confident",
+        alliance_tag="SOD",
+        rank="R1",
+        alliance_honor=500,
+        confidence=0.99,
+        row_y=0,
+        row_h=175,
     )
     result = DonationParseResult(period_type="weekly", members=[donor])
     with patch("app.llm_fallback.llm_fallback_donation") as mock_llm:
@@ -445,6 +492,8 @@ def test_rewrite_name_preserves_suspect_honor_window() -> None:
         alliance_honor=100,
         confidence=0.2,
         suspect_honor_window=(50, 150),
+        row_y=0,
+        row_h=175,
     )
     rewritten = _rewrite_name(donor, "New")
     assert isinstance(rewritten, DonationMember)

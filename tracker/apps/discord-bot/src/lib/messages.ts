@@ -10,6 +10,15 @@ export const messages = {
   ocrError: (filename: string, error: string, detail: string | undefined): string =>
     `⚠️ **${filename}** — OCR: ${error}${detail ? ` (${detail})` : ''}`,
 
+  // Distinct from ocrError because this one is not a transient failure and
+  // re-sending the same file cannot fix it: the OCR service only has crop
+  // positions for known screen shapes, so the fix is a differently-shaped
+  // capture. The raw detail names the measured ratio and the supported bands,
+  // which is genuinely actionable here — unlike a stack trace — so it is kept
+  // in parentheses rather than sent only to the logs.
+  unsupportedAspectRatio: (filename: string, detail: string | undefined): string =>
+    `⚠️ **${filename}** — this screenshot's shape isn't supported. Send a normal full-screen phone screenshot (not a cropped, stitched or scrolling capture).${detail ? ` (${detail})` : ''}`,
+
   databaseError: (filename: string): string =>
     `❌ **${filename}** — database error. Details in the logs.`,
 

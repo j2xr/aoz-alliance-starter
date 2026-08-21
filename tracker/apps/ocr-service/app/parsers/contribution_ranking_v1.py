@@ -55,6 +55,7 @@ from app.parsers.name_ocr import (
 )
 from app.parsers.polar_invasion_v1 import _detect_rank_from_crop
 from app.parsers.run_detection import find_runs
+from app.preprocess import PHONE_PROFILE, require_profile
 from app.tess_engine import Output
 from app.validators import (
     parse_number,
@@ -204,10 +205,6 @@ _HONOR_Y_OFF = (40, 130)
 # can only rescue an otherwise-dropped row, never disturb one that already
 # succeeds.
 _Y_OFF_FALLBACK_MARGIN = 40
-
-# Public aliases consumed by extract.py for LLM-fallback row slicing.
-MEMBER_LIST_TOP = _MEMBER_LIST_TOP
-ROW_HEIGHT = _ROW_HEIGHT
 
 # "(SOD) jeinsolaya" → tag="SOD", name="jeinsolaya"
 # Tag is 1..5 alphanumerics inside parentheses, optionally followed by spaces.
@@ -370,8 +367,11 @@ def tab_zone_stats(image: np.ndarray) -> tuple[list[float], float, int] | None:
 class ContributionRankingV1Parser(BaseParser):
     """Parser for the weekly Alliance Honor leaderboard (V1)."""
 
-    member_list_top: int = MEMBER_LIST_TOP
-    row_height: int = ROW_HEIGHT
+    # No member_list_top / row_height class attributes: this parser scales
+    # every crop by h/CANONICAL_HEIGHT, so canonical constants never match a
+    # real image's bands. extract.py used to read them as a fallback row band;
+    # it now skips the LLM re-read instead of cropping at a guessed position
+    # (see _apply_llm_fallback).
 
     def parse(
         self,
@@ -379,6 +379,12 @@ class ContributionRankingV1Parser(BaseParser):
         emit_trace: bool = False,
         event_code: str | None = None,
     ) -> DonationParseResult:
+        # This parser's crop constants are calibrated for the phone profile
+        # only (see CANONICAL_HEIGHT below) — an emulator-sourced donation
+        # screenshot must fail loudly here rather than be silently parsed
+        # with the wrong positions (aoz-alliance-starter#91).
+        require_profile(image, PHONE_PROFILE)
+
         h = image.shape[0]
         scale = h / CANONICAL_HEIGHT
 

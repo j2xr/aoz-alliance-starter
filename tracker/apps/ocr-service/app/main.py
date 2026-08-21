@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from app import crop_retention
 from app.dispatcher import UnknownEventError, refresh_title_patterns_from_supabase
 from app.extract import extract
-from app.preprocess import preprocess_image
+from app.preprocess import UnsupportedAspectRatioError, preprocess_image
 from app.tess_engine import current_backend, health_check, shutdown_pool
 
 # Honour LOG_LEVEL from .env so app loggers (extract, parsers, llm_fallback)
@@ -221,7 +221,13 @@ async def health() -> JSONResponse:
 def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: bool) -> None:
     """Synchronous worker; FastAPI runs sync background tasks in a threadpool."""
     try:
-        image = preprocess_image(str(tmp_path))
+        try:
+            image = preprocess_image(str(tmp_path))
+        except UnsupportedAspectRatioError as exc:
+            logger.info("Job %s: unsupported aspect ratio (%s)", job_id, exc)
+            payload = {"error": "unsupported_aspect_ratio", "detail": str(exc)}
+            _submit(_set_job(job_id, "error", payload))
+            return
         try:
             result = extract(
                 image, event_type_override=event_type, force_llm=force_llm, job_id=job_id
@@ -229,6 +235,19 @@ def _run_job(job_id: str, tmp_path: Path, event_type: str | None, force_llm: boo
         except UnknownEventError:
             logger.info("Job %s: unknown event type", job_id)
             _submit(_set_job(job_id, "error", {"error": "unknown_event"}))
+            return
+        except UnsupportedAspectRatioError as exc:
+            # Same aspect-ratio band as the preprocess()-stage check above,
+            # but raised by a parser after preprocess() already accepted the
+            # image: either a single-profile parser (e.g. contribution_ranking)
+            # that received an image outside the one profile it knows how to
+            # crop (see require_profile() in preprocess.py), or a
+            # multi-profile parser handling an event_code with no verified
+            # crop positions for the incoming profile (e.g. polar_invasion_v1
+            # rejecting a 2-column event on the emulator profile).
+            logger.info("Job %s: unsupported aspect ratio for this event type (%s)", job_id, exc)
+            payload = {"error": "unsupported_aspect_ratio", "detail": str(exc)}
+            _submit(_set_job(job_id, "error", payload))
             return
         _submit(_set_job(job_id, "done", {"result": result.model_dump()}))
         logger.info("Job %s: done", job_id)

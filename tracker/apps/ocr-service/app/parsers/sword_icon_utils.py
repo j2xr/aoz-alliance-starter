@@ -49,7 +49,19 @@ def _resized_icon(scale: float) -> np.ndarray | None:
     return cv2.resize(icon, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
 
 
-def mask_sword_icon(line_img: np.ndarray, scale: float) -> np.ndarray:
+def mask_sword_icon(
+    line_img: np.ndarray,
+    scale: float,
+    band: tuple[tuple[int, int], tuple[int, int]] = ((100, 170), (180, 320)),
+) -> np.ndarray:
+    """Whiten the crossed-swords icon inside `band` ((y1, y2), (x1, x2)).
+
+    `band` is row-relative and profile-specific: the default is the measured
+    phone band, and callers with a different source layout must pass their own
+    (see _Layout.sword_icon_band in polar_invasion_v1). A band measured for one
+    layout applied to another searches the wrong region, where a template hit
+    would paint a white rectangle over real digits instead of over the icon.
+    """
     icon_resized = _resized_icon(scale)
     if icon_resized is None:
         return line_img
@@ -57,8 +69,9 @@ def mask_sword_icon(line_img: np.ndarray, scale: float) -> np.ndarray:
     th, tw = icon_resized.shape
 
     # Search inside the name/power area where the swords icon appears.
-    search_y1, search_y2 = int(100 * scale), int(170 * scale)
-    search_x1, search_x2 = int(180 * scale), int(320 * scale)
+    (band_y1, band_y2), (band_x1, band_x2) = band
+    search_y1, search_y2 = int(band_y1 * scale), int(band_y2 * scale)
+    search_x1, search_x2 = int(band_x1 * scale), int(band_x2 * scale)
     search_band = line_img[search_y1:search_y2, search_x1:search_x2]
     if search_band.shape[0] < th or search_band.shape[1] < tw:
         logger.debug("Search band too small for template matching, skipping mask")

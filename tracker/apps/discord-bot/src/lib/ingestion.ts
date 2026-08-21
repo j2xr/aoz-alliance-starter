@@ -51,6 +51,7 @@ type OcrRouteMessageContext = {
 export type OcrRoutingMessages = {
   screenUnrecognized: (filename: string, detail: string) => string;
   ocrError: (filename: string, error: string, detail: string | undefined) => string;
+  unsupportedAspectRatio: (filename: string, detail: string | undefined) => string;
   databaseError: (filename: string, err: string) => string;
   unknownEventType: (filename: string, eventType: string) => string;
   missingDatetime: (filename: string) => string;
@@ -113,6 +114,17 @@ export async function routeOcrResult(params: RouteOcrResultParams): Promise<OcrR
       return {
         outcome: 'unknown_event',
         line: messages.screenUnrecognized(filename, ocr.detail ?? ocr.error),
+      };
+    }
+    // The OCR service rejects a source whose aspect ratio matches no layout
+    // profile it has crop positions for (see preprocess.detect_layout_profile).
+    // It is recorded as 'failed' like any other OCR error — no separate upload
+    // status exists — but the user needs to know that re-sending this exact
+    // file will always fail, which the generic ocrError wording doesn't say.
+    if (ocr.error === 'unsupported_aspect_ratio') {
+      return {
+        outcome: 'failed',
+        line: messages.unsupportedAspectRatio(filename, ocr.detail),
       };
     }
     return { outcome: 'failed', line: messages.ocrError(filename, ocr.error, ocr.detail) };

@@ -45,6 +45,7 @@ const MESSAGE = { id: 'msg-1', author: { id: 'user-1' }, createdAt: new Date('20
 const MESSAGES: OcrRoutingMessages = {
   screenUnrecognized: (filename, detail) => `SCREEN_UNRECOGNIZED:${filename}:${detail}`,
   ocrError: (filename, error, detail) => `OCR_ERROR:${filename}:${error}:${detail ?? ''}`,
+  unsupportedAspectRatio: (filename, detail) => `BAD_RATIO:${filename}:${detail ?? ''}`,
   databaseError: (filename, err) => `DB_ERROR:${filename}:${err}`,
   unknownEventType: (filename, eventType) => `UNKNOWN_EVENT:${filename}:${eventType}`,
   missingDatetime: (filename) => `MISSING_DATETIME:${filename}`,
@@ -89,6 +90,28 @@ describe('routeOcrResult — OCR errors', () => {
     expect(result).toEqual({ outcome: 'failed', line: 'OCR_ERROR:shot.png:ocr_timeout:' });
     expect(vi.mocked(recordUploadError)).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'failed' }),
+    );
+  });
+
+  it('unsupported_aspect_ratio: records as failed but uses its own wording', async () => {
+    // Not a transient failure: the OCR service has no crop positions for this
+    // screenshot's shape, so re-sending the same file can never succeed. The
+    // generic ocrError wording would send the user the raw technical string
+    // and imply a retry is worth trying.
+    vi.mocked(recordUploadError).mockResolvedValue(undefined);
+
+    const detail = 'source is 1080x4800 (ratio 4.44); matches no known profile';
+    const result = await routeOcrResult({
+      ...BASE_PARAMS,
+      ocr: { error: 'unsupported_aspect_ratio', detail },
+    });
+
+    expect(result).toEqual({ outcome: 'failed', line: `BAD_RATIO:shot.png:${detail}` });
+    expect(vi.mocked(recordUploadError)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        errorMessage: `unsupported_aspect_ratio: ${detail}`,
+      }),
     );
   });
 
