@@ -1,0 +1,54 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "ahmed",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 575
+    },
+    {
+      "name": "LATAM.ELIMEN",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 370
+    },
+    {
+      "name": "Taz'sEPW",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 315
+    },
+    {
+      "name": "netfobia",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 260
+    },
+    {
+      "name": "kotarou",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "Samwell_Tarly",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "Donkey.jr",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    },
+    {
+      "name": "Echo0o1",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 0
+    }
+  ]
+}

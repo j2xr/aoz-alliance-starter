@@ -19,6 +19,7 @@ from app.parsers.contribution_ranking_v1 import (
     _MIN_NAME_BAND_HEIGHT,
     _NAME_LINE_HALF_HEIGHT,
     _NAME_Y_OFF,
+    _PHONE_LAYOUT,
     _POSITION_PSMS,
     _POSITION_THRESHOLDS,
     _ROW_HEIGHT,
@@ -31,7 +32,12 @@ from app.parsers.contribution_ranking_v1 import (
     _strip_alliance_tag,
     tab_zone_stats,
 )
-from app.preprocess import UnsupportedAspectRatioError, preprocess_image
+from app.preprocess import (
+    EMULATOR_PROFILE,
+    PHONE_PROFILE,
+    UnsupportedAspectRatioError,
+    preprocess_image,
+)
 from app.validators import validate_donation_member
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "contribution_ranking"
@@ -108,12 +114,40 @@ def test_strip_alliance_tag(raw: str, expected_tag: str | None, expected_name: s
 # ── Layout profile guard ─────────────────────────────────────────────────────
 
 
-def test_parse_rejects_emulator_profile_image() -> None:
-    """This parser only has phone-calibrated crop constants (aoz-alliance-starter#91):
-    an emulator-profile image (1080 wide, ~1760 tall) must fail loudly via
-    require_profile() rather than being silently parsed with wrong positions."""
+def test_parse_allows_emulator_profile_image() -> None:
+    """As of aoz-alliance-starter#91's 2026-08-22 addition, the emulator
+    profile has its own measured _Layout (_EMULATOR_LAYOUT) — an
+    emulator-profile image (1080 wide, ~1760 tall) must no longer be
+    rejected outright. A flat all-background image has no ink for the tab
+    band or any row, so this only pins "doesn't raise", not a specific
+    result — the real-fixture tests below cover actual content."""
     image = np.full((1760, 1080), 200, dtype=np.uint8)
-    with pytest.raises(UnsupportedAspectRatioError):
+    ContributionRankingV1Parser().parse(image)  # must not raise
+
+
+def test_parse_rejects_a_profile_without_a_measured_layout() -> None:
+    """Guards the general case _EMULATOR_LAYOUT's addition specialized away
+    from: a profile that preprocess() accepts but this parser has never
+    been calibrated for must still fail loudly (aoz-alliance-starter#91's
+    original concern), rather than silently falling through to some other
+    profile's positions. Exercised via a synthetic third profile — real
+    code only ever knows about phone and emulator — patched into both
+    detect_layout_profile's search order and _LAYOUT_BY_PROFILE's absence
+    of it, mirroring the equivalent guard test in polar_invasion_v1's own
+    suite (test_parse_rejects_two_col_event_on_a_profile_without_measured_bands).
+    """
+    from app.preprocess import LayoutProfile
+
+    third_profile = LayoutProfile("third_profile", min_ratio=5.0, max_ratio=6.0)
+    image = np.full((5500, 1000), 200, dtype=np.uint8)  # ratio 5.5, inside third_profile's band
+
+    with (
+        patch(
+            "app.preprocess._KNOWN_PROFILES",
+            (PHONE_PROFILE, EMULATOR_PROFILE, third_profile),
+        ),
+        pytest.raises(UnsupportedAspectRatioError),
+    ):
         ContributionRankingV1Parser().parse(image)
 
 
@@ -421,7 +455,9 @@ def test_detect_list_top_rejects_tall_header_lacking_periodic_followup() -> None
     name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)  # confirms name0 is periodic
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(_list_top_image([header, name0, name1]), scale=1.0)
+    result = parser._detect_list_top(
+        _list_top_image([header, name0, name1]), layout=_PHONE_LAYOUT, scale=1.0
+    )
 
     assert result == _expected_list_top(name0)
 
@@ -433,7 +469,9 @@ def test_detect_list_top_accepts_periodic_name_band() -> None:
     name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(_list_top_image([name0, name1]), scale=1.0)
+    result = parser._detect_list_top(
+        _list_top_image([name0, name1]), layout=_PHONE_LAYOUT, scale=1.0
+    )
 
     assert result == _expected_list_top(name0)
 
@@ -447,7 +485,9 @@ def test_detect_list_top_skips_band_clipped_at_window_start() -> None:
     name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(_list_top_image([clipped, name0, name1]), scale=1.0)
+    result = parser._detect_list_top(
+        _list_top_image([clipped, name0, name1]), layout=_PHONE_LAYOUT, scale=1.0
+    )
 
     assert result == _expected_list_top(name0)
 
@@ -461,7 +501,7 @@ def test_detect_list_top_falls_back_when_only_band_is_clipped_at_window_end() ->
     image = _list_top_image([(600, CANONICAL_HEIGHT)])
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(image, scale=1.0)
+    result = parser._detect_list_top(image, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert result == _MEMBER_LIST_TOP
 
@@ -475,7 +515,9 @@ def test_detect_list_top_skips_sub_floor_fragment() -> None:
     name1 = (name0[0] + _ROW_HEIGHT, name0[1] + _ROW_HEIGHT)
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(_list_top_image([fragment, name0, name1]), scale=1.0)
+    result = parser._detect_list_top(
+        _list_top_image([fragment, name0, name1]), layout=_PHONE_LAYOUT, scale=1.0
+    )
 
     assert result == _expected_list_top(name0)
 
@@ -487,7 +529,7 @@ def test_detect_list_top_falls_back_on_low_contrast_window() -> None:
     image = _list_top_image([(400, 429)], bg=225, ink=215)  # span ~10 < the 15.0 floor
 
     parser = ContributionRankingV1Parser()
-    result = parser._detect_list_top(image, scale=1.0)
+    result = parser._detect_list_top(image, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert result == _MEMBER_LIST_TOP
 
@@ -511,7 +553,9 @@ def test_detect_list_top_anchors_a_merged_band_on_its_top_edge() -> None:
     followup = (merged[0] + _ROW_HEIGHT, merged[0] + _ROW_HEIGHT + 29)
     parser = ContributionRankingV1Parser()
 
-    result = parser._detect_list_top(_list_top_image([merged, followup]), scale=1.0)
+    result = parser._detect_list_top(
+        _list_top_image([merged, followup]), layout=_PHONE_LAYOUT, scale=1.0
+    )
 
     name_offset = (_NAME_Y_OFF[0] + _NAME_Y_OFF[1]) // 2
     assert result == merged[0] + _NAME_LINE_HALF_HEIGHT - name_offset
@@ -892,7 +936,7 @@ def test_ocr_honor_tall_fallback_recovers_value_when_primary_attempts_fail() -> 
         return "2458" if calls["n"] == 3 else ""
 
     with patch(_OCR_STRING, side_effect=side_effect):
-        assert parser._ocr_honor(image, y=0, scale=1.0) == 2458
+        assert parser._ocr_honor(image, y=0, layout=_PHONE_LAYOUT, scale=1.0) == 2458
     assert calls["n"] == 3
 
 
@@ -900,7 +944,7 @@ def test_ocr_honor_returns_none_when_even_the_tall_fallback_fails() -> None:
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     with patch(_OCR_STRING, return_value=""):
-        assert parser._ocr_honor(image, y=0, scale=1.0) is None
+        assert parser._ocr_honor(image, y=0, layout=_PHONE_LAYOUT, scale=1.0) is None
 
 
 def test_ocr_honor_skips_fallback_when_primary_already_succeeds() -> None:
@@ -909,7 +953,7 @@ def test_ocr_honor_skips_fallback_when_primary_already_succeeds() -> None:
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     with patch(_OCR_STRING, return_value="1234") as mock_string:
-        assert parser._ocr_honor(image, y=0, scale=1.0) == 1234
+        assert parser._ocr_honor(image, y=0, layout=_PHONE_LAYOUT, scale=1.0) == 1234
     assert mock_string.call_count == 1
 
 
@@ -936,7 +980,7 @@ def test_ocr_honor_candidates_reaches_the_tall_band_when_the_tight_one_yields_no
         return "" if calls["n"] <= 6 else "2385"
 
     with patch(_OCR_STRING, side_effect=side_effect):
-        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+        candidates = parser._ocr_honor_candidates(image, y=0, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert 2385 in candidates
     assert calls["n"] == 12
@@ -956,7 +1000,7 @@ def test_ocr_honor_candidates_orders_tight_band_variants_first() -> None:
         return "2135" if calls["n"] <= 6 else "2385"
 
     with patch(_OCR_STRING, side_effect=side_effect):
-        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+        candidates = parser._ocr_honor_candidates(image, y=0, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert candidates == [2135, 2385]
 
@@ -967,7 +1011,7 @@ def test_ocr_honor_candidates_skips_the_tall_band_at_the_image_bottom() -> None:
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     with patch(_OCR_STRING, return_value="") as mock_string:
-        parser._ocr_honor_candidates(image, y=2270, scale=1.0)
+        parser._ocr_honor_candidates(image, y=2270, layout=_PHONE_LAYOUT, scale=1.0)
     assert mock_string.call_count == 6
 
 
@@ -975,7 +1019,7 @@ def test_ocr_honor_candidates_dedupes_a_tall_reading_that_repeats_a_tight_one() 
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     with patch(_OCR_STRING, return_value="2135"):
-        candidates = parser._ocr_honor_candidates(image, y=0, scale=1.0)
+        candidates = parser._ocr_honor_candidates(image, y=0, layout=_PHONE_LAYOUT, scale=1.0)
     assert candidates == [2135]
 
 
@@ -983,7 +1027,7 @@ def test_ocr_honor_candidates_returns_empty_for_an_offscreen_row() -> None:
     image = np.zeros((2400, 1080), dtype=np.uint8)
     parser = ContributionRankingV1Parser()
     with patch(_OCR_STRING, return_value="2385") as mock_string:
-        candidates = parser._ocr_honor_candidates(image, y=3000, scale=1.0)
+        candidates = parser._ocr_honor_candidates(image, y=3000, layout=_PHONE_LAYOUT, scale=1.0)
     assert candidates == []
     mock_string.assert_not_called()
 
@@ -1009,7 +1053,7 @@ def test_enforce_honor_monotonicity_recovers_the_row11_case_via_the_tall_band() 
         return "92256" if calls["n"] <= 6 else "2385"
 
     with patch(_OCR_STRING, side_effect=side_effect):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 2385
     assert members[1].confidence == parser._MONOTONICITY_FIX_CONFIDENCE
@@ -1036,7 +1080,7 @@ def test_enforce_honor_monotonicity_noop_when_already_descending() -> None:
     ]
 
     with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     mock_candidates.assert_not_called()
     assert [m.alliance_honor for m in members] == [3173, 2925, 1785, 1785]
@@ -1062,7 +1106,7 @@ def test_enforce_honor_monotonicity_corrects_when_candidate_fits() -> None:
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[9044, 2925]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 2925
     assert members[1].confidence == ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE
@@ -1080,7 +1124,7 @@ def test_enforce_honor_monotonicity_fix_never_raises_an_already_lower_confidence
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[2925]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].confidence == 0.2
 
@@ -1101,7 +1145,7 @@ def test_enforce_honor_monotonicity_keeps_original_when_no_candidate_fits() -> N
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[92256]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 92256  # unchanged: never fabricate a number
     assert members[1].confidence == 0.0  # flagged low-confidence instead
@@ -1132,7 +1176,7 @@ def test_enforce_honor_monotonicity_flags_and_corrects_a_truncated_drop() -> Non
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[2035]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 2035
     assert members[1].confidence == ContributionRankingV1Parser._MONOTONICITY_FIX_CONFIDENCE
@@ -1152,7 +1196,7 @@ def test_enforce_honor_monotonicity_truncation_keeps_value_when_no_candidate_fit
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[7]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 7  # unchanged: never fabricate
     assert members[1].confidence == 0.0
@@ -1171,7 +1215,7 @@ def test_enforce_honor_monotonicity_allows_a_legitimate_large_drop() -> None:
     ]
 
     with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     mock_candidates.assert_not_called()
     assert members[1].alliance_honor == 250
@@ -1195,7 +1239,7 @@ def test_enforce_honor_monotonicity_ignores_a_drop_below_a_suspect_predecessor()
     # Returns 92256 for any row; if the truncation check wrongly fired on row 2,
     # 92256 would "fit" its (18452, 92256] window and overwrite the good 2051.
     with patch.object(parser, "_ocr_honor_candidates", return_value=[92256]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].suspect_honor_window is not None  # row 1 flagged (increase)
     assert members[2].alliance_honor == 2051  # row 2 untouched
@@ -1217,7 +1261,7 @@ def test_enforce_honor_monotonicity_last_row_uses_zero_as_lower_bound() -> None:
     ]
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[999999, 0]):
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert members[1].alliance_honor == 0
     assert members[1].suspect_honor_window == (0, 350)
@@ -1236,7 +1280,7 @@ def test_enforce_honor_monotonicity_skips_row_without_row_y() -> None:
     ]
 
     with patch.object(parser, "_ocr_honor_candidates") as mock_candidates:
-        parser._enforce_honor_monotonicity(image, members, scale=1.0)
+        parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     mock_candidates.assert_not_called()
     assert members[1].alliance_honor == 9044
@@ -1271,7 +1315,7 @@ def test_monotonicity_log_reports_the_physical_row_not_the_list_index(
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[]):
         with caplog.at_level(logging.WARNING):
-            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+            parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert any("donation row 3:" in r.message for r in caplog.records)
     assert not any("donation row 2:" in r.message for r in caplog.records)
@@ -1290,7 +1334,7 @@ def test_monotonicity_corrected_log_reports_the_physical_row(
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[2878]):
         with caplog.at_level(logging.INFO):
-            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+            parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert any(
         "alliance_honor corrected" in r.message and "row 3:" in r.message for r in caplog.records
@@ -1309,7 +1353,7 @@ def test_monotonicity_log_falls_back_to_list_index_when_row_index_is_missing(
 
     with patch.object(parser, "_ocr_honor_candidates", return_value=[]):
         with caplog.at_level(logging.WARNING):
-            parser._enforce_honor_monotonicity(image, members, scale=1.0)
+            parser._enforce_honor_monotonicity(image, members, layout=_PHONE_LAYOUT, scale=1.0)
 
     assert any("donation row 1:" in r.message for r in caplog.records)
 

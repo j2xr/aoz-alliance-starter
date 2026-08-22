@@ -1,0 +1,60 @@
+{
+  "kind": "donation",
+  "period_type": "weekly",
+  "members": [
+    {
+      "name": "Veck",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 3777
+    },
+    {
+      "name": "CEKATOP_1000",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3697
+    },
+    {
+      "name": "CumStang",
+      "alliance_tag": "SOD",
+      "rank": "R2",
+      "alliance_honor": 3615
+    },
+    {
+      "name": "Doug",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3482
+    },
+    {
+      "name": "MiniMjölnir",
+      "alliance_tag": "SOD",
+      "rank": "R3",
+      "alliance_honor": 3314
+    },
+    {
+      "name": "ghaith89",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3262
+    },
+    {
+      "name": "FireFist",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3190
+    },
+    {
+      "name": "JayJayOv",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3151
+    },
+    {
+      "name": "Devastador",
+      "alliance_tag": "SOD",
+      "rank": "R1",
+      "alliance_honor": 3050
+    }
+  ]
+}
