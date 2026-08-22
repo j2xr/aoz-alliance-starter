@@ -1,0 +1,18 @@
+{
+  "event_type": "triangle_war",
+  "event_datetime": "2026-03-12T01:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 77,
+  "total_points": 196,
+  "source_file": "20260822T0945_005.png",
+  "members": [
+    { "name": "Lucid_Air_Rules", "rank": "R5", "power": 10319250, "points": 6420 },
+    { "name": "DOSKYNG", "rank": "R1", "power": 12432027, "points": 4577 },
+    { "name": "Doug", "rank": "R1", "power": 12933982, "points": 4000 },
+    { "name": "jjr", "rank": "R2", "power": 10771038, "points": 3801 },
+    { "name": "Monsters", "rank": "R2", "power": 8285544, "points": 3645 },
+    { "name": "ばななヨーグルト", "rank": "R1", "power": 11535632, "points": 3600 },
+    { "name": "Nomad", "rank": "R1", "power": 15564062, "points": 3428 },
+    { "name": "TeslaRules", "rank": "R3", "power": 17292538, "points": 3400 }
+  ]
+}

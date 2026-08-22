@@ -12,6 +12,9 @@ from pathlib import Path
 import pytest
 
 from app.parsers._trace import FieldBox, RowTrace
+from app.parsers.contribution_ranking_v1 import (
+    _PHONE_LAYOUT as _DONATION_PHONE_LAYOUT,
+)
 from app.parsers.contribution_ranking_v1 import ContributionRankingV1Parser
 from app.parsers.polar_invasion_v1 import (
     _PHONE_LAYOUT,
@@ -164,7 +167,7 @@ def test_donation_parser_emits_trace_when_requested() -> None:
     result = parser.parse(image, emit_trace=True)
     assert result.members
 
-    detected_top = parser._detect_list_top(image, image.shape[0] / 2400)
+    detected_top = parser._detect_list_top(image, _DONATION_PHONE_LAYOUT, image.shape[0] / 2400)
     for m in result.members:
         trace = m.trace
         assert isinstance(trace, RowTrace)

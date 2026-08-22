@@ -1,3 +1,4 @@
+import dataclasses
 import re
 from typing import Any
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from app.parsers import sword_icon_utils
 from app.parsers.polar_invasion_v1 import (
     _EMULATOR_LAYOUT,
     _EMULATOR_RANK_OCR_ORDER,
+    _LAYOUT_BY_PROFILE,
     _PHONE_LAYOUT,
     _RANK_OCR_ORDER,
     _TWO_COL_EVENTS,
@@ -18,7 +20,7 @@ from app.parsers.polar_invasion_v1 import (
     _parse_datetime,
     _power_from_psm8_crop,
 )
-from app.preprocess import UnsupportedAspectRatioError
+from app.preprocess import EMULATOR_PROFILE, UnsupportedAspectRatioError
 
 _OCR_STRING = "app.parsers.polar_invasion_v1.pytesseract.image_to_string"
 _OCR_DATA = "app.parsers.polar_invasion_v1.pytesseract.image_to_data"
@@ -408,14 +410,39 @@ def test_psm8_stage_refuses_a_layout_with_no_measured_x_band() -> None:
 
 
 @pytest.mark.parametrize("event_code", sorted(_TWO_COL_EVENTS))
-def test_parse_rejects_two_col_event_on_emulator_profile(event_code: str) -> None:
-    """The 2-column header bands have no emulator-profile equivalent (see
-    _BATTLERS_X_2COL's docstring) -- parse() must refuse rather than mix an
-    emulator y-band with phone x-bands. Raises before any OCR runs."""
+def test_parse_allows_two_col_event_on_emulator_profile(event_code: str) -> None:
+    """The emulator profile has its own measured 2-column header bands
+    (battlers_x_2col/total_points_x_2col on _EMULATOR_LAYOUT, 2026-08-22,
+    from wasteland_showdown captures 007/008 -- aoz-alliance-starter#91) --
+    parse() must not refuse these event codes on this profile."""
     image = np.full((1760, 1080), 200, dtype=np.uint8)
     parser = PolarInvasionV1Parser()
 
-    with pytest.raises(UnsupportedAspectRatioError, match=event_code):
+    with patch(_OCR_STRING, return_value=""), patch(_OCR_DATA, return_value=_ocr_data("")):
+        parser.parse(image, event_code=event_code)  # must not raise
+
+
+@pytest.mark.parametrize("event_code", sorted(_TWO_COL_EVENTS))
+def test_parse_rejects_two_col_event_on_a_profile_without_measured_bands(
+    event_code: str,
+) -> None:
+    """The guard itself: a profile with no measured 2-column bands must
+    still be refused rather than fall back to another profile's x-bands
+    (measured corruption if it did -- see _Layout.battlers_x_2col's
+    docstring). No such profile exists today (phone and emulator both have
+    bands), so this exercises the guard via a synthetic layout standing in
+    for a hypothetical future one, keeping the guard covered independently
+    of which real profiles currently have bands."""
+    unmeasured_emulator = dataclasses.replace(
+        _EMULATOR_LAYOUT, battlers_x_2col=None, total_points_x_2col=None
+    )
+    image = np.full((1760, 1080), 200, dtype=np.uint8)
+    parser = PolarInvasionV1Parser()
+
+    with (
+        patch.dict(_LAYOUT_BY_PROFILE, {EMULATOR_PROFILE: unmeasured_emulator}),
+        pytest.raises(UnsupportedAspectRatioError, match=event_code),
+    ):
         parser.parse(image, event_code=event_code)
 
 

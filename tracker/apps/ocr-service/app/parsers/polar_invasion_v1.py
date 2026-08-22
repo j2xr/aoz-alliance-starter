@@ -72,31 +72,68 @@ class _Layout:
     alliance_rank_x: tuple[int, int]
     total_points_x: tuple[int, int]
 
+    # Header crop x-coordinates for the 2-column layout (Battlers | Alliance
+    # Points) used by wasteland_showdown, battle_frenzy, void_war — these
+    # screens don't show an alliance ranking, and the two remaining columns
+    # sit at different x positions than their 3-column counterparts (no
+    # ranking column between them to push them apart). None on a profile
+    # where this hasn't been measured: parse()'s guard refuses these event
+    # codes rather than fall back to another profile's bands — measured
+    # corruption if it did (total_points 5780 read as 57, 4565 as 451,
+    # aoz-alliance-starter#91).
+    battlers_x_2col: tuple[int, int] | None
+    total_points_x_2col: tuple[int, int] | None
+
     # Member list layout
     member_list_top: int  # fallback y-start of first row when detection fails
     row_height: int
 
     # _detect_list_top's dynamic gap-detection: a right-edge column band
-    # sampled for narrow bright zones (row separators), and the pitch range
-    # between consecutive zones that confirms a real row boundary (vs. noise).
-    # use_dynamic_list_top=False skips the scan entirely and always returns
-    # member_list_top — appropriate for a source with one fixed native
-    # resolution (no device variation to detect around), and necessary here:
-    # the emulator layout's header/stats band produces a coincidental bright
-    # run at the scan's start offset that satisfies the pitch check by pure
-    # chance, landing list_top inside the header instead of the member list.
+    # sampled for narrow zones matching list_top_dip_range (row separators —
+    # a bright shadow line on phone, a dark card-gap on the emulator skin;
+    # see that field), and the pitch range between consecutive zones that
+    # confirms a real row boundary (vs. noise). use_dynamic_list_top=False
+    # skips the scan entirely and always returns member_list_top —
+    # appropriate for a source with one fixed native resolution and no
+    # per-row separator signal to detect around.
     #
-    # The 3 fields below are only meaningful when use_dynamic_list_top=True —
+    # The 6 fields below are only meaningful when use_dynamic_list_top=True —
     # they're Optional (None when the scan is off) rather than always
     # populated, specifically so a layout with the scan disabled can't carry
-    # unmeasured values that read as measured. _detect_list_top asserts them
-    # non-None before use, so turning the scan on for a layout without real
+    # unmeasured values that read as measured. _detect_list_top raises before
+    # use if any is None, so turning the scan on for a layout without real
     # numbers here fails loudly instead of scanning a band calibrated for a
     # different profile's UI chrome.
     use_dynamic_list_top: bool
     list_top_edge_x: tuple[int, int] | None
     list_top_search_start: int | None
     row_gap_pitch: tuple[int, int] | None
+    # Inclusive (lo, hi) grayscale range that counts as "inside a separator
+    # zone". Phone's separator is a bright shadow line above the row-interior
+    # baseline (226-255); the emulator skin's is the opposite — a dark
+    # card-gap band below its row-interior baseline (measured 0-214 on
+    # wasteland_showdown/triangle_war captures, 2026-08-22) — so this can't
+    # be a single hardcoded threshold+direction shared by every profile.
+    list_top_dip_range: tuple[float, float] | None
+    # (min, max) pixel width a zone must have to count as a separator, not
+    # noise. Phone's is 5-30 (unchanged from before generalization). The
+    # emulator's card-gap line is a hairline by comparison — measured 2-4px
+    # across 6 captures on 2026-08-22 — so reusing phone's 5px floor drops
+    # every real zone and leaves only wider, unrelated dark content (a
+    # decorated name's glyphs bleeding into the sampled column) to pass the
+    # width filter instead; measured directly, not assumed.
+    list_top_zone_width: tuple[int, int] | None
+    # Offset from a confirmed zone's start (z1, the first of a valid
+    # (z1, z2) pitch-matching pair) to row 0's actual top. On phone the
+    # zone marks the row_0/row_1 boundary, one full row_height below row 0's
+    # top, hence -row_height (-179, preserved verbatim from the pre-generalization
+    # hardcoded formula — zero behavior change). On the emulator skin the zone
+    # instead marks each row's OWN top with a small fixed lag (measured +8px
+    # on 20260822T0945_001/_003, where the true top is independently known
+    # from the non-dynamic fixtures) — a different physical signal, not a
+    # rescaled version of phone's, so it needs its own measured offset rather
+    # than reusing -row_height.
+    list_top_zone_offset: int | None
 
     # Column crops within each row (y-offsets relative to row top, x absolute)
     name_y_off: tuple[int, int]  # primary crop
@@ -264,6 +301,24 @@ _EMULATOR_RANK_OCR_ORDER: tuple[tuple[int, int], ...] = (
 )
 
 
+# 2-column header bands, phone scale — measured well before the emulator
+# profile existed (moved above _PHONE_LAYOUT so the dataclass instance below
+# can reference them; previously module-level constants used directly by
+# _parse_header, now carried per-profile on _Layout instead — see that
+# field's docstring).
+_BATTLERS_X_2COL_PHONE = (350, 500)
+_TOTAL_POINTS_X_2COL_PHONE = (550, 800)
+
+# Emulator counterpart, measured 2026-08-22 on the wasteland_showdown
+# captures 20260822T0945_007/_008 (ground truth: battlers 10/14, total_points
+# 2565/4110) via image_to_data bounding boxes on the stats_y band — verified
+# to read both fixtures exactly at these bands. Distinct from the phone bands
+# (not a rescale): "10"/"14" render at x=399-430, "2565"/"4110" at x=634-702;
+# margins below give room for one extra digit either side without reaching
+# the other column.
+_BATTLERS_X_2COL_EMULATOR = (370, 470)
+_TOTAL_POINTS_X_2COL_EMULATOR = (590, 760)
+
 # Phone screenshots (1080x[1920-2400]) — values unchanged from before the
 # emulator profile existed; this is a pure refactor of the phone path.
 _PHONE_LAYOUT = _Layout(
@@ -273,12 +328,17 @@ _PHONE_LAYOUT = _Layout(
     battlers_x=(200, 310),
     alliance_rank_x=(480, 595),
     total_points_x=(720, 925),
+    battlers_x_2col=_BATTLERS_X_2COL_PHONE,
+    total_points_x_2col=_TOTAL_POINTS_X_2COL_PHONE,
     member_list_top=411,
     row_height=179,
     use_dynamic_list_top=True,
     list_top_edge_x=(970, 1070),
     list_top_search_start=380,
     row_gap_pitch=(175, 185),
+    list_top_dip_range=(226.0, 255.0),
+    list_top_zone_width=(5, 30),
+    list_top_zone_offset=-179,  # == -row_height, unchanged from before generalization
     name_y_off=(50, 103),
     name_y_off_wide=(45, 130),
     name_x=(220, 680),
@@ -303,8 +363,7 @@ _PHONE_LAYOUT = _Layout(
 # the ground truth these were calibrated against). Not a uniform rescale of
 # the phone layout — this source's UI chrome has different proportions, so
 # every field actually in use was measured independently rather than derived
-# by scaling _PHONE_LAYOUT (the 3 dynamic-list-top fields below are the
-# exception — they're unused here and deliberately None, see _Layout).
+# by scaling _PHONE_LAYOUT.
 _EMULATOR_LAYOUT = _Layout(
     date_y=(130, 185),
     stats_y=(260, 310),
@@ -312,16 +371,47 @@ _EMULATOR_LAYOUT = _Layout(
     battlers_x=(230, 350),
     alliance_rank_x=(490, 610),
     total_points_x=(700, 900),
+    battlers_x_2col=_BATTLERS_X_2COL_EMULATOR,
+    total_points_x_2col=_TOTAL_POINTS_X_2COL_EMULATOR,
     member_list_top=399,
     row_height=164,
-    use_dynamic_list_top=False,
-    # Never read while use_dynamic_list_top=False (see _detect_list_top).
-    # No real emulator measurement exists for a row-separator scan on this
-    # profile — deliberately None rather than phone's values, so enabling
-    # this scan here later can't silently run on unmeasured phone bands.
-    list_top_edge_x=None,
-    list_top_search_start=None,
-    row_gap_pitch=None,
+    # Enabled 2026-08-22: 399 alone only holds when the list happens to be
+    # scrolled to a row boundary (true of _001/_002/_003/_006 among the
+    # 20260822T0945_* captures) — on a fractional scroll offset (_004, _005)
+    # it reads 0 of 8 rows (the crop grid no longer lines up with any real
+    # row). The scan below reads the true per-capture top instead. Previously
+    # False because no emulator measurement existed for a row-separator
+    # signal at all — one does exist, just not the one phone uses (see
+    # list_top_dip_range).
+    use_dynamic_list_top=True,
+    # Sampled column: x=900-940 lands past the name/power text columns and
+    # short of the points column on every fixture row checked, so the band
+    # carries mostly background fill rather than glyph ink. list_top_search_start
+    # is set past stats_y (ends at 310) plus the header's own dip at
+    # y~300-312 (part of the Alliance Points figure's crop) — starting any
+    # earlier would let that header dip masquerade as row 0's marker.
+    list_top_edge_x=(900, 940),
+    list_top_search_start=350,
+    # Measured pitch between consecutive zones on 001/002/003/004/005/006:
+    # 161-166px, clustered tightly around row_height (164) as expected for a
+    # periodic per-row signal; 155-175 leaves margin either side without
+    # risking a false pair at roughly double or half that spacing.
+    row_gap_pitch=(155, 175),
+    # The card-gap here is a DARK band (measured 206-217 at this x-band,
+    # 2026-08-22 on 20260822T0945_001) against a lighter row-interior
+    # baseline (~220-233) — the opposite polarity of phone's bright
+    # separator line. Not a threshold that could be shared with phone's
+    # (226.0, 255.0): a single hardcoded direction can't express both.
+    list_top_dip_range=(0.0, 214.0),
+    list_top_zone_width=(2, 6),
+    # Unlike phone, the confirmed zone here marks EACH row's own top (not
+    # the row_0/row_1 boundary) with a small measured lag: on 001 and 003
+    # independently, the first zone lands at y=391 while the true top
+    # (established by the non-dynamic fixtures below) is 399 — a +8 offset,
+    # not a -row_height one. Reusing phone's -row_height here was checked
+    # and rejected: it would place row 0 up to a full row_height too high
+    # for whichever row happens to produce the first detected zone.
+    list_top_zone_offset=8,
     name_y_off=(28, 60),
     name_y_off_wide=(25, 85),
     name_x=(245, 730),
@@ -365,26 +455,15 @@ def _layout_for_image(image: np.ndarray) -> _Layout:
         ) from None
 
 
-# Header crop x-coordinates for the 2-column layout (Battlers or
-# "Alliance Members" | Alliance Points) used by wasteland_showdown,
-# battle_frenzy, void_war — these screens don't show an alliance ranking.
-# Phone-only, and unlike every other crop constant in this module, has no
-# emulator-profile counterpart: no emulator capture of any 2-column event
-# has ever been checked against ground truth. parse() rejects the emulator
-# profile for these three event codes (see the guard near the top of
-# parse()) specifically so these bands can never be silently applied to it —
-# measured corruption if they were: total_points 5780 read as 57, 4565 as
-# 451 (aoz-alliance-starter#91).
-_BATTLERS_X_2COL = (350, 500)
-_TOTAL_POINTS_X_2COL = (550, 800)
-
 # Header layout per event code (verified on the fixtures: ironblood is
 # 3 columns — with battlers/points sometimes unreadable — and battle_frenzy
 # 2 columns). When the code is known, the layout is chosen here
 # deterministically; the old heuristic ("a digit read in the rank cell →
 # 3 columns") remains as a fallback, but a stray digit could force the
 # wrong columns on a 2-column screen (the 2-column ranges overlap x=480-595).
-_THREE_COL_EVENTS = frozenset({"polar_invasion", "elite_wars", "ironblood_battlefield"})
+_THREE_COL_EVENTS = frozenset(
+    {"polar_invasion", "elite_wars", "ironblood_battlefield", "triangle_war"}
+)
 _TWO_COL_EVENTS = frozenset({"wasteland_showdown", "battle_frenzy", "void_war"})
 
 _MAX_ROWS = 12
@@ -648,27 +727,27 @@ class PolarInvasionV1Parser(BaseParser):
         h = image.shape[0]
         layout = _layout_for_image(image)
 
-        # The 2-column header (_BATTLERS_X_2COL/_TOTAL_POINTS_X_2COL below)
-        # has no emulator-profile equivalent — it's phone-only, unlike the
-        # rest of `layout`, which is fully profile-aware. Applying it to an
-        # emulator image mixes an emulator y-band with phone x-bands and
-        # produces plausible-looking but silently wrong totals (measured:
-        # total_points 5780 read as 57, 4565 as 451 — see aoz-alliance-starter#91).
-        # event_code=None (dev-tools/tests calling parse() directly, never
-        # production — extract.py always supplies a code via REGISTRY) is
-        # deliberately left ungated here: _parse_header's own fallback now
-        # refuses the 2-column bands on any non-phone layout instead of
-        # applying them, so that path can no longer corrupt totals.
-        # Written as "not _PHONE_LAYOUT" rather than "is _EMULATOR_LAYOUT":
-        # phone is the only layout with verified 2-column bands, so a third
-        # profile added later must fail this check, not slip past it.
-        if layout is not _PHONE_LAYOUT and event_code in _TWO_COL_EVENTS:
+        # The 2-column header bands (layout.battlers_x_2col /
+        # total_points_x_2col) are profile-aware like the rest of `layout`,
+        # but not every profile has them measured — phone and emulator both
+        # do now (emulator added 2026-08-22 from wasteland_showdown captures
+        # 007/008), a hypothetical third profile might not. Refusing here
+        # rather than falling back to another profile's bands matters:
+        # mixing this profile's y-band with a different profile's x-bands
+        # produced plausible-looking but silently wrong totals when this was
+        # first measured (total_points 5780 read as 57, 4565 as 451 — see
+        # aoz-alliance-starter#91). event_code=None (dev-tools/tests calling
+        # parse() directly, never production — extract.py always supplies a
+        # code via REGISTRY) is deliberately left ungated here: _parse_header's
+        # own fallback refuses the 2-column bands when unmeasured instead of
+        # applying them, so that path can't corrupt totals either.
+        if (
+            layout.battlers_x_2col is None or layout.total_points_x_2col is None
+        ) and event_code in _TWO_COL_EVENTS:
             raise UnsupportedAspectRatioError(
                 f"event_code={event_code!r} uses the 2-column header layout, whose crop "
-                "positions are verified on the phone profile only (of the non-phone "
-                "profiles, only polar_invasion / elite_wars / ironblood_battlefield "
-                "share polar_invasion's calibrated 3-column geometry) — refusing to "
-                f"parse a 1080x{h} image with phone-only header bands"
+                "positions have no measured bands on this profile — refusing to parse a "
+                f"1080x{h} image with another profile's header bands"
             )
 
         dt, battlers, alliance_rank, total_points = self._parse_header(image, event_code, layout)
@@ -742,7 +821,16 @@ class PolarInvasionV1Parser(BaseParser):
             )
 
         return ParseResult(
-            event_type="polar_invasion",
+            # Same fallback as the log line above: event_code is None only on
+            # the dev-tools/tests-only direct-call path (production always
+            # supplies one via REGISTRY). Previously hardcoded to
+            # "polar_invasion" regardless of event_code — silently wrong for
+            # every other event this parser backs (elite_wars,
+            # wasteland_showdown, ...), papered over by extract.py's own
+            # override (extract.py:166-169) whenever the two didn't match.
+            # Fixed at the source instead: that override becomes a no-op in
+            # the common case rather than doing the real work.
+            event_type=event_code or "polar_invasion",
             event_datetime=event_datetime,
             alliance_rank=alliance_rank,
             total_battlers=battlers,
@@ -757,24 +845,30 @@ class PolarInvasionV1Parser(BaseParser):
     def _detect_list_top(self, image: np.ndarray, layout: _Layout) -> int:
         """Detect y-start of row 0 by locating the row-separator gap pattern.
 
-        Each member row is a panel followed by a bright gap (= row
-        separator); the row-to-row pitch is consistent within one layout
-        profile (see layout.row_height). We sample a right-edge column band
-        (layout.list_top_edge_x) where no text intrudes, find narrow bright
-        zones (5–30px wide), and pick the first pair whose pitch falls in
-        layout.row_gap_pitch. The first zone of that pair is the gap between
-        row 0 and row 1, so row 0 top = first_gap_start - row_height.
+        Each member row is a panel followed by a separator zone (a bright
+        shadow line on phone, a dark card-gap on the emulator skin — see
+        layout.list_top_dip_range); the row-to-row pitch is consistent
+        within one layout profile (see layout.row_height). We sample a
+        right-edge column band (layout.list_top_edge_x) where no text
+        intrudes, find narrow zones matching list_top_dip_range and
+        list_top_zone_width, and pick the first pair whose pitch falls in
+        layout.row_gap_pitch. row 0's top is then the first zone's start
+        plus layout.list_top_zone_offset — on phone the zone marks the
+        row_0/row_1 boundary (offset -row_height); on the emulator skin it
+        marks each row's own top instead, with a small measured lag (see
+        that field's docstring — the two profiles' separators are different
+        physical signals, not the same one at different coordinates).
 
-        Width filtering excludes the wide bright zone that sits above row 0
-        (a mix of stats/header background and the gap below the
-        Member/Points column titles). Falls back to layout.member_list_top
-        when no qualifying pair is found, or immediately when
+        Width filtering excludes the wide zone that sits above row 0 (a mix
+        of stats/header background and the gap below the Member/Points
+        column titles). Falls back to layout.member_list_top when no
+        qualifying pair is found, or immediately when
         layout.use_dynamic_list_top is False.
         """
         if not layout.use_dynamic_list_top:
             return layout.member_list_top
 
-        # These 3 fields are None on any layout with use_dynamic_list_top
+        # These 6 fields are None on any layout with use_dynamic_list_top
         # False — reaching here with one unset means a layout turned the
         # scan on without ever measuring a real row-separator band for its
         # own UI chrome (see _Layout's docstring). Fail loudly rather than
@@ -788,6 +882,12 @@ class PolarInvasionV1Parser(BaseParser):
             raise ValueError("use_dynamic_list_top=True needs a measured list_top_search_start")
         if layout.row_gap_pitch is None:
             raise ValueError("use_dynamic_list_top=True needs a measured row_gap_pitch")
+        if layout.list_top_dip_range is None:
+            raise ValueError("use_dynamic_list_top=True needs a measured list_top_dip_range")
+        if layout.list_top_zone_width is None:
+            raise ValueError("use_dynamic_list_top=True needs a measured list_top_zone_width")
+        if layout.list_top_zone_offset is None:
+            raise ValueError("use_dynamic_list_top=True needs a measured list_top_zone_offset")
 
         h = int(image.shape[0])
 
@@ -799,22 +899,23 @@ class PolarInvasionV1Parser(BaseParser):
         edge_x0, edge_x1 = layout.list_top_edge_x
         right_edge = gray[:, edge_x0:edge_x1].mean(axis=1)
 
-        # Bright zones (brightness ≥ 226) of width 5–30 are row separators.
         # drop_clipped_start=False: this scan starts at a fixed offset
         # (layout.list_top_search_start), not the array origin, so a zone
-        # already bright there is a legitimate start, not an artifact of the
-        # window boundary (contrast ContributionRankingV1Parser._detect_list_top,
+        # already matching there is a legitimate start, not an artifact of
+        # the window boundary (contrast ContributionRankingV1Parser._detect_list_top,
         # which has no such fixed offset and so needs the opposite default).
-        # include_clipped_end keeps a zone still bright at y=h, provided it's
-        # already narrow enough to qualify.
+        # include_clipped_end keeps a zone still matching at y=h, provided
+        # it's already narrow enough to qualify.
         start = layout.list_top_search_start
-        search_mask = right_edge[start:h] >= 226.0
+        dip_lo, dip_hi = layout.list_top_dip_range
+        width_min, width_max = layout.list_top_zone_width
+        search_mask = (right_edge[start:h] >= dip_lo) & (right_edge[start:h] <= dip_hi)
         zones = [
             (start + s, start + e)
             for s, e in find_runs(
                 search_mask,
-                min_len=5,
-                max_len=30,
+                min_len=width_min,
+                max_len=width_max,
                 drop_clipped_start=False,
                 include_clipped_end=True,
             )
@@ -826,7 +927,7 @@ class PolarInvasionV1Parser(BaseParser):
             z2 = zones[i + 1]
             pitch = z2[0] - z1[0]
             if pitch_min <= pitch <= pitch_max:
-                row_0_top = z1[0] - layout.row_height
+                row_0_top = z1[0] + layout.list_top_zone_offset
                 result = max(0, min(h - 1, row_0_top))
                 logger.debug(
                     "list_top: zone[%d]=%s pitch=%d row_0_top=%d",
@@ -877,7 +978,21 @@ class PolarInvasionV1Parser(BaseParser):
                 _ocr_number(layout.total_points_x),
             )
         if event_code in _TWO_COL_EVENTS:
-            return dt, _ocr_number(_BATTLERS_X_2COL), None, _ocr_number(_TOTAL_POINTS_X_2COL)
+            # parse()'s own guard already refuses this event_code on a profile
+            # without measured 2-column bands before _parse_header is ever
+            # called; these checks exist so a future direct call (bypassing
+            # that guard, e.g. a new test or tool) fails loudly instead of
+            # crashing on Nones or silently reading a (0, 0) crop.
+            if layout.battlers_x_2col is None:
+                raise ValueError("2-column event_code needs a measured battlers_x_2col")
+            if layout.total_points_x_2col is None:
+                raise ValueError("2-column event_code needs a measured total_points_x_2col")
+            return (
+                dt,
+                _ocr_number(layout.battlers_x_2col),
+                None,
+                _ocr_number(layout.total_points_x_2col),
+            )
 
         # Fallback (code absent : appels directs des tests/outils) — heuristique
         # historique durcie : un chiffre dans la cellule rang ne suffit plus,
@@ -893,23 +1008,26 @@ class PolarInvasionV1Parser(BaseParser):
         # Used by wasteland_showdown, battle_frenzy, void_war — both numeric
         # values sit further from the screen edges than in the 3-column case.
         #
-        # Phone-only, like the bands themselves: reached only when the
-        # heuristic above didn't find a plausible 3-column reading, and on a
-        # non-phone layout that would pair this profile's stats_y with phone
-        # x-bands — the mix parse()'s own guard exists to prevent (measured:
-        # total_points 5780 read as 57, 4565 as 451). An unread header is
-        # reported as unread; the member rows below it are fully profile-aware
+        # Reached only when the heuristic above didn't find a plausible
+        # 3-column reading. Both phone and emulator have measured bands now;
+        # a profile without them (layout.battlers_x_2col is None) would pair
+        # this profile's stats_y with another profile's x-bands — the mix
+        # parse()'s own guard exists to prevent when the event_code is known
+        # (measured: total_points 5780 read as 57, 4565 as 451). Here the
+        # event_code is unknown by definition (this is the no-code fallback),
+        # so that guard can't have run — an unread header is reported as
+        # unread instead; the member rows below it are fully profile-aware
         # and still parse normally.
-        if layout is not _PHONE_LAYOUT:
+        if layout.battlers_x_2col is None or layout.total_points_x_2col is None:
             logger.warning(
                 "header unreadable: the 3-column heuristic failed and the 2-column "
-                "fallback bands are phone-only (no verified positions for this "
-                "profile) — returning an empty header rather than phone x-bands"
+                "fallback bands have no measured positions for this profile — "
+                "returning an empty header rather than another profile's x-bands"
             )
             return dt, None, None, None
 
-        battlers = _ocr_number(_BATTLERS_X_2COL)
-        total_points = _ocr_number(_TOTAL_POINTS_X_2COL)
+        battlers = _ocr_number(layout.battlers_x_2col)
+        total_points = _ocr_number(layout.total_points_x_2col)
         return dt, battlers, None, total_points
 
     # ── Member row ────────────────────────────────────────────────────────────

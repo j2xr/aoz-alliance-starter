@@ -39,6 +39,7 @@ import logging
 import os
 import re
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import cv2
@@ -55,7 +56,12 @@ from app.parsers.name_ocr import (
 )
 from app.parsers.polar_invasion_v1 import _detect_rank_from_crop
 from app.parsers.run_detection import find_runs
-from app.preprocess import PHONE_PROFILE, require_profile
+from app.preprocess import (
+    EMULATOR_PROFILE,
+    PHONE_PROFILE,
+    UnsupportedAspectRatioError,
+    detect_layout_profile,
+)
 from app.tess_engine import Output
 from app.validators import (
     parse_number,
@@ -364,6 +370,276 @@ def tab_zone_stats(image: np.ndarray) -> tuple[list[float], float, int] | None:
     return means, deviations[idx], idx
 
 
+@dataclass(frozen=True)
+class _Layout:
+    """Per-profile geometry, each field already in that profile's own
+    canonical pixel space.
+
+    Every y-offset below is multiplied by a `scale` computed at the call
+    site — 1.0 for a fixed-resolution source (the emulator's native
+    400x652 never varies) or h/CANONICAL_HEIGHT for a variable-height one
+    (real phones range 1920-2400px tall). That split keeps this dataclass
+    holding only each profile's own already-correct numbers: there is no
+    second, hidden scale factor baked into any field here.
+
+    x-bands are never scaled at all (by either profile) — preprocess()
+    normalizes every source to the same TARGET_WIDTH=1080 regardless of
+    aspect ratio, so a horizontal pixel position means the same thing on
+    both profiles' outputs. They still differ between profiles below,
+    because — unlike the header bands in polar_invasion_v1, which measured
+    identical between phone and emulator — this screen's row content
+    genuinely sits at different x on the two sources (see the emulator
+    constants' own comments).
+    """
+
+    row_height: int
+    member_list_top: int
+    name_x: tuple[int, int]
+    name_y_off: tuple[int, int]
+    name_wrap_y_off: tuple[int, int]
+    honor_x: tuple[int, int]
+    honor_y_off: tuple[int, int]
+    rank_badge_x: tuple[int, int]
+    rank_badge_y_off: tuple[int, int]
+    position_x: tuple[int, int]
+    position_y_off: tuple[int, int]
+    # _detect_list_top's scan window. Phone bounds it tightly around the
+    # expected canonical position because real-device captures are taken
+    # right after opening the tab, never mid-scroll. The emulator's capture
+    # pipeline DOES scroll deliberately (aoz-alliance-starter#91's donation
+    # captures cover 64 rows across 11 screens) — but measured 2026-08-22
+    # (see "Rank"/"Commander"/"Name" tesseract bboxes, identical top=232 on
+    # week1_01 through week1_13 despite covering ranks 1 through 64): the
+    # column-header row is STICKY, so the scrollable viewport's own top
+    # never moves — only which rows are drawn inside it changes. The topmost
+    # VISIBLE row therefore sits at the same canonical y on every capture,
+    # same as phone, and a wide search (an earlier version of this field
+    # supported list_top_search_end_margin=None for exactly that reason) is
+    # both unnecessary and actively harmful: it lets far-away content — a
+    # different row's own badge, e.g. — coincidentally satisfy the row_h
+    # periodicity check and get accepted as row 0.
+    list_top_search_start: int
+    list_top_search_end_margin: int
+    # x-band _detect_list_top scans for text-density bands. Phone's (270,720)
+    # sits safely right of its avatar column (which ends ~240, same x as
+    # name_x's own left edge) with no measurement behind the specific value
+    # beyond "clears the avatar" — kept exactly as before for that profile.
+    # The emulator's avatar/badge column extends further right (to ~330,
+    # see rank_badge_x) and includes an oversized rank-1 medal graphic
+    # (measured ~115px tall, y=318-433 on week1_01) that partially overlaps
+    # any strip starting before ~350: initially reusing phone's (270,720)
+    # let that medal's ink register as a false periodic band on 4 of the 14
+    # 2026-08-22 captures (list_top landing at 210-228 instead of the real
+    # row-0 anchor near 300, and the crop then reading avatar-image noise
+    # as a "row"). list_top_scan_x is therefore a per-profile field, not a
+    # shared constant.
+    list_top_scan_x: tuple[int, int]
+    # A candidate band must contain at least this FRACTION of pixels darker
+    # than list_top_dark_pixel_value to be accepted, even after passing the
+    # periodicity check — None skips this check entirely (phone). Exists
+    # because the emulator's sticky header casts a soft drop-shadow/divider
+    # gradient (y≈280-310, full width, see list_top_search_start's sibling
+    # docstring) that is itself periodic-shaped-enough to slip past
+    # _has_periodic_followup on some captures, but is measurably different
+    # in KIND from real text: real name/tag ink dips to near-black
+    # (min=2-10 measured across 3 captures) while the gradient never drops
+    # below ~196 (std 7.5 vs 38-50 for genuine text). Position alone can't
+    # separate them — one capture's real row-0 text starts at y=290, inside
+    # the gradient's own y-range — so this checks pixel content instead of
+    # tightening the y-window further (an earlier attempt at the latter
+    # fixed some captures while breaking others whose genuine content
+    # legitimately starts as early as 290).
+    list_top_dark_pixel_value: int | None
+    list_top_dark_pixel_min_fraction: float
+
+
+# Phone layout: wraps the existing module constants (defined above, all
+# measured 2026-07-26) unchanged — this is a pure refactor for that profile,
+# not a recalibration. See _Layout's docstring for the scale=h/CANONICAL_HEIGHT
+# this pairs with at the parse() call site.
+_PHONE_LAYOUT = _Layout(
+    row_height=_ROW_HEIGHT,
+    member_list_top=_MEMBER_LIST_TOP,
+    name_x=_NAME_X,
+    name_y_off=_NAME_Y_OFF,
+    name_wrap_y_off=_NAME_WRAP_Y_OFF,
+    honor_x=_HONOR_X,
+    honor_y_off=_HONOR_Y_OFF,
+    rank_badge_x=_RANK_BADGE_X,
+    rank_badge_y_off=_RANK_BADGE_Y,
+    position_x=_POSITION_X,
+    position_y_off=_POSITION_Y_OFF,
+    list_top_search_start=330,
+    list_top_search_end_margin=180,
+    list_top_scan_x=(270, 720),
+    list_top_dark_pixel_value=None,
+    list_top_dark_pixel_min_fraction=0.0,
+)
+
+# Emulator layout (aoz-alliance-starter#91): measured 2026-08-22 against
+# week1_01..week1_14.png, the first Contribution Ranking captures ever taken
+# on this source (400x652 native, 1080x1760 canonical after preprocess —
+# always exactly this size, since EMULATOR_PROFILE's aspect tolerance is
+# tight — so unlike phone, no field here needs runtime height-scaling; the
+# call site passes scale=1.0).
+#
+# Row pitch measured directly from tesseract word bounding boxes (not a
+# density-scan estimate): the name/honor text tops for 4 known rows across
+# 3 captures (week1_01/02/03) land at y=365,528,690,853 / 363,526,691,853 /
+# 854,1181,1344,1508 — consistently ~163px apart, NOT phone's 178px scaled
+# by h/CANONICAL_HEIGHT (which would give 178*(1760/2400)=130 — the value
+# the naive scaled formula produced before this measurement, and which
+# corrupted every other row: a ~33px/row drift compounds to a half-row
+# error by row 2, so crops alternated between landing on real text and
+# landing in the gap between two rows).
+_ROW_HEIGHT_EMULATOR = 163
+
+# Row-anchor convention matches phone's (badge near the anchor, name/honor
+# offset further down): the anchor sits ~65px above the name/honor text
+# top, so the badge — measured spanning roughly that same 65px band above
+# the text — gets a small non-negative offset rather than a negative one.
+# member_list_top is this anchor for row 0 when the list is scrolled to the
+# very top (week1_01): text top 365 - 65 = 300.
+_MEMBER_LIST_TOP_EMULATOR = 300
+
+# Name column. Measured (week1_01/02/03): the "(SOD)"-style tag starts at
+# x=356, the name itself at x=429 (both well right of the position digit,
+# which ends by x=238, and the avatar, which ends by x~330 — see
+# _RANK_BADGE_X_EMULATOR). 340 gives the tag a small left margin without
+# touching the avatar; 900 leaves margin before the honor column, which
+# starts at x=933 on every measured row (see _HONOR_X_EMULATOR). Unlike
+# polar_invasion_v1's header bands, this is NOT the same x as the phone
+# profile's _NAME_X=(240,760): the emulator's narrower/taller aspect ratio
+# (400x652 vs a real phone's ~1080x2100+) visibly shifts the whole row's
+# column layout right relative to phone, not just its vertical pitch.
+_NAME_X_EMULATOR = (340, 900)
+_NAME_Y_OFF_EMULATOR = (59, 99)
+# Wrapped-name fallback (see _NAME_WRAP_Y_OFF's phone docstring for what
+# this is for): shifted down by the same ~40px delta phone uses between its
+# own primary and wrap bands, not independently measured — no wrapped name
+# was observed in the 2026-08-22 corpus, so this is an untested carry-over
+# by analogy, exercised only when the primary band already came back empty.
+_NAME_WRAP_Y_OFF_EMULATOR = (99, 139)
+
+# Alliance Honor column. left=933-934 on every measured row (week1_01
+# rows 0-3); 900 gives a small left margin, 1060 matches the phone
+# profile's own right edge (both sit near the TARGET_WIDTH=1080 canvas
+# edge with the same ~20px margin).
+_HONOR_X_EMULATOR = (900, 1060)
+_HONOR_Y_OFF_EMULATOR = (59, 99)
+
+# R-badge (R1..R5 disc, top-left of the avatar). A first pass estimated this
+# band from an eyeballed pixel-grid overlay (x=215-320, y-off=(0,62)) — it
+# shipped with a real defect: cross-checking week1_01/week1_04 against their
+# own verified ground truth (visual re-read of the raw capture) showed the
+# rank column reading wrong far more often than name/honor (e.g. week1_04's
+# CEKATOP_1000 R1 read as R4, CumStang R2 read as R3), while every one of
+# those same rows' name+honor was already correct — ruling out a list_top/
+# row-index misalignment (that would have broken name/honor identically).
+# Re-measured directly via tesseract OCR bounding boxes for "R1".."R5" text
+# across both captures (badge text IS real, if low-contrast, text — not a
+# pure icon): the left edge was actually at x=198, not 215 — the crop was
+# clipping the first ~17px of every badge, including part of the digit
+# glyph, on every single row. Text top landed consistently at
+# member_list_top-anchor + 20-24px (measured across 7-9 rows per capture),
+# not +0. 180-300 (x) / 10-58 (y-off) give margin on every side of these
+# re-measured values. The y-band is expressed relative to member_list_top's
+# anchor convention (badge sits just below the anchor, not ~150px into the
+# row the way phone's _RANK_BADGE_Y=(18,78) does relative to ITS OWN
+# anchor) — see _MEMBER_LIST_TOP_EMULATOR's docstring for why the two
+# anchors aren't comparable numbers despite the similar-looking ranges.
+_RANK_BADGE_X_EMULATOR = (180, 300)
+_RANK_BADGE_Y_OFF_EMULATOR = (10, 58)
+
+# Leaderboard-position digit. Still not precisely measured (OCR_LEADERBOARD_
+# POSITION_ENABLED defaults false — see the phone constant's docstring for
+# why this field is best-effort/optional): shifted to stay left of the
+# re-measured R-badge column (see _RANK_BADGE_X_EMULATOR) and to reuse its
+# corrected y-band, since the position digit sits in the same upper band,
+# one column to the left of it.
+_POSITION_X_EMULATOR = (110, 175)
+_POSITION_Y_OFF_EMULATOR = (10, 58)
+
+# _detect_list_top's scan window. Measured (week1_01): the column-header
+# text ("Commander Name") is tesseract-bboxed at top=232, height=21 →
+# bottom=253 — and, per _Layout.list_top_search_start's docstring, that
+# same bbox recurs at the identical top=232 on every one of week1_01
+# through week1_13 (ranks 1 through 64), proving the header is sticky and
+# the topmost visible row always renders at the same canonical y regardless
+# of scroll — but NOT at a single fixed y within that: below the header
+# sits a full-width, ALSO-sticky drop-shadow/divider band (a soft gradient
+# roughly y=280-310, see list_top_dark_pixel_value's docstring for how it's
+# told apart from real text), and depending on scroll offset within one row
+# height, row 0's real text was measured landing anywhere from y=290 (right
+# inside that gradient's own range, week1_06) to y=365 (week1_01, clear of
+# it). A first attempt narrowed this window's start to 325 specifically to
+# dodge the gradient — it fixed the captures whose row 0 lands late (like
+# week1_01) while breaking every capture whose row 0 legitimately lands
+# early (290-320, now excluded outright): position alone can't separate
+# "real text that happens to sit where the gradient does" from the gradient
+# itself. 270 (right after the header) is therefore the correct bound once
+# list_top_dark_pixel_value does that separation instead; 130 as the end
+# margin (canonical_top 300 + 130 = 430) comfortably covers the latest
+# measured row-0 top (365) while stopping well short of row 1's own text
+# (528) or badge — see list_top_scan_x below for why keeping row 1 out of
+# the PRIMARY window still isn't enough on its own to stop row 0's own
+# badge from aliasing onto row 1's.
+_LIST_TOP_SEARCH_START_EMULATOR = 270
+_LIST_TOP_SEARCH_END_MARGIN_EMULATOR = 130
+
+# Scan strip x-band for the periodicity check. Phone's own (270,720) sits
+# safely right of ITS avatar column (which ends ~240); reusing it unmodified
+# here does not — the emulator's avatar/badge column extends to ~330 (see
+# rank_badge_x), so any strip starting before that catches badge ink. Badge
+# discs repeat at the row pitch just like real name text (row 0's badge and
+# row 1's badge are exactly row_h apart), so a badge candidate found first
+# passes the SAME periodicity check a real name band would — and because a
+# badge starts higher in the row than the name does (rank_badge_y_off vs
+# name_y_off), find_runs reaches it first. Measured: this produced 4 of the
+# 2026-08-22 corpus's captures anchoring on row 0's own badge instead of its
+# name (worst case week1_01, where the rank-1 medal's oversized graphic —
+# ~115px tall — registers as an especially strong false candidate). 380
+# clears the avatar/badge column with margin; 900 matches name_x's own
+# right edge.
+_LIST_TOP_SCAN_X_EMULATOR = (380, 900)
+
+# Dark-pixel-content gate (see _Layout.list_top_dark_pixel_value's
+# docstring): measured on the preprocessed (0-255, dark text on light
+# background) image directly, not the inverted text_signal used for the
+# density scan. The header's drop-shadow gradient never got darker than
+# 196 across 3 sampled captures; real name/tag ink dipped to 2-10 in every
+# sampled real-text band. 150 sits with wide margin on both sides. The
+# fraction floor (not just "any dark pixel exists") guards against a single
+# stray dark pixel (dust-speck-sized preprocessing noise) accidentally
+# passing a would-be-rejected band — real text bands measured 5-10% dark
+# pixels in the same sample, so 1% asks for far less than a genuine text
+# band has, while still being well above what one noise pixel could reach
+# in a multi-hundred-pixel-wide crop.
+_LIST_TOP_DARK_PIXEL_VALUE_EMULATOR = 150
+_LIST_TOP_DARK_PIXEL_MIN_FRACTION_EMULATOR = 0.01
+
+_EMULATOR_LAYOUT = _Layout(
+    row_height=_ROW_HEIGHT_EMULATOR,
+    member_list_top=_MEMBER_LIST_TOP_EMULATOR,
+    name_x=_NAME_X_EMULATOR,
+    name_y_off=_NAME_Y_OFF_EMULATOR,
+    name_wrap_y_off=_NAME_WRAP_Y_OFF_EMULATOR,
+    honor_x=_HONOR_X_EMULATOR,
+    honor_y_off=_HONOR_Y_OFF_EMULATOR,
+    rank_badge_x=_RANK_BADGE_X_EMULATOR,
+    rank_badge_y_off=_RANK_BADGE_Y_OFF_EMULATOR,
+    position_x=_POSITION_X_EMULATOR,
+    position_y_off=_POSITION_Y_OFF_EMULATOR,
+    list_top_search_start=_LIST_TOP_SEARCH_START_EMULATOR,
+    list_top_search_end_margin=_LIST_TOP_SEARCH_END_MARGIN_EMULATOR,
+    list_top_scan_x=_LIST_TOP_SCAN_X_EMULATOR,
+    list_top_dark_pixel_value=_LIST_TOP_DARK_PIXEL_VALUE_EMULATOR,
+    list_top_dark_pixel_min_fraction=_LIST_TOP_DARK_PIXEL_MIN_FRACTION_EMULATOR,
+)
+
+_LAYOUT_BY_PROFILE = {PHONE_PROFILE: _PHONE_LAYOUT, EMULATOR_PROFILE: _EMULATOR_LAYOUT}
+
+
 class ContributionRankingV1Parser(BaseParser):
     """Parser for the weekly Alliance Honor leaderboard (V1)."""
 
@@ -379,23 +655,28 @@ class ContributionRankingV1Parser(BaseParser):
         emit_trace: bool = False,
         event_code: str | None = None,
     ) -> DonationParseResult:
-        # This parser's crop constants are calibrated for the phone profile
-        # only (see CANONICAL_HEIGHT below) — an emulator-sourced donation
-        # screenshot must fail loudly here rather than be silently parsed
-        # with the wrong positions (aoz-alliance-starter#91).
-        require_profile(image, PHONE_PROFILE)
+        # A profile with no measured _Layout must fail loudly here rather
+        # than be silently parsed with another profile's positions (this
+        # guard is what aoz-alliance-starter#91 originally added, as a
+        # phone-only check, before the emulator layout below existed).
+        h, w = image.shape[:2]
+        profile = detect_layout_profile(w, h)
+        layout = _LAYOUT_BY_PROFILE.get(profile)
+        if layout is None:
+            raise UnsupportedAspectRatioError(
+                f"contribution_ranking_v1 has no measured layout for profile "
+                f"{profile.name!r} ({w}x{h})"
+            )
+        scale = h / CANONICAL_HEIGHT if profile is PHONE_PROFILE else 1.0
 
-        h = image.shape[0]
-        scale = h / CANONICAL_HEIGHT
-
-        row_h = max(1, int(_ROW_HEIGHT * scale))
-        list_top = self._detect_list_top(image, scale)
+        row_h = max(1, int(layout.row_height * scale))
+        list_top = self._detect_list_top(image, layout, scale)
 
         period_type = self._detect_selected_tab(image)
 
         members: list[DonationMember] = []
-        name_start_offset = int(_NAME_Y_OFF[0] * scale)
-        name_end_offset = int(_NAME_Y_OFF[1] * scale)
+        name_start_offset = int(layout.name_y_off[0] * scale)
+        name_end_offset = int(layout.name_y_off[1] * scale)
         # Keep a row while at least half of its name band is on-screen, rather
         # than only when the whole band fits. At the true 178px pitch, row 11's
         # band clips a few px past the image bottom on ~1/3 of captures; the old
@@ -416,6 +697,7 @@ class ContributionRankingV1Parser(BaseParser):
                 image,
                 y,
                 row_h,
+                layout,
                 scale,
                 emit_trace=emit_trace,
                 list_top=list_top,
@@ -427,7 +709,7 @@ class ContributionRankingV1Parser(BaseParser):
             if validate_donation_member(member):
                 members.append(member)
 
-        self._enforce_honor_monotonicity(image, members, scale)
+        self._enforce_honor_monotonicity(image, members, layout, scale)
         self._repair_position_sequence(members)
 
         # A single counter that subsumes every way a row can go missing: ran
@@ -495,7 +777,7 @@ class ContributionRankingV1Parser(BaseParser):
     _HONOR_MIN_DROP_RATIO = 0.20
 
     def _enforce_honor_monotonicity(
-        self, image: np.ndarray, members: list[DonationMember], scale: float
+        self, image: np.ndarray, members: list[DonationMember], layout: _Layout, scale: float
     ) -> None:
         for i, member in enumerate(members):
             if i == 0:
@@ -551,7 +833,7 @@ class ContributionRankingV1Parser(BaseParser):
             if member.row_y is None:
                 continue  # can't re-crop without the row's y-origin
 
-            candidates = self._ocr_honor_candidates(image, member.row_y, scale)
+            candidates = self._ocr_honor_candidates(image, member.row_y, layout, scale)
             fixed = next((c for c in candidates if lower <= c <= upper), None)
             if fixed is not None:
                 logger.info(
@@ -710,12 +992,13 @@ class ContributionRankingV1Parser(BaseParser):
 
     # ── List top detection ───────────────────────────────────────────────────
 
-    def _detect_list_top(self, image: np.ndarray, scale: float) -> int:
+    def _detect_list_top(self, image: np.ndarray, layout: _Layout, scale: float) -> int:
         """Locate the y-start of the first member row.
 
         After preprocess the image is grayscale on a light background with dark
-        text. We scan the column where Commander Names live (x=270..720) for
-        text-density bands and validate each candidate the same way
+        text. We scan the column where Commander Names live (layout.
+        list_top_scan_x — phone x=270..720, see there for why the emulator's
+        differs) for text-density bands and validate each candidate the same way
         PolarInvasionV1Parser._detect_list_top validates its separator-gap
         zones (see there): not by the candidate's own height, but by checking
         that another band exists ~row_h further down — a real name line
@@ -727,14 +1010,24 @@ class ContributionRankingV1Parser(BaseParser):
         before paying for the periodicity check — unlike a ceiling, a floor
         can't reject a genuine, unusually tall name band.
 
-        We then back-compute row_top so the name crop _NAME_Y_OFF=(45, 130)
+        We then back-compute row_top so the name crop layout.name_y_off
         is centred on the accepted band.
+
+        The scan window itself is profile-aware (see _Layout.
+        list_top_search_start's docstring) but bounded tightly around the
+        canonical top on BOTH profiles: real phones are captured right
+        after opening the tab, and the emulator's column-header row is
+        sticky, so its scrollable viewport's top never moves either — only
+        which rows are drawn inside it does (measured 2026-08-22 — see that
+        docstring). A wide, nearly-full-frame search was tried first and
+        reverted: it let a different row's own badge coincidentally satisfy
+        the row_h periodicity check and get accepted as row 0.
         """
-        canonical_top = int(_MEMBER_LIST_TOP * scale)
+        canonical_top = int(layout.member_list_top * scale)
         h = image.shape[0]
-        row_h = max(1, int(_ROW_HEIGHT * scale))
-        search_start = max(0, int(330 * scale))
-        search_end = min(h, canonical_top + int(180 * scale))
+        row_h = max(1, int(layout.row_height * scale))
+        search_start = max(0, int(layout.list_top_search_start * scale))
+        search_end = min(h, canonical_top + int(layout.list_top_search_end_margin * scale))
         if search_end - search_start < 40:
             return canonical_top
 
@@ -746,7 +1039,8 @@ class ContributionRankingV1Parser(BaseParser):
         # primary candidate doesn't shift with how far down we happen to
         # look for its follow-up band.
         extended_end = min(h, search_end + row_h)
-        strip = image[search_start:extended_end, 270:720]
+        scan_x0, scan_x1 = layout.list_top_scan_x
+        strip = image[search_start:extended_end, scan_x0:scan_x1]
         if strip.ndim == 3:
             gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
         else:
@@ -778,6 +1072,15 @@ class ContributionRankingV1Parser(BaseParser):
                 # weekly_010, where the column header renders as its own
                 # measurable band ahead of the real row-0 name line.
                 continue
+            if layout.list_top_dark_pixel_value is not None and not self._has_dark_ink(
+                gray[start:end],
+                layout.list_top_dark_pixel_value,
+                layout.list_top_dark_pixel_min_fraction,
+            ):
+                # Passes periodicity but contains no real ink (see
+                # _Layout.list_top_dark_pixel_value's docstring) — a smooth
+                # shadow/divider gradient, not text. Try the next candidate.
+                continue
             if end - start > _MERGED_BAND_MIN_HEIGHT:
                 # This band has merged with adjacent content (see
                 # _MERGED_BAND_MIN_HEIGHT): its centre is dragged off the row-0
@@ -793,8 +1096,7 @@ class ContributionRankingV1Parser(BaseParser):
             return canonical_top
 
         name_centre_y = search_start + first_band_centre
-        # _NAME_Y_OFF=(45, 130) → centre at 87 relative to row_top.
-        name_centre_offset = int(((_NAME_Y_OFF[0] + _NAME_Y_OFF[1]) / 2) * scale)
+        name_centre_offset = int(((layout.name_y_off[0] + layout.name_y_off[1]) / 2) * scale)
         result = name_centre_y - name_centre_offset
         result = max(0, min(h - 1, result))
         logger.debug(
@@ -804,6 +1106,20 @@ class ContributionRankingV1Parser(BaseParser):
             result,
         )
         return int(result)
+
+    @staticmethod
+    def _has_dark_ink(band: np.ndarray, dark_value: int, min_fraction: float) -> bool:
+        """Does this candidate band contain real ink, not just a gradient?
+
+        See _Layout.list_top_dark_pixel_value's docstring. `band` is the
+        RAW preprocessed crop (dark text on a light background, 0-255), not
+        the inverted text_signal used for the density scan — this checks
+        content, not the same darkness-relative-to-baseline signal that
+        already accepted the candidate once.
+        """
+        if band.size == 0:
+            return False
+        return bool((band < dark_value).mean() >= min_fraction)
 
     @staticmethod
     def _has_periodic_followup(above: np.ndarray, start: int, row_h: int) -> bool:
@@ -852,14 +1168,15 @@ class ContributionRankingV1Parser(BaseParser):
         image: np.ndarray,
         y: int,
         row_h: int,
+        layout: _Layout,
         scale: float,
         emit_trace: bool = False,
         list_top: int = 0,
         row_index: int = 0,
         rank_cache: dict[str, tuple[int, int] | None] | None = None,
     ) -> DonationMember | None:
-        rank = self._detect_rank(image, y, scale, rank_cache=rank_cache)
-        raw_name, name_data = self._ocr_name(image, y, scale)
+        rank = self._detect_rank(image, y, layout, scale, rank_cache=rank_cache)
+        raw_name, name_data = self._ocr_name(image, y, layout, scale)
         if not raw_name:
             return None
         raw_name = normalize_name(raw_name)
@@ -872,30 +1189,30 @@ class ContributionRankingV1Parser(BaseParser):
         tag, name = _strip_alliance_tag(raw_name)
         name = fix_name_substitutions(name)
 
-        honor = self._ocr_honor(image, y, scale)
+        honor = self._ocr_honor(image, y, layout, scale)
         if honor is None:
             return None
 
-        position = self._ocr_position(image, y, scale)
+        position = self._ocr_position(image, y, layout, scale)
 
         confs = [int(c) for c in name_data["conf"] if str(c).lstrip("-").isdigit() and int(c) >= 0]
         confidence = sum(confs) / (len(confs) * 100) if confs else 0.0
 
         trace: RowTrace | None = None
         if emit_trace:
-            ny1 = y + int(_NAME_Y_OFF[0] * scale)
-            ny2 = y + int(_NAME_Y_OFF[1] * scale)
-            hy1 = y + int(_HONOR_Y_OFF[0] * scale)
-            hy2 = y + int(_HONOR_Y_OFF[1] * scale)
-            ry1 = y + int(_RANK_BADGE_Y[0] * scale)
-            ry2 = y + int(_RANK_BADGE_Y[1] * scale)
+            ny1 = y + int(layout.name_y_off[0] * scale)
+            ny2 = y + int(layout.name_y_off[1] * scale)
+            hy1 = y + int(layout.honor_y_off[0] * scale)
+            hy2 = y + int(layout.honor_y_off[1] * scale)
+            ry1 = y + int(layout.rank_badge_y_off[0] * scale)
+            ry2 = y + int(layout.rank_badge_y_off[1] * scale)
             trace = RowTrace(
                 list_top=list_top,
                 row_index=row_index,
                 row_height=row_h,
-                name=FieldBox(y1=ny1, y2=ny2, x1=_NAME_X[0], x2=_NAME_X[1]),
-                rank=FieldBox(y1=ry1, y2=ry2, x1=_RANK_BADGE_X[0], x2=_RANK_BADGE_X[1]),
-                alliance_honor=FieldBox(y1=hy1, y2=hy2, x1=_HONOR_X[0], x2=_HONOR_X[1]),
+                name=FieldBox(y1=ny1, y2=ny2, x1=layout.name_x[0], x2=layout.name_x[1]),
+                rank=FieldBox(y1=ry1, y2=ry2, x1=layout.rank_badge_x[0], x2=layout.rank_badge_x[1]),
+                alliance_honor=FieldBox(y1=hy1, y2=hy2, x1=layout.honor_x[0], x2=layout.honor_x[1]),
             )
 
         return DonationMember(
@@ -917,6 +1234,7 @@ class ContributionRankingV1Parser(BaseParser):
         self,
         image: np.ndarray,
         y: int,
+        layout: _Layout,
         scale: float,
         rank_cache: dict[str, tuple[int, int] | None] | None = None,
     ) -> str | None:
@@ -931,11 +1249,11 @@ class ContributionRankingV1Parser(BaseParser):
         R-badge frame and falls through to this default.
         """
         h = image.shape[0]
-        y1 = y + int(_RANK_BADGE_Y[0] * scale)
-        y2 = y + int(_RANK_BADGE_Y[1] * scale)
+        y1 = y + int(layout.rank_badge_y_off[0] * scale)
+        y2 = y + int(layout.rank_badge_y_off[1] * scale)
         if y1 >= h or y2 > h:
             return None
-        crop = image[y1:y2, _RANK_BADGE_X[0] : _RANK_BADGE_X[1]]
+        crop = image[y1:y2, layout.rank_badge_x[0] : layout.rank_badge_x[1]]
         if crop.size == 0:
             return None
 
@@ -947,10 +1265,12 @@ class ContributionRankingV1Parser(BaseParser):
 
     # ── Name OCR (multilingual) ──────────────────────────────────────────────
 
-    def _ocr_name(self, image: np.ndarray, y: int, scale: float) -> tuple[str, dict[str, Any]]:
-        ny1 = y + int(_NAME_Y_OFF[0] * scale)
-        ny2 = y + int(_NAME_Y_OFF[1] * scale)
-        crop = image[ny1:ny2, _NAME_X[0] : _NAME_X[1]]
+    def _ocr_name(
+        self, image: np.ndarray, y: int, layout: _Layout, scale: float
+    ) -> tuple[str, dict[str, Any]]:
+        ny1 = y + int(layout.name_y_off[0] * scale)
+        ny2 = y + int(layout.name_y_off[1] * scale)
+        crop = image[ny1:ny2, layout.name_x[0] : layout.name_x[1]]
         if crop.size == 0:
             return "", {"text": [], "conf": [], "left": []}
 
@@ -1007,9 +1327,9 @@ class ContributionRankingV1Parser(BaseParser):
         # following row under the bench's positional comparison. Fallback-only,
         # so single-line rows are never re-cropped.
         if len(name) < 2:
-            wy1 = y + int(_NAME_WRAP_Y_OFF[0] * scale)
-            wy2 = y + int(_NAME_WRAP_Y_OFF[1] * scale)
-            wrap_crop = image[wy1:wy2, _NAME_X[0] : _NAME_X[1]]
+            wy1 = y + int(layout.name_wrap_y_off[0] * scale)
+            wy2 = y + int(layout.name_wrap_y_off[1] * scale)
+            wrap_crop = image[wy1:wy2, layout.name_x[0] : layout.name_x[1]]
             if wrap_crop.size:
                 wrap_2x = cv2.resize(wrap_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
                 wrap_data = pytesseract.image_to_data(
@@ -1030,7 +1350,7 @@ class ContributionRankingV1Parser(BaseParser):
 
     # ── Leaderboard position OCR (best-effort, informational) ───────────────
 
-    def _ocr_position(self, image: np.ndarray, y: int, scale: float) -> int | None:
+    def _ocr_position(self, image: np.ndarray, y: int, layout: _Layout, scale: float) -> int | None:
         """Best-effort read of the on-screen leaderboard position (1-81).
 
         Informational only — see ``DonationMember.leaderboard_position``.
@@ -1043,9 +1363,9 @@ class ContributionRankingV1Parser(BaseParser):
         """
         if not _POSITION_OCR_ENABLED:
             return None
-        py1 = y + int(_POSITION_Y_OFF[0] * scale)
-        py2 = y + int(_POSITION_Y_OFF[1] * scale)
-        crop = image[py1:py2, _POSITION_X[0] : _POSITION_X[1]]
+        py1 = y + int(layout.position_y_off[0] * scale)
+        py2 = y + int(layout.position_y_off[1] * scale)
+        crop = image[py1:py2, layout.position_x[0] : layout.position_x[1]]
         if crop.size == 0:
             return None
         crop_3x = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
@@ -1053,10 +1373,10 @@ class ContributionRankingV1Parser(BaseParser):
 
     # ── Alliance Honor OCR ───────────────────────────────────────────────────
 
-    def _ocr_honor(self, image: np.ndarray, y: int, scale: float) -> int | None:
-        hy1 = y + int(_HONOR_Y_OFF[0] * scale)
-        hy2 = y + int(_HONOR_Y_OFF[1] * scale)
-        crop = image[hy1:hy2, _HONOR_X[0] : _HONOR_X[1]]
+    def _ocr_honor(self, image: np.ndarray, y: int, layout: _Layout, scale: float) -> int | None:
+        hy1 = y + int(layout.honor_y_off[0] * scale)
+        hy2 = y + int(layout.honor_y_off[1] * scale)
+        crop = image[hy1:hy2, layout.honor_x[0] : layout.honor_x[1]]
         if crop.size == 0:
             return None
 
@@ -1089,8 +1409,8 @@ class ContributionRankingV1Parser(BaseParser):
         # nominal band, silently starving Tesseract even though the glyphs are
         # fully visible in the tight crop. Fallback-only so it can only
         # rescue an already-failed row, never touch one that already works.
-        tall_hy2 = y + int((_HONOR_Y_OFF[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
-        tall_crop = image[hy1:tall_hy2, _HONOR_X[0] : _HONOR_X[1]]
+        tall_hy2 = y + int((layout.honor_y_off[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
+        tall_crop = image[hy1:tall_hy2, layout.honor_x[0] : layout.honor_x[1]]
         if tall_crop.size:
             tall_2x = cv2.resize(tall_crop, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
             text = pytesseract.image_to_string(
@@ -1102,7 +1422,9 @@ class ContributionRankingV1Parser(BaseParser):
                 return val
         return None
 
-    def _ocr_honor_candidates(self, image: np.ndarray, y: int, scale: float) -> list[int]:
+    def _ocr_honor_candidates(
+        self, image: np.ndarray, y: int, layout: _Layout, scale: float
+    ) -> list[int]:
         """Re-OCR the honor cell with several extra psm/threshold configs,
         including a taller fallback crop once the tight-band variants are
         exhausted (see the NEW comment below).
@@ -1113,9 +1435,9 @@ class ContributionRankingV1Parser(BaseParser):
         descending order. Returns distinct valid readings in the order tried,
         so the caller can pick whichever fits the monotone window.
         """
-        hy1 = y + int(_HONOR_Y_OFF[0] * scale)
-        hy2 = y + int(_HONOR_Y_OFF[1] * scale)
-        crop = image[hy1:hy2, _HONOR_X[0] : _HONOR_X[1]]
+        hy1 = y + int(layout.honor_y_off[0] * scale)
+        hy2 = y + int(layout.honor_y_off[1] * scale)
+        crop = image[hy1:hy2, layout.honor_x[0] : layout.honor_x[1]]
         if crop.size == 0:
             return []
 
@@ -1141,8 +1463,8 @@ class ContributionRankingV1Parser(BaseParser):
         # the FIRST candidate that fits [lower, upper], so ordering the tight
         # variants first keeps every row where they already produce a
         # fitting candidate byte-identical to today.
-        tall_hy2 = y + int((_HONOR_Y_OFF[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
-        tall_crop = image[hy1:tall_hy2, _HONOR_X[0] : _HONOR_X[1]]
+        tall_hy2 = y + int((layout.honor_y_off[1] + _Y_OFF_FALLBACK_MARGIN) * scale)
+        tall_crop = image[hy1:tall_hy2, layout.honor_x[0] : layout.honor_x[1]]
         # Shape check, not just .size: near the image bottom the taller
         # slice clamps back to the tight one — extra OCR calls on identical
         # pixels would only add duplicates the `seen` set discards anyway.

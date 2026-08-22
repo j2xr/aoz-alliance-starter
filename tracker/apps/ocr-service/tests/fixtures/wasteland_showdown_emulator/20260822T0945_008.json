@@ -1,0 +1,18 @@
+{
+  "event_type": "wasteland_showdown",
+  "event_datetime": "2026-03-27T14:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 14,
+  "total_points": 4110,
+  "source_file": "20260822T0945_008.png",
+  "members": [
+    { "name": "焼鳥_Yakitori", "rank": "R2", "power": 21876265, "points": 15303 },
+    { "name": "moco", "rank": "R1", "power": 14525816, "points": 12047 },
+    { "name": "MHGYM7000", "rank": "R1", "power": 12073673, "points": 9577 },
+    { "name": "rinshan5551", "rank": "R1", "power": 13307105, "points": 7513 },
+    { "name": "Mjölnir", "rank": "R4", "power": 27031275, "points": 6753 },
+    { "name": "Floki", "rank": "R1", "power": 10297644, "points": 4814 },
+    { "name": "jjr", "rank": "R3", "power": 11506544, "points": 3803 },
+    { "name": "Tic_Tac", "rank": "R1", "power": 8008855, "points": 3623 }
+  ]
+}

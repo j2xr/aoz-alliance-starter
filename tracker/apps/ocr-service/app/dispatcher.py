@@ -15,9 +15,9 @@ HEADER_HEIGHT = 200
 # Static title → event code fallback, used when the database is unreachable
 # (no SUPABASE_URL/key: hermetic tests, DB-less deployment) or until
 # refresh_title_patterns_from_supabase has succeeded. The source of truth is
-# at_event_types.title_aliases (migrations 0004/0007, OCR-misread aliases
-# seeded by 0019): a new event type or a new alias is added in the database,
-# without redeploying the service.
+# at_event_types.title_aliases (migrations 0004/0007, triangle_war seeded by
+# 0028, OCR-misread aliases seeded by 0019): a new event type or a new alias
+# is added in the database, without redeploying the service.
 _FALLBACK_TITLE_PATTERNS: list[tuple[str, str]] = [
     ("polar invasion", "polar_invasion"),
     ("invasion polaire", "polar_invasion"),
@@ -28,6 +28,7 @@ _FALLBACK_TITLE_PATTERNS: list[tuple[str, str]] = [
     ("ironblood battlefield", "ironblood_battlefield"),
     # Tesseract misreads the capital I as lowercase l on the game font.
     ("lronblood battlefield", "ironblood_battlefield"),
+    ("triangle war", "triangle_war"),
 ]
 
 _title_patterns: list[tuple[str, str]] = list(_FALLBACK_TITLE_PATTERNS)

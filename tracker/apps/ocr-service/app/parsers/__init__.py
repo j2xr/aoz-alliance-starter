@@ -15,6 +15,7 @@ REGISTRY: dict[str, BaseParser] = {
     "battle_frenzy": _v1,
     "void_war": _v1,
     "ironblood_battlefield": _v1,
+    "triangle_war": _v1,
     "contribution_ranking": _donation_v1,
     "player_stats_chat": _player_stats_v1,
 }

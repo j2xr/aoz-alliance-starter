@@ -1,0 +1,18 @@
+{
+  "event_type": "wasteland_showdown",
+  "event_datetime": "2026-03-20T14:00:00+02:00",
+  "alliance_rank": null,
+  "total_battlers": 10,
+  "total_points": 2565,
+  "source_file": "20260822T0945_007.png",
+  "members": [
+    { "name": "Mjölnir", "rank": "R4", "power": 26577125, "points": 13905 },
+    { "name": "rinshan5551", "rank": "R1", "power": 14071441, "points": 6703 },
+    { "name": "BigSteelCurtain", "rank": "R4", "power": 17866316, "points": 6175 },
+    { "name": "SteelCurtain", "rank": "R1", "power": 9633327, "points": 6130 },
+    { "name": "Andy_G29", "rank": "R4", "power": 10735911, "points": 3934 },
+    { "name": "ばななヨーグルト", "rank": "R1", "power": 11734095, "points": 2229 },
+    { "name": "moco", "rank": "R1", "power": 14201168, "points": 1970 },
+    { "name": "NAPPA", "rank": "R1", "power": 17775682, "points": 1130 }
+  ]
+}

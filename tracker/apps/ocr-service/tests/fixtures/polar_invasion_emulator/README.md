@@ -42,6 +42,46 @@ than silently guessed:
   future capture of this player, treat the ground truth as the one to
   revisit, not the OCR.
 
+### 2026-08-22 addition: `20260822T0945_001` through `_005` (Triangle War)
+
+Different provenance from the 4 above, and different from a full visual
+transcription: a remote agent captured these PNGs and transcribed a first
+pass by eye (capture prompt kept in session notes, not versioned in this
+repo). That pass was then corrected against an independently-verified name
+list (also kept in session notes, not versioned here) before being
+committed — one
+transcription error was caught this way (`はななヨーグルト` -> `ばななヨーグルト`,
+a single dakuten), which is itself the reason a second source was checked
+rather than trusting either transcription alone. Decorated names use the
+same core-name convention as `.AL3X.` above: `Simba` (was
+`❧⚔Ṡimbα⚔❧`) and `jasmin` (was `ω|ĵαʂɱιη|ω`), both confirmed against the
+same reference file. One name has no independent confirmation and is kept
+verbatim as transcribed, same uncertainty class as `Ben0Verbich`:
+**`MR×ZAIBYヨ〜`** (`20260822T0945_006` — see below, not part of the
+committed set, but the transcription is recorded here for anyone revisiting
+it).
+
+`_004` and `_005` are deliberate fractional scroll offsets (not aligned to
+a row boundary — see the module docstring's `_004`/`_005` discussion below)
+rather than whole-screen scrolls like the original 4; row 0 of each is a
+partially-visible row excluded from `members`, same convention as the
+9th-row exclusion above.
+
+**`20260822T0945_006` (rows 9-16) was captured but is deliberately not
+committed here.** It parses to 7 members instead of 8: `validate_member`
+drops one row outright rather than accepting a corrupted value, on a
+capture with 3 clustered decorated/stylized names in close succession
+(`jasmin`, `CaRnAgE`, `MR×ZAIBYヨ〜`). This is a real, measured gap — not a
+Lot 2/3 geometry issue, confirmed by checking the parser's per-row output
+against ground truth by position: the returned rows' *values* correctly
+track the source rows, just skipping the one `validate_member` rejected.
+Including it would have broken this suite's row-count and positional
+accuracy assertions in a way that fixing the assertions (not the
+underlying OCR) wouldn't actually resolve. Left as a known, documented gap
+rather than silently worked around; the original PNG/JSON pair is not lost
+— it's retained at the capture source, `/mnt/nas/aoz/fixtures/` on the VPS,
+should this need revisiting.
+
 ## Edge cases represented
 
 | Fixture | Name | What it tests |
@@ -50,7 +90,8 @@ than silently guessed:
 | `20260707T1500_001` | `中本` | CJK name (needs `chi_sim`) |
 | `20260707T1500_001` | `.AL3X.` | Decorative flanking glyphs |
 | `20260714T1500_001` | `Sa†ana` | Dagger glyph replacing a letter |
-| `20260811T2300_001` | `3jr` | "This is you" row — rank badge, name, and power all render in green; points stays white |
+| `20260811T2300_001` | `3jr` | "This is you" row — rank badge, name, and power all render in green; points stays white. Measured 2026-08-22: name misreads (`3jr` -> `Зи`) in the current CI environment, contradicting this row's original "clean" billing — an unnoticed case of the version-drift this README already warns about below, caught while investigating the same highlighted-row failure on `jjr` (see the 2026-08-22 section above) |
+| `20260822T0945_003`/`_004`/`_005` | `jjr` | Same "this is you" highlight as `3jr`, but breaks both `name` and `rank` on every occurrence — a heavier version of the same failure, not a different one |
 
 ## Quality: measured vs. phone-parity targets
 
@@ -126,3 +167,41 @@ stylistic:
   profile at any band, only a measured failure mode. `_EMULATOR_LAYOUT`
   therefore also carries `power_fallback_x=None`, and the stage raises if a
   future layout lists it without measuring a real band first.
+
+## 2026-08-22 addition: disjoint corpus, revised floors
+
+The 5 fixtures added this date (`20260822T0945_001`-`_005`, see the
+provenance section above) are **disjoint** from the 32 rows the numbers
+above were calibrated on — the first real test of whether those numbers
+generalize, rather than describe the calibration set itself. Blended
+9-fixture, 72-row measurement, same CI-equivalent environment:
+
+| Field | Old floor | Old measured | New floor | New measured |
+|-------|-----------|--------------|-----------|--------------|
+| `points` | ≥95% | 100% (32/32) | ≥95% | 100% (72/72), unchanged |
+| `power` | ≥95% | 100% (32/32) | ≥95% | 100% (72/72), unchanged |
+| `name` (Latin) | ≥90% target, 85% floor | 90.3% (28/31) | 80% floor | 85.9% (61/71) |
+| `rank` | ≥98% target, 90% floor | 96.9% (31/32) | 85% floor | 88.9% (64/72) |
+
+Both floors moved down, each for a named reason (not a blanket
+loosening — see `test_polar_invasion_emulator_parser.py`'s module
+docstring for the row-by-row detail):
+
+- **name**: the new misses are the same *class* already covered above
+  (decorated/stylized names, dropped diacritics) — no new failure mode,
+  just more instances of it once the corpus stopped being small enough for
+  a couple of hard names to dominate the percentage.
+- **rank**: 3 new distinct badge misreads (`NAPPA`, `Doug`, `jjr` — see the
+  docstring for which occurrences are the same underlying row counted
+  twice due to overlapping fractional-scroll captures), on top of the
+  pre-existing `Madara⁶⁹Uchiha` legibility floor. All 3 are plain Latin
+  names with the name field read correctly — the miss is isolated to the
+  badge crop itself, so this doesn't implicate `_Layout.rank_ocr_order`'s
+  retune; it's the same kind of legibility floor `Madara⁶⁹Uchiha` already
+  represents, just not yet fixable by more sweep tuning than has already
+  been tried on this glyph size (see the retune section above).
+
+`20260822T0945_006` was captured but is **not** part of this corpus or
+these numbers — see the provenance section above for why (a distinct,
+harder failure: `validate_member` drops a whole row rather than misreading
+a field).
