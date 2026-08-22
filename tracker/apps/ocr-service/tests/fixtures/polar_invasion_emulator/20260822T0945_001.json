@@ -1,0 +1,18 @@
+{
+  "event_type": "triangle_war",
+  "event_datetime": "2026-03-12T01:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 77,
+  "total_points": 196,
+  "source_file": "20260822T0945_001.png",
+  "members": [
+    { "name": "焼鳥_Yakitori", "rank": "R1", "power": 21075373, "points": 57805 },
+    { "name": "DuyMặtTheo", "rank": "R2", "power": 13898266, "points": 57443 },
+    { "name": "Momoa", "rank": "R4", "power": 25035925, "points": 50804 },
+    { "name": "BabaYaga", "rank": "R4", "power": 22996165, "points": 49304 },
+    { "name": "For_sale", "rank": "R1", "power": 18030072, "points": 47819 },
+    { "name": "Simba", "rank": "R3", "power": 23725673, "points": 47048 },
+    { "name": "MHGYM7000", "rank": "R1", "power": 11264900, "points": 40489 },
+    { "name": "Tom_limin", "rank": "R1", "power": 16961970, "points": 36644 }
+  ]
+}

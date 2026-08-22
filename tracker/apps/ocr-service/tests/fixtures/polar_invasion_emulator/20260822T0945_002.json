@@ -1,0 +1,18 @@
+{
+  "event_type": "triangle_war",
+  "event_datetime": "2026-03-12T01:00:00+02:00",
+  "alliance_rank": 2,
+  "total_battlers": 77,
+  "total_points": 196,
+  "source_file": "20260822T0945_002.png",
+  "members": [
+    { "name": "Libelula.001", "rank": "R1", "power": 10631823, "points": 12966 },
+    { "name": "Hambones", "rank": "R1", "power": 8441090, "points": 11850 },
+    { "name": "NAPPA", "rank": "R1", "power": 17447693, "points": 11529 },
+    { "name": "nothing", "rank": "R1", "power": 13277827, "points": 11286 },
+    { "name": "幸恵丸ポーター", "rank": "R2", "power": 18625843, "points": 10342 },
+    { "name": "JANI", "rank": "R2", "power": 15434735, "points": 8007 },
+    { "name": "Dr.Strange", "rank": "R3", "power": 6759198, "points": 7544 },
+    { "name": "Frankenstein", "rank": "R1", "power": 12942017, "points": 7268 }
+  ]
+}
