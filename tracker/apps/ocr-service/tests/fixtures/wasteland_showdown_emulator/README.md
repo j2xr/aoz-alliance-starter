@@ -29,9 +29,8 @@ to prevent).
 
 Same remote-agent-transcribed-then-corrected process as the 2026-08-22
 addition to `polar_invasion_emulator/` (see that README): a first pass by
-eye, corrected against
-`/home/deploy/ocr-llm-test-crops/reference-2026-08-10/groundtruth.json`
-where a name overlapped that independently-verified list. One correction
+eye, corrected against an independently-verified name list (session notes,
+not versioned in this repo) where a name overlapped it. One correction
 applied: **`ŠigŠteelĈurtain`** (`_007`, flagged low-confidence by the
 transcriber) → **`BigSteelCurtain`**, confirmed against the reference file.
 All other names either match that reference exactly or are plain ASCII

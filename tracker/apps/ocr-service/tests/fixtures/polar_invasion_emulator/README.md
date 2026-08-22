@@ -46,10 +46,10 @@ than silently guessed:
 
 Different provenance from the 4 above, and different from a full visual
 transcription: a remote agent captured these PNGs and transcribed a first
-pass by eye (prompt: `/home/deploy/ocr-emulator-captures/prompt-cowork-captures-v1-trop-cher.md`,
-not versioned in this repo). That pass was then corrected against
-`/home/deploy/ocr-llm-test-crops/reference-2026-08-10/groundtruth.json` (an
-independently-verified name list) before being committed here — one
+pass by eye (capture prompt kept in session notes, not versioned in this
+repo). That pass was then corrected against an independently-verified name
+list (also kept in session notes, not versioned here) before being
+committed — one
 transcription error was caught this way (`はななヨーグルト` -> `ばななヨーグルト`,
 a single dakuten), which is itself the reason a second source was checked
 rather than trusting either transcription alone. Decorated names use the
